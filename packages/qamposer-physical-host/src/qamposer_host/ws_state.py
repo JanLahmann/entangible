@@ -17,7 +17,7 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from .config import camera_from_spec, select_camera_to_spec
+from .config import camera_from_spec, ensure_push_source, select_camera_to_spec
 
 logger = logging.getLogger("qamposer_host.ws_state")
 
@@ -67,21 +67,26 @@ async def _handle_select_camera(websocket: WebSocket, msg: dict) -> None:
     pipeline = app.state.pipeline
     factory = app.state.source_factory
     spec = select_camera_to_spec(msg)
+    is_push = spec.split(":", 1)[0] == "push"
 
     source = None
-    try:
-        source = factory(spec)
-    except Exception:
-        logger.warning("could not build frame source for %r", spec, exc_info=True)
+    if is_push:
+        # Swap the pipeline onto the *shared* push source that /ws/frames feeds,
+        # so frames already in the slot take effect immediately after the swap.
+        source = ensure_push_source(app)
+        if source is None:
+            logger.warning("push source unavailable (vision package missing)")
+    else:
+        try:
+            source = factory(spec)
+        except Exception:
+            logger.warning("could not build frame source for %r", spec, exc_info=True)
 
     if pipeline is not None and source is not None:
         try:
             pipeline.swap_source(source)
         except Exception:
             logger.warning("pipeline.swap_source failed for %r", spec, exc_info=True)
-
-    if spec.split(":", 1)[0] == "push":
-        app.state.push_source = source
 
     hub.set_camera(camera_from_spec(spec, connected=source is not None))
     await hub.publish_status()

@@ -16,6 +16,8 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from .config import ensure_push_source
+
 logger = logging.getLogger("qamposer_host.ws_frames")
 
 router = APIRouter()
@@ -25,10 +27,13 @@ router = APIRouter()
 async def ws_frames(websocket: WebSocket) -> None:
     app = websocket.app
     await websocket.accept()
-    if getattr(app.state, "push_source", None) is None:
+    # Ensure the single shared PushFrameSource exists so frames always land in
+    # it — even before `select_camera {kind:'push'}` swaps the pipeline onto it
+    # (most-recent-wins slot; the latest frame is ready the instant we swap).
+    if ensure_push_source(app) is None:
         logger.warning(
-            "/ws/frames connected but no PushFrameSource is active; "
-            "frames will be accepted and dropped"
+            "/ws/frames connected but no PushFrameSource is available "
+            "(vision package missing); frames will be accepted and dropped"
         )
     warned_push_error = False
     try:

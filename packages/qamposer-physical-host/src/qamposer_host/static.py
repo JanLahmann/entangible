@@ -74,6 +74,24 @@ async def qr(request: Request, path: str = "/capture") -> Response:
     )
 
 
+@router.get("/api/info")
+async def info(request: Request) -> dict:
+    """LAN reachability facts for the display/debug UI (QR + capture URL).
+
+    ``captureUrl`` is the full origin a phone should open — the same URL encoded
+    in ``/api/qr`` — so the ``/debug`` "Phone camera" card can print it verbatim.
+    """
+    config = request.app.state.config
+    scheme = "https" if config.tls else "http"
+    ip = primary_lan_ip()
+    return {
+        "lanIp": ip,
+        "port": config.port,
+        "tls": bool(config.tls),
+        "captureUrl": f"{scheme}://{ip}:{config.port}/capture",
+    }
+
+
 def _looks_like_asset(path: str) -> bool:
     last = path.rsplit("/", 1)[-1]
     return "." in last

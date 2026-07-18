@@ -31,6 +31,26 @@ def test_health_shape():
         assert body["clients"] == 0
 
 
+def test_info_shape_tls_default():
+    with TestClient(_app()) as client:
+        resp = client.get("/api/info")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert set(body) == {"lanIp", "port", "tls", "captureUrl"}
+        assert body["tls"] is True
+        assert isinstance(body["port"], int)
+        assert body["captureUrl"] == f"https://{body['lanIp']}:{body['port']}/capture"
+
+
+def test_info_reflects_no_tls():
+    with TestClient(_app(tls=False, port=8080)) as client:
+        body = client.get("/api/info").json()
+        assert body["tls"] is False
+        assert body["port"] == 8080
+        assert body["captureUrl"].startswith("http://")
+        assert body["captureUrl"].endswith(":8080/capture")
+
+
 def test_qamposer_api_503_when_off():
     with TestClient(_app()) as client:
         resp = client.get("/qamposer-api/jobs")

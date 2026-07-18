@@ -6,11 +6,83 @@
  *
  * Everything here is read-only diagnostics; nothing feeds back to the host.
  */
+import { useEffect, useState } from 'react';
 import { useEntangibleState } from '../ws/useEntangibleState';
 import { markerLabel } from './markerLabels';
 
 function fmt(n: number | null | undefined, digits = 2): string {
   return typeof n === 'number' ? n.toFixed(digits) : '—';
+}
+
+interface HostInfo {
+  lanIp: string;
+  port: number;
+  tls: boolean;
+  captureUrl: string;
+}
+
+/** "Phone camera" card: QR + capture URL + iOS cert tap-through steps. */
+function PhoneCameraCard() {
+  const [info, setInfo] = useState<HostInfo | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/info')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: HostInfo | null) => {
+        if (!cancelled) setInfo(data);
+      })
+      .catch(() => {
+        if (!cancelled) setInfo(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <section className="debug__section">
+      <h2>phone camera</h2>
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <img
+          src="/api/qr?path=/capture"
+          alt="QR code linking to the /capture page"
+          width={168}
+          height={168}
+          style={{ background: '#fff', padding: 8, borderRadius: 6, flex: 'none' }}
+        />
+        <div style={{ minWidth: '14rem', flex: 1 }}>
+          <div style={{ marginBottom: '0.5rem' }}>
+            Scan to stream a phone camera to the booth:
+          </div>
+          <div
+            style={{
+              fontFamily: 'var(--ent-mono)',
+              wordBreak: 'break-all',
+              color: 'var(--ent-text)',
+              marginBottom: '0.75rem',
+            }}
+          >
+            {info ? info.captureUrl : '…'}
+            {info && !info.tls ? '  (HTTP — no cert needed)' : ''}
+          </div>
+          <div style={{ color: 'var(--ent-text-dim)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+            <strong>iOS Safari (self-signed cert):</strong>
+            <ol style={{ margin: '0.35rem 0 0', paddingLeft: '1.2rem' }}>
+              <li>Open the link (scan the QR).</li>
+              <li>
+                Tap <strong>Show Details → visit this website</strong> (or{' '}
+                <strong>Advanced</strong>), then <strong>Proceed</strong>.
+              </li>
+              <li>
+                Tap <strong>Start camera</strong> and <strong>Allow</strong> camera access.
+              </li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 export function DebugView() {
@@ -155,6 +227,8 @@ export function DebugView() {
             </tbody>
           </table>
         </section>
+
+        <PhoneCameraCard />
       </div>
     </div>
   );

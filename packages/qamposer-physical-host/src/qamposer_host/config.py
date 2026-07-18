@@ -145,6 +145,29 @@ def build_frame_source(spec: str):
     raise ValueError(f"unknown source spec: {spec!r}")
 
 
+def ensure_push_source(app) -> object | None:
+    """Return the app's single shared ``PushFrameSource``, creating it lazily.
+
+    ``/ws/frames`` feeds frames into this one instance and ``select_camera
+    {kind:'push'}`` swaps the pipeline *to* it, so frames pushed before the swap
+    are not lost — the latest one is already in the slot when detection starts.
+
+    The instance is cached on ``app.state.push_source``. Returns ``None`` if the
+    vision package is not importable (the host then degrades to accept-and-drop),
+    so this stays safe to call before the vision package lands.
+    """
+    src = getattr(app.state, "push_source", None)
+    if src is not None:
+        return src
+    try:
+        from qamposer_vision.sources import PushFrameSource  # lazy
+    except Exception:  # pragma: no cover - only when vision is unavailable
+        return None
+    src = PushFrameSource()
+    app.state.push_source = src
+    return src
+
+
 def select_camera_to_spec(msg: Mapping[str, object]) -> str:
     """Translate a ``select_camera`` client message into a source spec."""
     kind = str(msg.get("kind", "")).strip()

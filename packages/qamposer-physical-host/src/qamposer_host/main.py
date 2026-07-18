@@ -20,7 +20,7 @@ import httpx
 from fastapi import FastAPI
 
 from . import preview, proxy, static, ws_frames, ws_state
-from .config import HostConfig, build_frame_source, camera_from_spec
+from .config import HostConfig, build_frame_source, camera_from_spec, ensure_push_source
 from .hub import Hub
 from .proxy import BackendHealth
 
@@ -99,7 +99,12 @@ def _try_start_pipeline(app: FastAPI) -> None:
     try:
         from qamposer_vision.pipeline import Pipeline  # lazy
 
-        source = app.state.source_factory(config.source)
+        if config.source.split(":", 1)[0] == "push":
+            # Start on the shared push source so /ws/frames feeds it directly.
+            source = ensure_push_source(app) or app.state.source_factory(config.source)
+            app.state.push_source = source
+        else:
+            source = app.state.source_factory(config.source)
         pipeline = Pipeline(
             source=source,
             on_circuit=hub.publish_from_thread,
@@ -108,8 +113,6 @@ def _try_start_pipeline(app: FastAPI) -> None:
         pipeline.start()
         app.state.pipeline = pipeline
         app.state.owns_pipeline = True
-        if config.source.split(":", 1)[0] == "push":
-            app.state.push_source = source
         hub.set_camera(camera_from_spec(config.source, connected=True))
         logger.info("vision pipeline started on source %r", config.source)
     except Exception as exc:
