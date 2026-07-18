@@ -144,6 +144,39 @@ Compare against canonical states up to global phase, fidelity ≥ 0.99.
   observed live).
 - Strip messages: min 4 s on screen, drop intermediate messages if they queue.
 
+## Scaling, modes, branding, help (v2 additions, 2026-07-18)
+
+**RESULTS at high qubit counts** — strategy switches on active-qubit count:
+≤3 active (≤8 outcomes): labeled bars as mocked. 4–5 active: sort by
+probability, show top 6 bars, aggregate the tail as one muted summary row
+("+26 outcomes ≤ 3%"). Uniform superposition (all outcomes equal) renders as a
+flat-line glyph + "2^k equally likely outcomes" — a featured state, not a
+failed chart. The Q-sphere (post-upstream) is the scale-proof view and takes
+the RESULTS top slot when available; bars become secondary.
+
+**Display modes** — the booth is a mode host: `composer` (default), `golf`
+(Bloch/Q-sphere golf, when built — stage becomes the sphere, sidebar becomes
+the scorecard: hole, par, strokes = gates, best-of-day), `attract`. Switching:
+staff selector on /debug (pills), additive `select_mode` WS message
+(protocol v1 additive), `--mode` CLI flag, kiosk hotkey. Current mode reads as
+a topbar pill. Golf hidden entirely until implemented.
+
+**Event branding (white-label slot)** — topbar right end: "presented at" zone
+(event logo ≤ 60% topbar height, white/mono recommended, optional event name),
+configured via `branding.toml` (name, logo path, QR target override) served at
+`/api/branding` + static logo. Attract mode carries the larger co-brand
+("Entangible at ⟨event⟩"). Tokens never change per event — guest logos live
+inside our system.
+
+**Help & docs, by audience** — Visitors: no on-screen help ever (the table is
+the tutorial); curious ones get the config-gated "scan to learn more" QR →
+`/about`, a static page served by the host itself (offline-safe at venues):
+what-is-this, gate cheatsheet, entanglement in one paragraph, project links;
+the hint ticker rotates one-line facts as ambient education. Staff: /debug +
+runbooks (mac-booth.md, iphone-capture.md, printing.md) + a printable
+one-page cheat-sheet PDF emitted by qamposer-assets (commands, QRs,
+troubleshooting). Developers: repo docs.
+
 ## Attract mode
 
 - Enter: board empty AND no circuit change for 90 s.
