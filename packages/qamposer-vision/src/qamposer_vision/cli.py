@@ -25,6 +25,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from .annotate import annotate_frame
 from .board import BoardConfig, BoardResult, fit_board
 from .circuit_builder import BuildWarning, TilePlacement, build_circuit
 from .detector import ArucoDetector, DetectedMarker
@@ -121,59 +122,6 @@ def detect_circuit(
     )
 
 
-def annotate_frame(
-    image: np.ndarray,
-    result: DetectionResult,
-    board_config: BoardConfig | None = None,
-) -> np.ndarray:
-    """Draw detected markers, IDs, and the projected grid onto a copy of ``image``.
-
-    Kept inline in the CLI for M1; ``annotate.py`` stays an M2 stub.
-    """
-    if board_config is None:
-        board_config = BoardConfig.from_toml()
-    canvas = image.copy()
-    if canvas.ndim == 2:
-        canvas = cv2.cvtColor(canvas, cv2.COLOR_GRAY2BGR)
-
-    # Grid cells (projected board-mm -> image px), if we have a pose.
-    if result.board is not None:
-        grid = GridConfig.from_board_config(board_config)
-        half = board_config.cell_size / 2.0
-        for row in range(grid.rows):
-            for col in range(grid.cols):
-                cx, cy = grid.cell_center(row, col)
-                corners_mm = np.array(
-                    [
-                        [cx - half, cy - half],
-                        [cx + half, cy - half],
-                        [cx + half, cy + half],
-                        [cx - half, cy + half],
-                    ]
-                )
-                corners_px = result.board.board_to_image(corners_mm).astype(np.int32)
-                cv2.polylines(
-                    canvas, [corners_px], isClosed=True, color=(180, 180, 180),
-                    thickness=1, lineType=cv2.LINE_AA,
-                )
-
-    # Markers: outline + centre + label.
-    for marker in result.markers:
-        pts = marker.corners.astype(np.int32)
-        is_corner = marker.id in CORNER_IDS
-        color = (0, 200, 255) if is_corner else (0, 220, 0)
-        cv2.polylines(canvas, [pts], isClosed=True, color=color, thickness=2,
-                      lineType=cv2.LINE_AA)
-        cx, cy = int(marker.center[0]), int(marker.center[1])
-        cv2.circle(canvas, (cx, cy), 3, color, -1, lineType=cv2.LINE_AA)
-        spec = MARKER_TABLE.get(marker.id)
-        label = f"{marker.id}:{spec.label}" if spec else str(marker.id)
-        cv2.putText(canvas, label, (cx + 6, cy - 6), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5, color, 1, lineType=cv2.LINE_AA)
-
-    return canvas
-
-
 def _warnings_to_text(warnings: list[BuildWarning]) -> str:
     return "\n".join(f"[{w.kind}] {w.message}" for w in warnings)
 
@@ -207,7 +155,15 @@ def _cmd_detect(args: argparse.Namespace) -> int:
         sys.stdout.write(result.qasm)
 
     if args.annotated:
-        annotated = annotate_frame(image, result, board_config)
+        occupied = {(p.row, p.col) for p in result.placements}
+        annotated = annotate_frame(
+            image,
+            markers=result.markers,
+            board=result.board,
+            board_config=board_config,
+            occupied_cells=occupied,
+            warnings=result.warnings,
+        )
         cv2.imwrite(args.annotated, annotated)
 
     if result.warnings:

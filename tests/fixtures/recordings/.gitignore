@@ -1,0 +1,5 @@
+# Replay fixture frames are generated, never committed.
+# Regenerate with: uv run python tests/utils/make_recording.py
+*.png
+*.jpg
+*.jpeg
