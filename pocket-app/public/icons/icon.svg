@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0f1117"/>
+  <!-- entanglement mark: two linked qubit nodes on a wire, purple accent -->
+  <line x1="128" y1="256" x2="384" y2="256" stroke="#262b36" stroke-width="16" stroke-linecap="round"/>
+  <circle cx="176" cy="256" r="52" fill="none" stroke="#7a5cff" stroke-width="20"/>
+  <circle cx="336" cy="256" r="52" fill="none" stroke="#33b1ff" stroke-width="20"/>
+  <text x="256" y="150" text-anchor="middle" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif"
+        font-size="120" font-weight="700" fill="#e6e9ef">
+    <tspan fill="#7a5cff">E</tspan>
+  </text>
+  <text x="256" y="410" text-anchor="middle" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif"
+        font-size="52" font-weight="600" letter-spacing="4" fill="#8a91a0">POCKET</text>
+</svg>

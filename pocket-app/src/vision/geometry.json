@@ -1,0 +1,30 @@
+{
+  "board": {
+    "rows": 5,
+    "cols": 8,
+    "pitch": 70.0,
+    "cellSize": 62.0,
+    "matWidth": 720.0,
+    "matHeight": 500.0,
+    "cornerMarkerSize": 40.0,
+    "cornerMargin": 8.0,
+    "gridOffsetX": 80.0,
+    "gridOffsetY": 105.0
+  },
+  "tile": {
+    "size": 60.0,
+    "markerSize": 36.0
+  },
+  "cornerIds": {
+    "0": "TL",
+    "1": "TR",
+    "2": "BR",
+    "3": "BL"
+  },
+  "cornerRoles": [
+    "TL",
+    "TR",
+    "BR",
+    "BL"
+  ]
+}

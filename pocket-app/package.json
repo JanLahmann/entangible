@@ -1,0 +1,33 @@
+{
+  "name": "entangible-pocket",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Entangible Pocket — standalone iPad-first browser demo (camera → in-browser marker detection → circuit → simulation → celebrations)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/ibm-plex-sans": "^5.2.8",
+    "@qamposer/react": "^0.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/pngjs": "^6.0.5",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "jsdom": "^25.0.0",
+    "pngjs": "^7.0.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.0",
+    "vitest": "^2.0.5"
+  }
+}

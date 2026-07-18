@@ -1,0 +1,557 @@
+/*
+ * Entangible Pocket — iPad-first stylesheet.
+ *
+ * The design tokens are copied verbatim from the booth v2 system
+ * (display-app/src/booth/booth-v2.css, docs/booth-ux.md) so Pocket reads as the
+ * booth's sibling: layered near-black surfaces, hairline borders, purple
+ * reserved for entanglement, cyan histogram bars, IBM Plex. Class names are
+ * pocket-prefixed (`pk-`). Sizes are authored in rem/px for a handheld screen
+ * (not the booth's 3 m vh scale), and the layout is landscape-primary with a
+ * portrait fallback.
+ */
+
+:root {
+  --bg: #0f1117;
+  --bg-panel: #161a22;
+  --bg-inset: #11141b;
+  --border: #262b36;
+  --text: #e6e9ef;
+  --muted: #8a91a0;
+  --faint: #5c6370;
+  --accent: #0f62fe;
+  --bars: #33b1ff;
+  --entangle: #7a5cff;
+  --ok: #2fbf71;
+  --warn: #f1c21b;
+  --danger: #e5484d;
+  --radius: 8px;
+  --sans: 'IBM Plex Sans', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pk {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.pk-mono {
+  font-family: var(--mono);
+}
+
+/* ---- topbar ----------------------------------------------------------- */
+
+.pk-topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.55rem 1rem;
+  padding-top: max(0.55rem, env(safe-area-inset-top));
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+
+.pk-brand {
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.pk-brand .en {
+  color: var(--entangle);
+}
+
+.pk-brand small {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-left: 0.5rem;
+}
+
+.pk-spacer {
+  flex: 1;
+}
+
+.pk-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  white-space: nowrap;
+}
+
+.pk-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--faint);
+}
+
+.pk-pill.is-live .pk-dot {
+  background: var(--ok);
+}
+
+.pk-pill.is-searching .pk-dot {
+  background: var(--warn);
+  animation: pk-pulse 1.2s ease-in-out infinite;
+}
+
+.pk-pill.is-off .pk-dot {
+  background: var(--danger);
+}
+
+@keyframes pk-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.pk-btn {
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 0.45rem 1rem;
+  cursor: pointer;
+}
+
+.pk-btn.is-stop {
+  background: transparent;
+  color: var(--muted);
+  border-color: var(--border);
+}
+
+/* ---- main: stage + side (landscape) ----------------------------------- */
+
+.pk-main {
+  display: grid;
+  grid-template-columns: 1fr minmax(280px, 33%);
+  min-height: 0;
+}
+
+.pk-stage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  padding: 1rem;
+  display: flex;
+}
+
+.pk-stage-editor {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+}
+
+.pk-stage-editor > :first-child {
+  flex: 1;
+  min-height: 0;
+}
+
+.pk-side {
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pk-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+
+.pk-well {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.7rem;
+}
+
+/* ---- camera preview + detection overlay ------------------------------- */
+
+.pk-cam {
+  position: relative;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #000;
+  border: 1px solid var(--border);
+  aspect-ratio: 4 / 3;
+  flex: none;
+}
+
+.pk-cam video,
+.pk-cam canvas.pk-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pk-cam video {
+  transform: scaleX(1);
+}
+
+.pk-cam.is-idle {
+  display: grid;
+  place-items: center;
+}
+
+.pk-cam-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 0.6rem;
+  transform: translateX(-50%);
+  background: rgba(15, 17, 23, 0.86);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.78rem;
+  color: var(--text);
+  white-space: nowrap;
+  z-index: 3;
+}
+
+.pk-cam-fps {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--muted);
+  background: rgba(15, 17, 23, 0.7);
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  z-index: 3;
+}
+
+/* Start card (idle / secure-context error). */
+.pk-startcard {
+  text-align: center;
+  padding: 2rem;
+  max-width: 22rem;
+}
+
+.pk-startcard h2 {
+  font-size: 1.1rem;
+  margin: 0 0 0.5rem;
+}
+
+.pk-startcard p {
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin: 0 0 1.2rem;
+}
+
+.pk-startcard.is-error h2 {
+  color: var(--danger);
+}
+
+/* ---- RESULTS histogram (bit-stack columns, zero states hidden) -------- */
+
+.pk-h-plot {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-end;
+  height: 9rem;
+}
+
+.pk-h-plot.is-micro {
+  gap: 2px;
+}
+
+.pk-h-guide {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  line-height: 1.4;
+  font-size: 0.6rem;
+  font-family: var(--mono);
+  color: var(--faint);
+  flex: none;
+  height: 100%;
+}
+
+.pk-h-col {
+  flex: 1;
+  min-width: 0;
+  max-width: 3.4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.3rem;
+  height: 100%;
+}
+
+.pk-h-pct {
+  font-size: 0.68rem;
+  color: var(--muted);
+  height: 0.9rem;
+  line-height: 0.9rem;
+}
+
+.pk-h-bar {
+  width: 100%;
+  background: var(--bars);
+  border-radius: 3px 3px 0 0;
+  transition: height 0.3s ease;
+  min-height: 2px;
+}
+
+.is-micro .pk-h-bar {
+  background: #1c6ea0;
+  border-radius: 1px 1px 0 0;
+}
+
+.pk-h-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.35;
+  font-size: 0.72rem;
+  font-family: var(--mono);
+  color: var(--muted);
+}
+
+.pk-h-tail,
+.pk-h-note {
+  font-size: 0.68rem;
+  color: var(--faint);
+  margin-top: 0.4rem;
+}
+
+.pk-h-empty {
+  font-size: 0.82rem;
+  color: var(--faint);
+  padding: 1.5rem 0;
+  text-align: center;
+}
+
+/* ---- STATE stat rows -------------------------------------------------- */
+
+.pk-stats {
+  display: flex;
+  flex-direction: column;
+}
+
+.pk-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.85rem;
+  color: var(--muted);
+  padding: 0.3rem 0;
+  border-bottom: 1px solid #1c212c;
+}
+
+.pk-stat b {
+  color: var(--text);
+  font-weight: 500;
+  font-family: var(--mono);
+}
+
+/* ---- footer: hint ticker / warnings ----------------------------------- */
+
+.pk-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.5rem 1rem;
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--muted);
+  min-width: 0;
+}
+
+.pk-footer.has-warnings {
+  color: var(--warn);
+}
+
+.pk-footer .pk-warnicon {
+  flex: none;
+}
+
+.pk-footer > div {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- message strip (stage overlay pill, bottom-left) ------------------ */
+
+.pk-strip {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  right: auto;
+  max-width: 80%;
+  background: rgba(22, 26, 34, 0.94);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.5rem 1.1rem;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.pk-strip__text {
+  font-size: 0.95rem;
+  color: var(--text);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.pk-strip__text.is-visible {
+  opacity: 1;
+}
+
+/* ---- celebrations (confetti canvas + banner) -------------------------- */
+
+.pk-celebrate {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.pk-celebrate__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.pk-banner {
+  position: absolute;
+  top: 34%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.6);
+  font-size: clamp(2rem, 7vw, 4.5rem);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-align: center;
+  white-space: nowrap;
+  opacity: 0;
+}
+
+.pk-banner--bell,
+.pk-banner--ghz {
+  color: var(--entangle);
+  text-shadow: 0 0 3rem rgba(122, 92, 255, 0.45);
+}
+
+.pk-banner--in {
+  animation: pk-banner-in 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.pk-banner--out {
+  animation: pk-banner-out 0.5s ease forwards;
+}
+
+@keyframes pk-banner-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes pk-banner-out {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+}
+
+/* ---- portrait: stack camera on top, then stage, then results ---------- */
+
+@media (orientation: portrait) {
+  .pk-main {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+    overflow-y: auto;
+  }
+
+  .pk-side {
+    border-left: none;
+    border-top: 1px solid var(--border);
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .pk-side > * {
+    flex: 1 1 45%;
+    min-width: 12rem;
+  }
+
+  .pk-cam {
+    max-width: 20rem;
+    margin: 0 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pk-h-bar,
+  .pk-strip__text {
+    transition: none;
+  }
+  .pk-banner--in,
+  .pk-banner--out {
+    animation-duration: 0.01ms;
+  }
+}

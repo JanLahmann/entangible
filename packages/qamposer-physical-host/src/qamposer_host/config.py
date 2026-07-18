@@ -22,6 +22,7 @@ DEFAULT_PORT = 8443
 DEFAULT_SOURCE = "replay:tests/fixtures/recordings/bell-sequence"
 DEFAULT_BACKEND = "off"
 DEFAULT_DISPLAY_DIST = Path("display-app/dist")
+DEFAULT_POCKET_DIST = Path("pocket-app/dist")
 DEFAULT_CONFIG_DIR = Path.home() / ".qamposer-physical"
 DEFAULT_CERT_DIR = DEFAULT_CONFIG_DIR / "certs"
 DEFAULT_REPLAY_DIR = Path("tests/fixtures/recordings")
@@ -44,6 +45,7 @@ class HostConfig:
     source: str = DEFAULT_SOURCE
     backend: str = DEFAULT_BACKEND
     display_dist: Path = field(default_factory=lambda: DEFAULT_DISPLAY_DIST)
+    pocket_dist: Path = field(default_factory=lambda: DEFAULT_POCKET_DIST)
     config_dir: Path = field(default_factory=lambda: DEFAULT_CONFIG_DIR)
     cert_dir: Path = field(default_factory=lambda: DEFAULT_CERT_DIR)
     replay_dir: Path = field(default_factory=lambda: DEFAULT_REPLAY_DIR)
@@ -57,6 +59,7 @@ class HostConfig:
         self.port = int(self.port)
         self.tls = bool(self.tls)
         self.display_dist = Path(self.display_dist)
+        self.pocket_dist = Path(self.pocket_dist)
         self.config_dir = Path(self.config_dir)
         self.cert_dir = Path(self.cert_dir)
         self.replay_dir = Path(self.replay_dir)
@@ -119,6 +122,7 @@ class HostConfig:
         take("source", "SOURCE")
         take("backend", "BACKEND")
         take("display_dist", "DISPLAY_DIST")
+        take("pocket_dist", "POCKET_DIST")
         take("config_dir", "CONFIG_DIR")
         take("cert_dir", "CERT_DIR")
         take("replay_dir", "REPLAY_DIR")
