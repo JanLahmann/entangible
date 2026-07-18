@@ -48,12 +48,16 @@ export interface CameraState {
 
 interface Options {
   onResult: (result: FrameResult, video: HTMLVideoElement) => void;
+  /** Low-power mode: process at most every 2nd frame (docs/pocket.md). */
+  lowPower?: boolean;
 }
 
 const TARGET_PROCESS_MS = 45; // aim ~20 detections/s; skip frames to hold it
 const ZOOM_STORAGE_KEY = 'entangible.pocket.zoom';
 
-export function useCamera({ onResult }: Options): CameraState {
+export function useCamera({ onResult, lowPower = false }: Options): CameraState {
+  const lowPowerRef = useRef(lowPower);
+  lowPowerRef.current = lowPower;
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -135,8 +139,11 @@ export function useCamera({ onResult }: Options): CameraState {
           const dt = performance.now() - t0;
 
           // Adaptive frame skipping: keep the pipeline near TARGET_PROCESS_MS.
+          const skipFloor = lowPowerRef.current ? 2 : 1;
           if (dt > TARGET_PROCESS_MS && skipRef.current < 6) skipRef.current += 1;
-          else if (dt < TARGET_PROCESS_MS * 0.5 && skipRef.current > 1) skipRef.current -= 1;
+          else if (dt < TARGET_PROCESS_MS * 0.5 && skipRef.current > skipFloor)
+            skipRef.current -= 1;
+          if (skipRef.current < skipFloor) skipRef.current = skipFloor;
 
           const inst = dt > 0 ? 1000 / dt : 0;
           fpsEmaRef.current = fpsEmaRef.current === 0 ? inst : 0.3 * inst + 0.7 * fpsEmaRef.current;

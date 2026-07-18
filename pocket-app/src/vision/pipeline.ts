@@ -47,6 +47,17 @@ export interface FrameStats {
   readonly guidedRescues: number;
 }
 
+/** Resolved detector/pipeline parameters, surfaced read-only to the debug panel. */
+export interface ResolvedParams {
+  readonly guided: boolean;
+  readonly subpixel: boolean;
+  readonly robustSample: boolean;
+  readonly minArea: number;
+  readonly approxEpsilonFrac: number;
+  readonly thresholdWindow: number;
+  readonly thresholdC: number;
+}
+
 export interface FrameResult {
   /** True on frames where the stable circuit actually changed. */
   readonly changed: boolean;
@@ -61,6 +72,8 @@ export interface FrameResult {
   readonly board: BoardResult | null;
   /** Per-frame detection counters for the debug overlay. */
   readonly stats: FrameStats;
+  /** Resolved detector params (read-only), for the debug panel. */
+  readonly params: ResolvedParams;
 }
 
 export interface PipelineOptions {
@@ -78,10 +91,22 @@ export class PocketPipeline {
   private emitted = false;
   private readonly guided: boolean;
   private readonly detectOptions: DetectOptions;
+  /** Resolved parameter snapshot (matches detect.ts defaults), for the debug panel. */
+  readonly params: ResolvedParams;
 
   constructor(options: PipelineOptions = {}) {
     this.guided = options.guided ?? true;
     this.detectOptions = options.detect ?? {};
+    const d = this.detectOptions;
+    this.params = {
+      guided: this.guided,
+      subpixel: d.subpixel ?? true,
+      robustSample: d.robustSample ?? true,
+      minArea: d.minArea ?? 100,
+      approxEpsilonFrac: d.approxEpsilonFrac ?? 0.05,
+      thresholdWindow: d.thresholdWindow ?? 21,
+      thresholdC: d.thresholdC ?? 7,
+    };
   }
 
   reset(): void {
@@ -140,6 +165,7 @@ export class PocketPipeline {
         blindHits: blind.length,
         guidedRescues,
       },
+      params: this.params,
     };
   }
 

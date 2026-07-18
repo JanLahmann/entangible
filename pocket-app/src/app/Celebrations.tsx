@@ -16,12 +16,15 @@ const COLORS = ['#fa4d56', '#002d9c', '#9f1853', '#33b1ff'] as const;
 const PARTICLE_LIFE_MS = 1800;
 const GRAVITY = 1400; // px / s²
 const MAX_PARTICLES = 100; // tablet budget (both Bell and GHZ)
+export const LOW_POWER_PARTICLES = 60; // docs/pocket.md low-power confetti cap
 
 const BANNER_HOLD_MS = 2500;
 const BANNER_FADE_MS = 500;
 
 export interface CelebrationRequest extends Celebration {
   readonly token: number;
+  /** Optional banner text override (golf hole-in: "EAGLE!/BIRDIE!/…"). */
+  readonly banner?: string;
 }
 
 interface Particle {
@@ -33,8 +36,16 @@ interface Particle {
   born: number;
 }
 
-export function Celebrations({ celebration }: { celebration: CelebrationRequest | null }) {
+export function Celebrations({
+  celebration,
+  maxParticles = MAX_PARTICLES,
+}: {
+  celebration: CelebrationRequest | null;
+  maxParticles?: number;
+}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const maxParticlesRef = useRef(maxParticles);
+  maxParticlesRef.current = maxParticles;
   const particlesRef = useRef<Particle[]>([]);
   const rafRef = useRef<number | null>(null);
   const lastTickRef = useRef<number>(0);
@@ -53,9 +64,10 @@ export function Celebrations({ celebration }: { celebration: CelebrationRequest 
     startLoop();
 
     const text =
-      celebration.kind === 'ghz'
+      celebration.banner ??
+      (celebration.kind === 'ghz'
         ? `GHZ STATE — ${celebration.k} QUBITS ENTANGLED!`
-        : 'ENTANGLEMENT!';
+        : 'ENTANGLEMENT!');
     setBanner({ text, kind: celebration.kind, token: celebration.token });
     setBannerPhase('in');
 
@@ -82,12 +94,13 @@ export function Celebrations({ celebration }: { celebration: CelebrationRequest 
   function spawnBurst() {
     const { w, h } = canvasSize();
     const now = performance.now();
-    const half = Math.ceil(MAX_PARTICLES / 2);
+    const cap = maxParticlesRef.current;
+    const half = Math.ceil(cap / 2);
     const ps = particlesRef.current;
     for (let corner = 0; corner < 2; corner++) {
       const originX = corner === 0 ? 0 : w;
       const dir = corner === 0 ? 1 : -1;
-      for (let i = 0; i < half && ps.length < MAX_PARTICLES; i++) {
+      for (let i = 0; i < half && ps.length < cap; i++) {
         const speed = 700 + Math.random() * 600;
         const angle = (Math.random() * 55 + 20) * (Math.PI / 180);
         ps.push({
