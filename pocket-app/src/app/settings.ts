@@ -37,7 +37,9 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   mode: 'composer',
-  panels: ['camera', 'results', 'state'],
+  // Per Jan (2026-07-18): camera + results only, on every device — the calm
+  // first impression. State/QASM stay one toggle away in the drawer.
+  panels: ['camera', 'results'],
   side: 'right',
   lowpower: false,
   debug: false,
