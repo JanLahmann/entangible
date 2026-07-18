@@ -1,0 +1,54 @@
+# Deploys the Entangible Pocket demo (pocket-app/dist) to GitHub Pages.
+#
+# Trigger is MANUAL (workflow_dispatch) for now — run it from the Actions tab
+# after enabling Pages (Settings → Pages → Source: "GitHub Actions").
+# Switch to a push trigger once the demo is stable, e.g.:
+#   push: { branches: [main], paths: ["pocket-app/**", "display-app/src/quantum/**"] }
+name: deploy-pocket
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # display-app deps too: pocket-app imports display-app/src/quantum/* sources.
+      - name: Install display-app deps
+        run: npm ci
+        working-directory: display-app
+      - name: Install and build pocket-app
+        run: |
+          npm ci
+          npm run build
+        working-directory: pocket-app
+      - name: Run pocket tests
+        run: npx vitest run
+        working-directory: pocket-app
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: pocket-app/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
