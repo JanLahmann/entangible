@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .markers import MARKER_TABLE, GateSpec
+from .markers import MARKER_TABLE, ROTATION_ANGLES, GateSpec
 
 __all__ = [
     "TilePlacement",
@@ -39,11 +39,18 @@ _CNOT_TARGET_ID = 15
 
 @dataclass(frozen=True, slots=True)
 class TilePlacement:
-    """A detected gate tile resolved to a board cell."""
+    """A detected gate tile resolved to a board cell.
+
+    ``rotation`` is the tile's board-frame clockwise 90° step index (0-3). It is
+    only meaningful for **dial** tiles (IDs 42/43/44), where it selects the
+    angle ``ROTATION_ANGLES[rotation]``; every other tile is orientation-free
+    and leaves it at the default ``0``.
+    """
 
     marker_id: int
     row: int
     col: int
+    rotation: int = 0
 
     @property
     def spec(self) -> GateSpec:
@@ -82,7 +89,25 @@ class BuildResult:
     warnings: list[BuildWarning] = field(default_factory=list)
 
 
-def _single_qubit_gate(spec: GateSpec, row: int, col: int) -> dict[str, Any]:
+def _single_qubit_gate(
+    spec: GateSpec, row: int, col: int, rotation: int
+) -> dict[str, Any]:
+    # Dial tiles (IDs 42/43/44): the angle comes from the tile's board-frame
+    # rotation, ROTATION_ANGLES[rotation]. The emitted gate is byte-identical to
+    # a classic rotation tile of that axis/angle at the same cell (same id
+    # "rx-0-0", same type, same parameter) — indistinguishable downstream. The
+    # rotation is part of the stabilizer key, so turning the dial re-emits.
+    if spec.dial_axis is not None:
+        axis = spec.dial_axis
+        angle = ROTATION_ANGLES[rotation % len(ROTATION_ANGLES)]
+        return {
+            "id": f"{axis.lower()}-{row}-{col}",
+            "type": axis,
+            "qubit": row,
+            "position": col,
+            "parameter": angle,
+        }
+
     # Tiles without a native @qamposer/react type (S / T) are emitted as their
     # RZ equivalent via ``emit_as`` — so the circuit JSON / QASM only ever carry
     # RZ. The gate id uses the *emitted* type ("rz-0-2"); it stays collision-free
@@ -226,7 +251,11 @@ def build_circuit(
             else:  # target
                 targets_by_col.setdefault(placement.col, []).append(placement.row)
         else:
-            gates.append(_single_qubit_gate(spec, placement.row, placement.col))
+            gates.append(
+                _single_qubit_gate(
+                    spec, placement.row, placement.col, placement.rotation
+                )
+            )
 
     # 3. Pair CNOT halves per column.
     for col in sorted(set(controls_by_col) | set(targets_by_col)):

@@ -17,8 +17,11 @@ def test_gate_ids_are_the_kind_gate_entries():
         mid for mid, spec in MARKER_TABLE.items() if spec.kind == "gate"
     )
     assert GATE_IDS == expected
-    # 10-15 (H/X/Y/Z + CNOT halves), 20-31 (rotations) and 40/41 (S/T).
-    assert set(GATE_IDS) == set(range(10, 16)) | set(range(20, 32)) | {40, 41}
+    # 10-15 (H/X/Y/Z + CNOT halves), 20-31 (rotations), 40/41 (S/T) and
+    # 42/43/44 (RX/RY/RZ dials).
+    assert set(GATE_IDS) == (
+        set(range(10, 16)) | set(range(20, 32)) | {40, 41, 42, 43, 44}
+    )
 
 
 @pytest.mark.parametrize("marker_id", GATE_IDS)
@@ -76,6 +79,36 @@ def test_rotation_label_has_family_and_angle(marker_id):
     assert label.startswith(spec.gate)
     assert spec.param_label in label
     assert label in tile_svg(marker_id, CFG)
+
+
+@pytest.mark.parametrize("marker_id,axis", [(42, "RX"), (43, "RY"), (44, "RZ")])
+def test_dial_tile_face(marker_id, axis):
+    from qamposer_vision.markers import ROTATION_ANGLES, pretty_angle
+
+    svg = tile_svg(marker_id, CFG)
+    # Three semantic groups like every tile.
+    for group in ('id="outline"', 'id="marker"', 'id="symbol"'):
+        assert group in svg
+    # Family colour frame.
+    assert CFG.colors.for_gate(axis) in svg
+    # All four angle labels present (one per edge / rotation).
+    for angle in ROTATION_ANGLES:
+        assert f">{pretty_angle(angle)}<" in svg
+    # Axis name in the bottom band, and a ▲ pointer (polygon) for canonical top.
+    assert f"{axis} dial" in svg
+    assert "<polygon" in svg
+
+
+def test_dial_label_orientation_is_consistent_with_rotation():
+    # The label that reaches board-top at rotation r is ROTATION_ANGLES[r], drawn
+    # spun -90*r degrees so a clockwise r-turn brings it upright. Verify the two
+    # off-axis labels carry the expected rotate() transform.
+    svg = tile_svg(42, CFG)  # RX dial
+    # r=1 (left edge, π/2) is drawn rotated -90; r=3 (right edge, -π/2) rotated 90.
+    assert 'transform="rotate(-90' in svg
+    assert 'transform="rotate(90' in svg
+    # r=2 (bottom edge, π) is drawn upside down (±180).
+    assert 'transform="rotate(-180' in svg
 
 
 def test_non_gate_marker_rejected():

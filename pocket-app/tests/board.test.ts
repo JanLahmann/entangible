@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fitBoard, findHomography } from '../src/vision/board';
+import { fitBoard, findHomography, boardFrameRotation } from '../src/vision/board';
 import { cornerMarkerSquare } from '../src/vision/geometry';
 import type { DetectedMarker, Corner } from '../src/vision/detect';
 
@@ -84,5 +84,36 @@ describe('fitBoard', () => {
   it('returns null with fewer than three corners', () => {
     const markers = [0, 1].map(fakeCorner);
     expect(fitBoard(markers)).toBeNull();
+  });
+});
+
+describe('boardFrameRotation', () => {
+  // A dial tile at board cell centre (360, 250), 36 mm marker. Its canonical
+  // corners in board mm are [TL, TR, BR, BL]; projected through the same camera
+  // model they land in image-geometric order, so `corners[rotation]` is the
+  // printed top-left. The recovered board-frame rotation must equal the turn —
+  // under the perspective in H_TRUE, i.e. via the homography, not the raw image.
+  const half = 18;
+  const boardSquare: Array<[number, number]> = [
+    [360 - half, 250 - half], // TL
+    [360 + half, 250 - half], // TR
+    [360 + half, 250 + half], // BR
+    [360 - half, 250 + half], // BL
+  ];
+
+  it('recovers each of the four rotations in the board frame', () => {
+    const board = fitBoard([0, 1, 2, 3].map(fakeCorner))!;
+    const corners = boardSquare.map(([x, y]) => project(H_TRUE, x, y)) as unknown as [
+      Corner,
+      Corner,
+      Corner,
+      Corner,
+    ];
+    const cx = corners.reduce((s, c) => s + c[0], 0) / 4;
+    const cy = corners.reduce((s, c) => s + c[1], 0) / 4;
+    for (let r = 0; r < 4; r++) {
+      const marker: DetectedMarker = { id: 42, rotation: r, corners, center: [cx, cy] };
+      expect(boardFrameRotation(marker, board)).toBe(r);
+    }
   });
 });

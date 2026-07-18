@@ -175,6 +175,9 @@ class KitConfig:
     CNOT_control: int
     CNOT_target: int
     rotations_each: int
+    rx_dial: int
+    ry_dial: int
+    rz_dial: int
 
 
 @dataclass(frozen=True, slots=True)

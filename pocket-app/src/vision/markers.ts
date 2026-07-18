@@ -40,7 +40,17 @@ export interface GateSpec {
   readonly role?: string;
   /** For S/T tiles: the `[gateType, parameter]` to emit instead (their RZ eqv). */
   readonly emitAs?: readonly [string, number];
+  /**
+   * For a dial tile (IDs 42/43/44), the rotation-gate axis (RX/RY/RZ) it
+   * parameterises. The angle is not fixed on the spec; it is chosen from the
+   * tile's board-frame rotation r as `ROTATION_ANGLES[r]` and emitted like a
+   * classic rotation tile. Undefined for every non-dial tile.
+   */
+  readonly dialAxis?: string;
 }
+
+/** Dial-tile marker ID → the rotation-gate axis it parameterises. */
+export const DIAL_IDS: Readonly<Record<number, string>> = { 42: 'RX', 43: 'RY', 44: 'RZ' };
 
 function buildMarkerTable(): Map<number, GateSpec> {
   const table = new Map<number, GateSpec>();
@@ -85,7 +95,24 @@ function buildMarkerTable(): Map<number, GateSpec> {
   table.set(40, { kind: 'gate', gate: 'S', label: 'S', emitAs: ['RZ', Math.PI / 2] });
   table.set(41, { kind: 'gate', gate: 'T', label: 'T', emitAs: ['RZ', Math.PI / 4] });
 
+  // 42/43/44: RX/RY/RZ dial tiles. The angle comes from the tile's board-frame
+  // rotation (ROTATION_ANGLES[r]); `parameter` stays unset, `dialAxis` names it.
+  for (const [idStr, axis] of Object.entries(DIAL_IDS)) {
+    table.set(Number(idStr), { kind: 'gate', gate: axis, label: `${axis} dial`, dialAxis: axis });
+  }
+
   return table;
+}
+
+/**
+ * Clockwise 90° step index (0-3) of a marker's printed top-left corner offset
+ * `(dx, dy)` (dx right, dy down) from the marker centre — TL=0, TR=1, BR=2,
+ * BL=3. Byte-for-byte identical to `markers.quadrant_rotation` in Python, so a
+ * tile's rotation resolves to the same index in both detectors.
+ */
+export function quadrantRotation(dx: number, dy: number): number {
+  const angle = Math.atan2(dy, dx);
+  return ((Math.round((angle + (3 * Math.PI) / 4) / (Math.PI / 2)) % 4) + 4) % 4;
 }
 
 const PI_FRACTIONS: ReadonlyArray<[number, string]> = [

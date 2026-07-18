@@ -38,6 +38,36 @@ current scheme plus the reserved range).
 | 31 | gate | RZ | RZ(-π/2) | -π/2 |  |
 | 40 | gate | S | S |  |  |
 | 41 | gate | T | T |  |  |
+| 42 | gate | RX | RX dial |  |  |
+| 43 | gate | RY | RY dial |  |  |
+| 44 | gate | RZ | RZ dial |  |  |
+
+## Dial tiles (42 / 43 / 44)
+
+**RX-dial (42)**, **RY-dial (43)** and **RZ-dial (44)** are a single tile per
+rotation axis whose **orientation on the board selects the angle** — "turn the
+tile to turn the knob". The tile face is a dial: the four angle labels
+(`π/4`, `π/2`, `π`, `−π/2`) sit on the four edges, the active one reading upright
+at board-top, with a `▲` marking the canonical (unturned) top edge and the axis
+name in the bottom band; the frame is the family colour (RX/RY `#9f1853`, RZ
+`#33b1ff`).
+
+Conventions (see `docs/design.md` "Dial tiles" and `markers.quadrant_rotation`):
+
+- Orientation is measured in the **board frame** (rectified through the corner
+  homography, not the camera frame): the marker's printed top-left corner is
+  mapped to board mm and classified into a quadrant about the marker centroid.
+- `r` = clockwise 90° steps from canonical (TL=0, TR=1, BR=2, BL=3).
+- **angle = `ROTATION_ANGLES[r]`** → `π/4, π/2, π, −π/2` for `r = 0, 1, 2, 3`.
+
+The dial is emitted **exactly like a classic rotation tile**: an RX-dial at
+rotation `r` produces `{type: "RX", parameter: ROTATION_ANGLES[r]}` with id
+`rx-<row>-<col>` — byte-identical to the fixed RX tile of that angle, so the
+circuit JSON / QASM / simulation are indistinguishable downstream. The tile's
+`GateSpec.dial_axis` names the axis; `GateSpec.parameter` stays `None` because
+the angle is resolved from rotation at detection time. The stabilizer's key
+includes the rotation (`(id, row, col, r)`), so turning a dial in place re-emits
+the circuit under the usual asymmetric hysteresis.
 
 ## S / T tiles (40 / 41)
 
@@ -60,10 +90,10 @@ matrices + `s`/`t` QASM), drop the `emit_as` mapping.
 
 ## Reserved
 
-IDs **42–49** (`RESERVED_IDS = range(42, 50)`) are reserved for future tiles
+IDs **45–49** (`RESERVED_IDS = range(45, 50)`) are reserved for future tiles
 (SWAP, …). They are never emitted by the current detector or assets generator,
-and no current gate is assigned into this range. (IDs 40/41 in the 40–49 block
-are now live S/T tiles — see above.)
+and no current gate is assigned into this range. (IDs 40/41 are now live S/T
+tiles and 42/43/44 are live RX/RY/RZ dial tiles — see above.)
 
 ## Notes
 
@@ -73,7 +103,9 @@ are now live S/T tiles — see above.)
 - **Rotation gates (20–31)** encode each angle variant as a *distinct* marker ID
   (π/4, π/2, π, −π/2) rather than a parameterised marker, so a single tile fully
   specifies its gate. Angle labels are rendered by `pretty_angle()` /
-  `GateSpec.param_label` so tiles and QASM format angles identically.
+  `GateSpec.param_label` so tiles and QASM format angles identically. The **dial
+  tiles (42–44)** cover the same four angles per axis with one physical tile,
+  choosing the angle from the tile's board-frame rotation instead of the ID.
 - **CNOT (14/15)** is split into a control (●) and target (⊕) tile; the two are
   paired within a column by the circuit builder.
 - Gate types match `@qamposer/react`'s `GateType`

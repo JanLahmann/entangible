@@ -16,7 +16,10 @@ Marker scheme (``DICT_4X4_50``):
 * 20–31 rotation gates RX/RY/RZ, one distinct ID per angle variant
 * 40/41 S / T gates — emitted as their RZ equivalents (RZ(π/2) / RZ(π/4)),
   see :attr:`GateSpec.emit_as`
-* 42–49 reserved for future tiles (SWAP, …), see :data:`RESERVED_IDS`
+* 42/43/44 RX/RY/RZ **dial** tiles — one tile per axis whose board-frame
+  rotation selects the angle (:attr:`GateSpec.dial_axis`); see
+  ``docs/design.md`` "Dial tiles"
+* 45–49 reserved for future tiles (SWAP, …), see :data:`RESERVED_IDS`
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ __all__ = [
     "ARUCO_DICT_NAME",
     "CORNER_IDS",
     "CORNER_ROLES",
+    "DIAL_IDS",
     "GATE_TYPES",
     "GateSpec",
     "MARKER_TABLE",
@@ -36,6 +40,7 @@ __all__ = [
     "ROTATION_ANGLES",
     "ROTATION_GATES",
     "pretty_angle",
+    "quadrant_rotation",
 ]
 
 # ---------------------------------------------------------------------------
@@ -72,11 +77,33 @@ ROTATION_ANGLES: tuple[float, float, float, float] = (
     -math.pi / 2,
 )
 
-#: IDs reserved for future tiles (SWAP, …). IDs 40/41 in the 40–49 block are now
-#: live S/T tiles; 42–49 stay reserved — never emitted by the current detector
-#: or assets generator, but claimed here so no other gate is assigned into this
-#: range.
-RESERVED_IDS = range(42, 50)
+#: Dial-tile marker IDs -> the rotation-gate axis they parameterise. One tile
+#: per axis; the tile's board-frame rotation (0-3 clockwise 90° steps) selects
+#: the angle ``ROTATION_ANGLES[r]``. See :attr:`GateSpec.dial_axis`.
+DIAL_IDS: dict[int, str] = {42: "RX", 43: "RY", 44: "RZ"}
+
+#: IDs reserved for future tiles (SWAP, …). IDs 40/41 are live S/T tiles and
+#: 42/43/44 are live RX/RY/RZ dial tiles; 45–49 stay reserved — never emitted by
+#: the current detector or assets generator, but claimed here so no other gate is
+#: assigned into this range.
+RESERVED_IDS = range(45, 50)
+
+
+def quadrant_rotation(dx: float, dy: float) -> int:
+    """Clockwise 90° step index (0-3) of a marker's printed top-left corner.
+
+    ``(dx, dy)`` is the offset of the marker's canonical **top-left** corner
+    from the marker centre, in a ``+x`` right / ``+y`` down frame (image or
+    board mm). At canonical orientation that corner sits top-left of centre
+    (``dx<0, dy<0``) -> ``0``; each clockwise 90° turn of the tile advances the
+    corner one quadrant clockwise -> TL=0, TR=1, BR=2, BL=3.
+
+    Shared by the OpenCV detector (image frame) and the board port (board frame,
+    via the homography) and mirrored byte-for-byte in the TypeScript detector,
+    so a tile's rotation resolves to the same index everywhere.
+    """
+    angle = math.atan2(dy, dx)
+    return int(round((angle + 3.0 * math.pi / 4.0) / (math.pi / 2.0))) % 4
 
 
 # ---------------------------------------------------------------------------
@@ -104,6 +131,12 @@ class GateSpec:
             emitted verbatim. Both the print label (``label``) and this
             emission mapping live on the one :data:`MARKER_TABLE` entry so the
             physical tile and the runtime circuit can never drift.
+        dial_axis: For a **dial** tile (IDs 42/43/44), the rotation-gate axis
+            (``"RX"``/``"RY"``/``"RZ"``) it parameterises. The angle is *not*
+            fixed on the spec (``parameter is None``); it is chosen at detection
+            time from the tile's board-frame rotation ``r`` as
+            ``ROTATION_ANGLES[r]``, then emitted exactly like a classic rotation
+            tile. ``None`` for every non-dial tile.
     """
 
     kind: Literal["corner", "gate"]
@@ -112,6 +145,7 @@ class GateSpec:
     parameter: float | None = None
     role: str | None = None
     emit_as: tuple[str, float] | None = None
+    dial_axis: str | None = None
 
     @property
     def param_label(self) -> str | None:
@@ -204,6 +238,18 @@ def _build_marker_table() -> dict[int, GateSpec]:
     # the tile face is still labelled "S"/"T" in the Z-family colour.
     table[40] = GateSpec(kind="gate", gate="S", label="S", emit_as=("RZ", math.pi / 2))
     table[41] = GateSpec(kind="gate", gate="T", label="T", emit_as=("RZ", math.pi / 4))
+
+    # 42/43/44: RX/RY/RZ dial tiles. One tile per axis; the printed tile face is
+    # a dial whose board-frame rotation r (0-3) selects ROTATION_ANGLES[r]. The
+    # spec's own ``parameter`` stays None — the angle is resolved from rotation
+    # at build time — while ``dial_axis`` names the axis emitted (RX/RY/RZ).
+    for marker_id, axis in DIAL_IDS.items():
+        table[marker_id] = GateSpec(
+            kind="gate",
+            gate=axis,
+            label=f"{axis} dial",
+            dial_axis=axis,
+        )
 
     return table
 

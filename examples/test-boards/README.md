@@ -16,3 +16,4 @@ Regenerate: `uv run --with pillow python tools/make_example_boards.py`
 - **06-all-families.png** — Every gate family incl. S/T and rotations
 - **07-uniform-32.png** — H on all five qubits — 32 equally likely outcomes (histogram stress)
 - **08-lone-control.png** — Warning case — a ● with no ⊕ partner; expect a friendly warning, no CNOT
+- **09-dials.png** — Dial tiles — RX/RY/RZ dials turned to r=0/1/2 → RX(π/4), RY(π/2), RZ(π)

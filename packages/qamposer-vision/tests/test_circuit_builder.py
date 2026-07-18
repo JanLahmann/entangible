@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from qamposer_vision.circuit_builder import TilePlacement, build_circuit
+from qamposer_vision.markers import ROTATION_ANGLES
 
 QUBITS = 5
 
@@ -14,6 +17,7 @@ CTRL, TGT = 14, 15
 RX_HALF_PI = 21  # RX(pi/2)
 RZ_HALF_PI = 29  # RZ(pi/2)
 S, T = 40, 41    # emitted as RZ(pi/2) / RZ(pi/4)
+RX_DIAL, RY_DIAL, RZ_DIAL = 42, 43, 44
 
 
 def _cnot_pairs(gates: list[dict]) -> set[tuple[int, int, int]]:
@@ -81,6 +85,33 @@ def test_s_and_real_rz_coexist_without_collision() -> None:
     assert all(g["type"] == "RZ" for g in gates)
     assert all(abs(g["parameter"] - math.pi / 2) < 1e-12 for g in gates)
     assert result.warnings == []
+
+
+@pytest.mark.parametrize("rotation,angle", list(enumerate(ROTATION_ANGLES)))
+def test_dial_angle_from_rotation(rotation, angle) -> None:
+    # An RX dial at (2, 3) turned to rotation r emits RX(ROTATION_ANGLES[r]).
+    (gate,) = build_circuit(
+        [TilePlacement(RX_DIAL, 2, 3, rotation=rotation)], QUBITS
+    ).circuit["gates"]
+    assert gate["type"] == "RX"
+    assert gate["id"] == "rx-2-3"
+    assert gate["qubit"] == 2 and gate["position"] == 3
+    assert abs(gate["parameter"] - angle) < 1e-12
+
+
+def test_dial_is_byte_identical_to_classic_rotation_tile() -> None:
+    # RX dial at rotation 1 → RX(pi/2): the emitted gate must equal the classic
+    # RX(pi/2) tile (id 21) at the same cell — indistinguishable downstream.
+    dial = build_circuit([TilePlacement(RX_DIAL, 0, 0, rotation=1)], QUBITS).circuit
+    classic = build_circuit([TilePlacement(RX_HALF_PI, 0, 0)], QUBITS).circuit
+    assert dial == classic
+
+
+def test_dial_default_rotation_is_zero() -> None:
+    # No rotation given → r=0 → ROTATION_ANGLES[0] = pi/4.
+    (gate,) = build_circuit([TilePlacement(RZ_DIAL, 1, 1)], QUBITS).circuit["gates"]
+    assert gate["type"] == "RZ"
+    assert abs(gate["parameter"] - math.pi / 4) < 1e-12
 
 
 def test_deterministic_ids_and_ordering() -> None:

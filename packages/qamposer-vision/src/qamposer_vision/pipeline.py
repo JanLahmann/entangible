@@ -266,7 +266,11 @@ class Pipeline:
                 )
                 continue
             row, col = cell
-            observations.add((marker.id, row, col))
+            # Dial tiles carry their board-frame rotation in the stability key so
+            # turning one in place re-emits; every other tile pins rotation 0.
+            spec = MARKER_TABLE[marker.id]
+            rot = board.marker_rotation(marker) if spec.dial_axis is not None else 0
+            observations.add((marker.id, row, col, rot))
             marker_obs.append(MarkerObs(id=marker.id, row=row, col=col))
 
         return observations, marker_obs, off_grid_warnings
@@ -275,8 +279,8 @@ class Pipeline:
         self, stable: frozenset[Tile], source: FrameSource
     ) -> None:
         placements = [
-            TilePlacement(marker_id=mid, row=row, col=col)
-            for (mid, row, col) in stable
+            TilePlacement(marker_id=mid, row=row, col=col, rotation=rot)
+            for (mid, row, col, rot) in stable
         ]
         build = build_circuit(placements, self._board_config.rows)
         self._structural_warnings = build.warnings
@@ -310,7 +314,7 @@ class Pipeline:
         stable: frozenset[Tile],
         warnings: list[BuildWarning],
     ) -> None:
-        occupied = {(row, col) for (_mid, row, col) in stable}
+        occupied = {(row, col) for (_mid, row, col, _rot) in stable}
         annotated = annotate_frame(
             frame,
             markers=markers,

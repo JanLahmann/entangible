@@ -13,7 +13,7 @@ import {
   type RgbaImage,
   type GrayImage,
 } from './detect';
-import { fitBoard, type BoardResult } from './board';
+import { fitBoard, boardFrameRotation, type BoardResult } from './board';
 import { guidedRedetect } from './guided';
 import { GridMapper } from './grid';
 import { BOARD, CORNER_IDS } from './geometry';
@@ -197,7 +197,11 @@ export class PocketPipeline {
         });
         continue;
       }
-      observations.push(tileKey(marker.id, cell.row, cell.col));
+      // Dial tiles carry their board-frame rotation in the stability key so
+      // turning one in place re-emits; every other tile pins rotation 0.
+      const spec = MARKER_TABLE.get(marker.id)!;
+      const rot = spec.dialAxis ? boardFrameRotation(marker, board) : 0;
+      observations.push(tileKey(marker.id, cell.row, cell.col, rot));
       markerObs.push({ id: marker.id, row: cell.row, col: cell.col, offGrid: false });
     }
 
@@ -206,8 +210,8 @@ export class PocketPipeline {
 
   private rebuild(stable: ReadonlySet<Tile>): boolean {
     const placements: TilePlacement[] = [...stable].map((t) => {
-      const [markerId, row, col] = parseTile(t);
-      return { markerId, row, col };
+      const [markerId, row, col, rotation] = parseTile(t);
+      return { markerId, row, col, rotation };
     });
     const build = buildCircuit(placements, BOARD.rows);
     this.structuralWarnings = build.warnings;

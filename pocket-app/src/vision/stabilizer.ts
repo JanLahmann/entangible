@@ -9,16 +9,22 @@
  * stable set actually gained or lost a tile.
  */
 
-/** A grid-resolved tile observation `(markerId, row, col)`, packed as a string key. */
+/**
+ * A grid-resolved tile observation `(markerId, row, col, rotation)`, packed as a
+ * string key. `rotation` is the board-frame 90° step (0-3); it is 0 for every
+ * orientation-free tile and only varies for dial tiles, whose angle is chosen by
+ * how they are turned — so turning a dial in place changes the key (a real
+ * change under the same hysteresis) while a within-quadrant wiggle keeps it.
+ */
 export type Tile = string;
 
-export function tileKey(markerId: number, row: number, col: number): Tile {
-  return `${markerId},${row},${col}`;
+export function tileKey(markerId: number, row: number, col: number, rotation = 0): Tile {
+  return `${markerId},${row},${col},${rotation}`;
 }
 
-export function parseTile(tile: Tile): [number, number, number] {
-  const [m, r, c] = tile.split(',').map(Number);
-  return [m, r, c];
+export function parseTile(tile: Tile): [number, number, number, number] {
+  const [m, r, c, rot] = tile.split(',').map(Number);
+  return [m, r, c, rot];
 }
 
 export interface StabilizerResult {

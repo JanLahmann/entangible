@@ -1,7 +1,12 @@
 """Temporal stabilization — asymmetric hysteresis so hands don't cause flicker.
 
-A tile is a ``(marker_id, row, col)`` observation already resolved to a grid
-cell. Frame to frame the raw detection set jitters: a hand sweeps over a tile,
+A tile is a ``(marker_id, row, col, rotation)`` observation already resolved to
+a grid cell. ``rotation`` is the tile's board-frame 90° step (0-3); it is ``0``
+for every orientation-free tile and only varies for **dial** tiles, whose angle
+is chosen by how they are turned — so turning a dial in place changes the key
+and is treated as a real change (re-emitted, subject to the same hysteresis),
+while a wiggle that stays within one 90° quadrant keeps the same key and emits
+nothing. Frame to frame the raw detection set jitters: a hand sweeps over a tile,
 a marker is missed for a frame, a tile is momentarily half-occluded. Emitting a
 new circuit on every such blip would make the display strobe.
 
@@ -30,8 +35,9 @@ from typing import Iterable
 
 __all__ = ["Tile", "StabilizerResult", "TileStabilizer"]
 
-#: A grid-resolved tile observation: ``(marker_id, row, col)``.
-Tile = tuple[int, int, int]
+#: A grid-resolved tile observation: ``(marker_id, row, col, rotation)``.
+#: ``rotation`` is 0 for orientation-free tiles; only dial tiles vary it.
+Tile = tuple[int, int, int, int]
 
 
 @dataclass(frozen=True, slots=True)

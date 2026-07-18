@@ -17,7 +17,8 @@ HAVE_PDF = available_backend() is not None
 
 def test_kit_tile_count_matches_assets_toml():
     k = CFG.kit
-    # 12 rotation variants (RX/RY/RZ × 4 angles) × rotations_each.
+    # 12 rotation variants (RX/RY/RZ × 4 angles) × rotations_each, plus one of
+    # each RX/RY/RZ dial tile.
     expected = (
         k.H
         + k.X
@@ -28,9 +29,12 @@ def test_kit_tile_count_matches_assets_toml():
         + k.CNOT_control
         + k.CNOT_target
         + 12 * k.rotations_each
+        + k.rx_dial
+        + k.ry_dial
+        + k.rz_dial
     )
     ids = kit_tile_ids(CFG)
-    assert len(ids) == expected == 44
+    assert len(ids) == expected == 47
 
 
 def test_cli_all_end_to_end(tmp_path):

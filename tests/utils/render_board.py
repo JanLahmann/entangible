@@ -31,13 +31,19 @@ from qamposer_vision.markers import ARUCO_DICT_NAME, CORNER_IDS
 #   RY: pi/4=24 pi/2=25 pi=26 -pi/2=27
 #   RZ: pi/4=28 pi/2=29 pi=30 -pi/2=31
 #   S=40 (emitted as RZ(pi/2))   T=41 (emitted as RZ(pi/4))
+#   Dials: RX-dial=42 RY-dial=43 RZ-dial=44 (angle = ROTATION_ANGLES[rotation])
+#
+# A placement is (marker_id, row, col) or (marker_id, row, col, rotation); the
+# optional 4th element is the tile's clockwise 90° turn (0-3, default 0), used by
+# the dial tiles to select their angle. The marker image is rotated by that many
+# 90° steps before it is pasted, so detection recovers the same rotation.
 
 
 @dataclass(frozen=True, slots=True)
 class Scenario:
     name: str
-    #: (marker_id, row, col) placements.
-    placements: tuple[tuple[int, int, int], ...]
+    #: (marker_id, row, col) or (marker_id, row, col, rotation) placements.
+    placements: tuple[tuple[int, ...], ...]
 
 
 SCENARIOS: list[Scenario] = [
@@ -60,6 +66,9 @@ SCENARIOS: list[Scenario] = [
     Scenario("warn_lone_control", ((10, 0, 0), (14, 1, 1))),
     # S and T tiles on q0: H then S (→ RZ(pi/2)) then T (→ RZ(pi/4)).
     Scenario("s_and_t", ((10, 0, 0), (40, 0, 1), (41, 0, 2))),
+    # Dial tiles at mixed rotations: RX-dial r=1 → RX(pi/2), RY-dial r=3 →
+    # RY(-pi/2), RZ-dial r=2 → RZ(pi). Emitted byte-identically to classic tiles.
+    Scenario("dials", ((42, 0, 0, 1), (43, 1, 1, 3), (44, 2, 2, 2))),
 ]
 
 SCENARIOS_BY_NAME = {s.name: s for s in SCENARIOS}
@@ -96,8 +105,13 @@ def _paste_marker(
     x0_px: int,
     y0_px: int,
     size_px: int,
+    rotation: int = 0,
 ) -> None:
     marker = cv2.aruco.generateImageMarker(dictionary, marker_id, size_px)
+    # np.rot90 turns counter-clockwise; a positive tile rotation is clockwise, so
+    # rotate by -rotation (== 4-rotation) to physically turn the printed tile CW.
+    if rotation % 4:
+        marker = np.rot90(marker, k=-(rotation % 4))
     marker_bgr = cv2.cvtColor(marker, cv2.COLOR_GRAY2BGR)
     canvas[y0_px : y0_px + size_px, x0_px : x0_px + size_px] = marker_bgr
 
@@ -127,14 +141,17 @@ def render_board(
         x0, y0 = mm_to_px(square[0][0], square[0][1])
         _paste_marker(canvas, dictionary, corner_id, x0, y0, corner_size_px)
 
-    # Gate tiles at their cell centres.
+    # Gate tiles at their cell centres. A placement may carry a 4th element, the
+    # clockwise 90° rotation (0-3) — used by dial tiles to select their angle.
     grid = GridConfig.from_board_config(config)
     tile_size_px = int(round(config.tile_marker_size * ppm))
-    for marker_id, row, col in placements:
+    for placement in placements:
+        marker_id, row, col = placement[0], placement[1], placement[2]
+        rotation = placement[3] if len(placement) > 3 else 0
         cx, cy = grid.cell_center(row, col)
         x0, y0 = mm_to_px(cx - config.tile_marker_size / 2.0,
                           cy - config.tile_marker_size / 2.0)
-        _paste_marker(canvas, dictionary, marker_id, x0, y0, tile_size_px)
+        _paste_marker(canvas, dictionary, marker_id, x0, y0, tile_size_px, rotation)
 
     # Extra tiles at explicit board-mm centres (e.g. off-grid).
     for marker_id, x_mm, y_mm in opt.extra_mm:

@@ -6,7 +6,7 @@
  * (`cell_conflict` / `lone_control` / `lone_target`), same ordering. The golden
  * fixtures in `tests/fixtures/circuits/*.json` pass through byte-identically.
  */
-import { MARKER_TABLE, type GateSpec } from './markers';
+import { MARKER_TABLE, ROTATION_ANGLES, type GateSpec } from './markers';
 
 const CNOT_CONTROL_ID = 14;
 const CNOT_TARGET_ID = 15;
@@ -15,6 +15,12 @@ export interface TilePlacement {
   readonly markerId: number;
   readonly row: number;
   readonly col: number;
+  /**
+   * Board-frame clockwise 90° step (0-3). Only meaningful for dial tiles
+   * (42/43/44), where it selects `ROTATION_ANGLES[rotation]`; every other tile
+   * is orientation-free and leaves it at the default 0.
+   */
+  readonly rotation?: number;
 }
 
 // 'off_grid' is emitted by the pipeline (not the builder) but shares the shape.
@@ -54,7 +60,28 @@ function specFor(markerId: number): GateSpec {
   return spec;
 }
 
-function singleQubitGate(spec: GateSpec, row: number, col: number): CircuitGate {
+function singleQubitGate(
+  spec: GateSpec,
+  row: number,
+  col: number,
+  rotation: number,
+): CircuitGate {
+  // Dial tiles (42/43/44): the angle comes from the tile's board-frame rotation,
+  // ROTATION_ANGLES[rotation]. The emitted gate is byte-identical to a classic
+  // rotation tile of that axis/angle at the same cell (same id, type, parameter)
+  // — indistinguishable downstream. The rotation is part of the stabilizer key.
+  if (spec.dialAxis) {
+    const axis = spec.dialAxis;
+    const angle = ROTATION_ANGLES[rotation % ROTATION_ANGLES.length];
+    return {
+      id: `${axis.toLowerCase()}-${row}-${col}`,
+      type: axis,
+      qubit: row,
+      position: col,
+      parameter: angle,
+    };
+  }
+
   // Tiles without a native @qamposer/react type (S / T) are emitted as their
   // RZ equivalent via `emitAs` — so the circuit JSON only ever carries RZ.
   if (spec.emitAs) {
@@ -184,7 +211,7 @@ export function buildCircuit(placements: TilePlacement[], qubits: number): Build
       if (list) list.push(p.row);
       else map.set(p.col, [p.row]);
     } else {
-      gates.push(singleQubitGate(spec, p.row, p.col));
+      gates.push(singleQubitGate(spec, p.row, p.col, p.rotation ?? 0));
     }
   }
 

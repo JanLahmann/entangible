@@ -18,6 +18,7 @@ import {
   cornerMarkerSquare,
   type Point,
 } from './geometry';
+import { quadrantRotation } from './markers';
 import type { DetectedMarker } from './detect';
 
 export type Mat3 = number[]; // row-major 3×3 (length 9)
@@ -244,6 +245,34 @@ export function fitBoard(markers: DetectedMarker[]): BoardResult | null {
     imageToBoard: (px: Point) => applyHomography(homography, px[0], px[1]),
     boardToImage: (mm: Point) => applyHomography(inv, mm[0], mm[1]),
   };
+}
+
+/**
+ * The marker's rotation in the **board** frame (clockwise 90° steps, 0-3) — the
+ * value that selects a dial tile's angle. Mirrors
+ * `BoardResult.marker_rotation` in Python.
+ *
+ * The detector returns corners in image-geometric order (TL, TR, BR, BL) plus
+ * `rotation`, the marker's clockwise turn in the *image*. The printed top-left
+ * corner therefore sits at image-corner index `marker.rotation`; that corner is
+ * mapped through the homography to board mm and classified into a quadrant about
+ * the board-mm centroid, so the result is measured against the board's own axes
+ * regardless of camera orientation. (In Python the cv2 corners are already
+ * rotation-aware, so it uses `corners[0]` directly — the board-frame result is
+ * the same.)
+ */
+export function boardFrameRotation(marker: DetectedMarker, board: BoardResult): number {
+  const boardCorners = marker.corners.map((c) => board.imageToBoard(c));
+  let cx = 0;
+  let cy = 0;
+  for (const [x, y] of boardCorners) {
+    cx += x;
+    cy += y;
+  }
+  cx /= 4;
+  cy /= 4;
+  const [tlx, tly] = boardCorners[marker.rotation % 4];
+  return quadrantRotation(tlx - cx, tly - cy);
 }
 
 export { BOARD };

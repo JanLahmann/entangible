@@ -29,8 +29,11 @@ from qamposer_assets import board_svg, load_config, tile_svg  # noqa: E402
 SCALE = 3.0  # px per mm → 2160x1500 for the 720x500 mat
 
 # Marker ids (see docs/marker-ids.md): 10-13 H/X/Y/Z, 14 ●, 15 ⊕,
-# 20-23 RX(π/4, π/2, π, -π/2), 24-27 RY, 28-31 RZ, 40 S, 41 T.
-SCENARIOS: dict[str, tuple[str, list[tuple[int, int, int]]]] = {
+# 20-23 RX(π/4, π/2, π, -π/2), 24-27 RY, 28-31 RZ, 40 S, 41 T,
+# 42/43/44 RX/RY/RZ dials. A placement is (id, row, col) or (id, row, col, rot)
+# — the optional 4th element is the tile's clockwise 90° turn (0-3), which for a
+# dial selects the angle ROTATION_ANGLES[rot].
+SCENARIOS: dict[str, tuple[str, list[tuple[int, ...]]]] = {
     "01-empty": ("Empty board — corners only; expect an empty circuit", []),
     "02-single-h": ("H on q0 — superposition", [(10, 0, 0)]),
     "03-bell": (
@@ -59,6 +62,10 @@ SCENARIOS: dict[str, tuple[str, list[tuple[int, int, int]]]] = {
     "08-lone-control": (
         "Warning case — a ● with no ⊕ partner; expect a friendly warning, no CNOT",
         [(10, 0, 0), (14, 1, 1)],
+    ),
+    "09-dials": (
+        "Dial tiles — RX/RY/RZ dials turned to r=0/1/2 → RX(π/4), RY(π/2), RZ(π)",
+        [(42, 0, 0, 0), (43, 1, 1, 1), (44, 2, 2, 2)],
     ),
 }
 
@@ -92,8 +99,13 @@ def main() -> None:
     ]
     for name, (desc, placements) in SCENARIOS.items():
         mat = rasterize(board_svg(cfg), b.mat_width, b.mat_height)
-        for marker_id, row, col in placements:
+        for placement in placements:
+            marker_id, row, col = placement[0], placement[1], placement[2]
+            rotation = placement[3] if len(placement) > 3 else 0
             tile = rasterize(tile_svg(marker_id, cfg), cfg.tile.size, cfg.tile.size)
+            if rotation % 4:
+                # PIL rotates counter-clockwise; a tile turn is clockwise.
+                tile = tile.rotate(-90 * (rotation % 4), expand=False)
             cx = b.grid_offset_x + col * b.pitch + b.cell_size / 2
             cy = b.grid_offset_y + row * b.pitch + b.cell_size / 2
             mat.paste(tile, (int(cx * SCALE - tile.width / 2), int(cy * SCALE - tile.height / 2)))

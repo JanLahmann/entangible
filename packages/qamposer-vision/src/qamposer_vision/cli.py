@@ -106,7 +106,12 @@ def detect_circuit(
             )
             continue
         row, col = cell
-        placements.append(TilePlacement(marker_id=marker.id, row=row, col=col))
+        # Dial tiles (42/43/44) select their angle from the board-frame rotation.
+        spec = MARKER_TABLE[marker.id]
+        rotation = board.marker_rotation(marker) if spec.dial_axis is not None else 0
+        placements.append(
+            TilePlacement(marker_id=marker.id, row=row, col=col, rotation=rotation)
+        )
 
     result = build_circuit(placements, qubits)
     all_warnings = warnings + result.warnings

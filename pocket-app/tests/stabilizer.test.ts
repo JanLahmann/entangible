@@ -76,4 +76,38 @@ describe('TileStabilizer (asymmetric hysteresis)', () => {
     expect([...results[7].added]).toEqual([U]);
     expect(results[7].stable.size).toBe(2);
   });
+
+  // Dial rotation-key behaviour (mirrors the Python stabilizer tests): a dial's
+  // rotation is part of its key, so turning it in place is a real change while a
+  // within-quadrant wiggle keeps the same key.
+  const DIAL_R1 = tileKey(42, 0, 0, 1);
+  const DIAL_R2 = tileKey(42, 0, 0, 2);
+
+  it('re-emits when a dial is turned in place (after hysteresis)', () => {
+    const stab = new TileStabilizer();
+    for (let i = 0; i < 5; i++) stab.update([DIAL_R1]);
+    expect(stab.stable.has(DIAL_R1)).toBe(true);
+
+    let r2StableAt: number | null = null;
+    let r1RemovedAt: number | null = null;
+    for (let i = 0; i < 12; i++) {
+      const res = stab.update([DIAL_R2]);
+      if (r2StableAt === null && res.stable.has(DIAL_R2)) r2StableAt = i;
+      if (r1RemovedAt === null && res.removed.has(DIAL_R1)) r1RemovedAt = i;
+    }
+    expect(r2StableAt).toBe(4); // new rotation appears on the 5th present frame
+    expect(r1RemovedAt).toBe(11); // old rotation drops after 12 absent frames
+    expect([...stab.stable]).toEqual([DIAL_R2]);
+  });
+
+  it('a within-quadrant wiggle keeps one key (no change after appearing)', () => {
+    const stab = new TileStabilizer();
+    let changes = 0;
+    for (let i = 0; i < 20; i++) {
+      const res = stab.update([DIAL_R1]);
+      if (res.changed) changes++;
+    }
+    expect(changes).toBe(1);
+    expect([...stab.stable]).toEqual([DIAL_R1]);
+  });
 });

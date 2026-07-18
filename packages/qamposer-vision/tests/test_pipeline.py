@@ -8,10 +8,13 @@ import warnings
 
 import pytest
 
+from qamposer_vision.board import BoardConfig, fit_board
+from qamposer_vision.detector import ArucoDetector
 from qamposer_vision.pipeline import CircuitEvent, DetectionEvent, Pipeline
-from qamposer_vision.sources import ReplaySource
+from qamposer_vision.sources import PushFrameSource, ReplaySource
 
 from tests.utils.make_recording import OUTPUT_DIR, make_recording
+from tests.utils.render_board import RenderOptions, render_board
 
 
 @pytest.fixture(scope="module")
@@ -23,6 +26,28 @@ def recording_dir():
 
 def _gate_types(circuit: dict) -> list[str]:
     return [g["type"] for g in circuit["gates"]]
+
+
+def test_pipeline_maps_dial_rotation_into_stability_key() -> None:
+    # A dial tile's board-frame rotation must reach the stabilizer observation
+    # tuple as (id, row, col, rot); a plain tile pins rot=0.
+    config = BoardConfig.from_toml()
+    detector = ArucoDetector()
+    pipeline = Pipeline(PushFrameSource(), board_config=config)
+
+    for rotation in range(4):
+        img = render_board(((42, 0, 0, rotation),), config, RenderOptions())
+        markers = detector.detect(img)
+        board = fit_board(markers, config)
+        observations, _obs, _warn = pipeline._map_markers(markers, board)
+        assert observations == {(42, 0, 0, rotation)}
+
+    # A non-dial tile always carries rotation 0, whatever way it is turned.
+    img = render_board(((10, 0, 0, 2),), config, RenderOptions())
+    markers = detector.detect(img)
+    board = fit_board(markers, config)
+    observations, _obs, _warn = pipeline._map_markers(markers, board)
+    assert observations == {(10, 0, 0, 0)}
 
 
 def test_pipeline_emits_empty_then_h_then_bell(recording_dir) -> None:

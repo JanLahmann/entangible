@@ -12,16 +12,18 @@ from qamposer_vision import markers
 from qamposer_vision.markers import (
     ARUCO_DICT_NAME,
     CORNER_IDS,
+    DIAL_IDS,
     GATE_TYPES,
     MARKER_TABLE,
     RESERVED_IDS,
     ROTATION_ANGLES,
     GateSpec,
     pretty_angle,
+    quadrant_rotation,
 )
 
 # The exact IDs the scheme documents (docs/marker-ids.md must match).
-EXPECTED_IDS = {0, 1, 2, 3, 10, 11, 12, 13, 14, 15, *range(20, 32), 40, 41}
+EXPECTED_IDS = {0, 1, 2, 3, 10, 11, 12, 13, 14, 15, *range(20, 32), 40, 41, 42, 43, 44}
 
 
 def test_no_cv2_import() -> None:
@@ -102,8 +104,32 @@ def test_rotation_angle_values() -> None:
 
 
 def test_no_id_collision_with_reserved_range() -> None:
-    assert RESERVED_IDS == range(42, 50)
+    assert RESERVED_IDS == range(45, 50)
     assert not (set(MARKER_TABLE) & set(RESERVED_IDS))
+
+
+def test_dial_tiles() -> None:
+    # One dial tile per rotation axis, IDs 42/43/44.
+    assert DIAL_IDS == {42: "RX", 43: "RY", 44: "RZ"}
+    for marker_id, axis in DIAL_IDS.items():
+        spec = MARKER_TABLE[marker_id]
+        assert spec.kind == "gate"
+        assert spec.gate == axis          # emitted as that rotation axis
+        assert spec.dial_axis == axis
+        assert spec.parameter is None     # angle comes from the tile's rotation
+        assert spec.emit_as is None
+        assert spec.label == f"{axis} dial"
+    # dial_axis is set on exactly the three dial tiles and nowhere else.
+    with_dial = {mid for mid, s in MARKER_TABLE.items() if s.dial_axis is not None}
+    assert with_dial == set(DIAL_IDS)
+
+
+def test_quadrant_rotation_maps_corner_offset_to_cw_steps() -> None:
+    # printed top-left corner offset (dx right, dy down) → clockwise 90° index.
+    assert quadrant_rotation(-1, -1) == 0   # TL of centre  (canonical)
+    assert quadrant_rotation(+1, -1) == 1   # TR  (turned 90° CW)
+    assert quadrant_rotation(+1, +1) == 2   # BR  (180°)
+    assert quadrant_rotation(-1, +1) == 3   # BL  (270°)
 
 
 def test_s_and_t_tiles() -> None:

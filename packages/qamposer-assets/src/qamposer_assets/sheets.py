@@ -14,7 +14,7 @@ before cutting. Kit composition (which tiles, how many) comes from ``[kit]`` in
 
 from __future__ import annotations
 
-from qamposer_vision.markers import MARKER_TABLE, ROTATION_GATES
+from qamposer_vision.markers import DIAL_IDS, MARKER_TABLE, ROTATION_GATES
 
 from .config import AssetsConfig
 from .paper import calibration_ruler, page_size
@@ -56,20 +56,34 @@ def _gate_id(gate: str, role: str | None = None) -> int:
 
 
 def _rotation_ids() -> list[int]:
-    """All rotation-variant marker IDs (RX/RY/RZ × each angle), sorted."""
+    """All rotation-variant marker IDs (RX/RY/RZ × each angle), sorted.
+
+    Dial tiles (:data:`DIAL_IDS`) are excluded — they share the RX/RY/RZ gate
+    families but carry no fixed angle, and are added to the kit separately.
+    """
     return sorted(
         mid
         for mid, spec in MARKER_TABLE.items()
-        if spec.kind == "gate" and spec.gate in ROTATION_GATES
+        if spec.kind == "gate"
+        and spec.gate in ROTATION_GATES
+        and spec.dial_axis is None
     )
+
+
+def _dial_id(axis: str) -> int:
+    """Marker ID of the dial tile for a rotation axis (``RX``/``RY``/``RZ``)."""
+    for mid, spec in sorted(MARKER_TABLE.items()):
+        if spec.dial_axis == axis:
+            return mid
+    raise KeyError(f"no dial tile for axis {axis!r}")
 
 
 def kit_tile_ids(cfg: AssetsConfig) -> list[int]:
     """Expand ``[kit]`` quantities into a flat list of marker IDs to print.
 
-    Standard booth kit: H×6, X×6, Y×4, Z×4, S×2, T×2, ●×4, ⊕×4, and
-    ``rotations_each`` of every rotation variant (12 variants) — 44 tiles by
-    default.
+    Standard booth kit: H×6, X×6, Y×4, Z×4, S×2, T×2, ●×4, ⊕×4,
+    ``rotations_each`` of every rotation variant (12 variants), and one RX/RY/RZ
+    dial each — 47 tiles by default.
     """
     k = cfg.kit
     ids: list[int] = []
@@ -83,6 +97,9 @@ def kit_tile_ids(cfg: AssetsConfig) -> list[int]:
     ids += [_gate_id("CNOT", "target")] * k.CNOT_target
     for mid in _rotation_ids():
         ids += [mid] * k.rotations_each
+    ids += [_dial_id("RX")] * k.rx_dial
+    ids += [_dial_id("RY")] * k.ry_dial
+    ids += [_dial_id("RZ")] * k.rz_dial
     return ids
 
 

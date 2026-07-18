@@ -65,3 +65,6 @@ T = 2
 CNOT_control = 4
 CNOT_target = 4
 rotations_each = 1          # one of each RX/RY/RZ x angle variant (12 tiles)
+rx_dial = 1                 # one RX dial tile (rotation selects the angle)
+ry_dial = 1                 # one RY dial tile
+rz_dial = 1                 # one RZ dial tile

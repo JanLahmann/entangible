@@ -47,6 +47,16 @@ const SCENARIOS: Record<string, Array<[number, number, number]>> = {
   ],
 };
 
+// The `dials` fixture: dial tiles at mixed rotations (markerId, row, col,
+// rotation) — RX-dial r=1 → RX(π/2), RY-dial r=3 → RY(−π/2), RZ-dial r=2 → RZ(π).
+// Mirrors tests/utils/render_board.py's `dials` scenario; the golden is shared
+// with the Python builder so the circuits are byte-identical.
+const DIAL_PLACEMENTS: Array<[number, number, number, number]> = [
+  [42, 0, 0, 1],
+  [43, 1, 1, 3],
+  [44, 2, 2, 2],
+];
+
 const QUBITS = 5;
 
 function placements(name: string): TilePlacement[] {
@@ -85,5 +95,21 @@ describe('buildCircuit golden fixtures (byte-identical to the Python builder)', 
     const types = result.circuit.gates.map((g) => g.type);
     expect(types).toEqual(['H', 'RZ', 'RZ']);
     expect(result.warnings).toEqual([]);
+  });
+
+  it('dial tiles at mixed rotations match the shared golden circuit', () => {
+    const dialPlacements: TilePlacement[] = DIAL_PLACEMENTS.map(
+      ([markerId, row, col, rotation]) => ({ markerId, row, col, rotation }),
+    );
+    const result = buildCircuit(dialPlacements, QUBITS);
+    expect(result.circuit).toEqual(golden('dials'));
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('a dial is byte-identical to the classic rotation tile of the same angle', () => {
+    // RX-dial at rotation 1 (→ RX(π/2)) must equal the fixed RX(π/2) tile (id 21).
+    const dial = buildCircuit([{ markerId: 42, row: 0, col: 0, rotation: 1 }], QUBITS);
+    const classic = buildCircuit([{ markerId: 21, row: 0, col: 0 }], QUBITS);
+    expect(dial.circuit).toEqual(classic.circuit);
   });
 });

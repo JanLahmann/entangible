@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from qamposer_vision.stabilizer import TileStabilizer
 
-T = (10, 0, 0)      # an H tile at (0, 0)
-U = (14, 0, 1)      # a second, unrelated tile
+T = (10, 0, 0, 0)   # an H tile at (0, 0), rotation 0
+U = (14, 0, 1, 0)   # a second, unrelated tile
 
 
 def _run(seq: list[bool]):
@@ -98,3 +98,46 @@ def test_two_tiles_track_independently() -> None:
     assert results[4].added == frozenset({T})
     assert results[7].added == frozenset({U})
     assert results[7].stable == frozenset({T, U})
+
+
+# --- Dial rotation-key behaviour ------------------------------------------
+# A dial tile's key includes its rotation, so turning it in place is a real
+# change (drop old rotation, appear new one — each under the usual hysteresis),
+# while a jitter that stays in the same 90° quadrant keeps the same key.
+
+DIAL_R1 = (42, 0, 0, 1)   # RX dial at (0,0), rotation 1
+DIAL_R2 = (42, 0, 0, 2)   # same tile & cell, rotation 2
+
+
+def test_turning_a_dial_in_place_reemits_after_hysteresis() -> None:
+    stab = TileStabilizer()
+    for _ in range(5):        # establish rotation 1 as stable
+        stab.update({DIAL_R1})
+    assert DIAL_R1 in stab.stable
+
+    # Turn to rotation 2. The new key must debounce (5-of-7) before appearing,
+    # and the old key must persist until its 12-frame disappearance streak.
+    r2_stable_at = None
+    r1_removed_at = None
+    for i in range(12):
+        res = stab.update({DIAL_R2})
+        if r2_stable_at is None and DIAL_R2 in res.stable:
+            r2_stable_at = i
+        if r1_removed_at is None and DIAL_R1 in res.removed:
+            r1_removed_at = i
+    assert r2_stable_at == 4          # appears on the 5th present frame
+    assert r1_removed_at == 11        # old rotation drops after 12 absent frames
+    assert stab.stable == frozenset({DIAL_R2})
+
+
+def test_wiggle_within_same_quadrant_keeps_one_key() -> None:
+    # Detection snaps to 90° quadrants, so a small wiggle yields the SAME key
+    # every frame: the tile stays stable and nothing changes after it appears.
+    stab = TileStabilizer()
+    changes = 0
+    for _ in range(20):
+        res = stab.update({DIAL_R1})
+        if res.changed:
+            changes += 1
+    assert changes == 1               # one appearance transition, then quiet
+    assert stab.stable == frozenset({DIAL_R1})
