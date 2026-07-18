@@ -170,9 +170,10 @@ export function GuidePage() {
             white body, black marker, gate-colored band — as flat tiles (6 mm), chunky cubes
             (60 mm, hollow), and <b>double-faced flip pieces</b>: two gates per piece, one flip
             apart (flip H to get X; flip a rotation to get its inverse). Open a 3MF in your
-            slicer and map the pre-colored parts to filament slots; included plate plans group
-            each kit into MMU-friendly jobs. Use matte filament — glossy tops glare and hurt
-            detection.
+            slicer and map the pre-colored parts to filament slots. The <b>print-jobs folder</b> has
+            ready-to-slice bed layouts — up to 9 pieces pre-arranged per job (250×220 bed) —
+            so a whole kit is a handful of open-slice-print files. Use matte filament — glossy
+            tops glare and hurt detection.
           </p>
           <a
             className="pk-guide-download"
