@@ -23,12 +23,14 @@ def test_kit_tile_count_matches_assets_toml():
         + k.X
         + k.Y
         + k.Z
+        + k.S
+        + k.T
         + k.CNOT_control
         + k.CNOT_target
         + 12 * k.rotations_each
     )
     ids = kit_tile_ids(CFG)
-    assert len(ids) == expected == 40
+    assert len(ids) == expected == 44
 
 
 def test_cli_all_end_to_end(tmp_path):
@@ -39,7 +41,7 @@ def test_cli_all_end_to_end(tmp_path):
     tiles = sorted((tmp_path / "tiles").glob(f"*.{suffix}"))
     board = sorted((tmp_path / "board").glob(f"*.{suffix}"))
 
-    # Booth kit: ceil(40 / 12) = 4 pages; sample: ceil(18 / 12) = 2 pages.
+    # Booth kit: ceil(44 / 12) = 4 pages; sample: ceil(20 / 12) = 2 pages.
     cols, rows = FORMAT_GRID["A4"]
     per_page = cols * rows
     kit_pages = math.ceil(len(kit_tile_ids(CFG)) / per_page)

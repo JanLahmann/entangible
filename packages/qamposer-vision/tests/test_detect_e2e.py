@@ -57,6 +57,22 @@ def test_lone_control_scenario_reports_warning(config, detector) -> None:
     assert got == expected["warnings"]
 
 
+def test_s_and_t_detect_to_rz_equivalents(config, detector) -> None:
+    # A physical board with H + S + T tiles must detect to a circuit whose S/T
+    # are emitted as their RZ equivalents (RZ(pi/2) / RZ(pi/4)) — no native S/T
+    # gate type reaches the circuit JSON.
+    scenario = next(s for s in SCENARIOS if s.name == "s_and_t")
+    img = render_board(
+        scenario.placements, config, RenderOptions(warp=0.1, blur_sigma=0.5, seed=7)
+    )
+    result = detect_circuit(img, config, detector=detector)
+    assert result.has_board
+    assert result.circuit == _golden("s_and_t")
+    types = [g["type"] for g in result.circuit["gates"]]
+    assert types == ["H", "RZ", "RZ"]  # S and T became RZ
+    assert "S" not in types and "T" not in types
+
+
 def test_off_grid_tile_is_rejected(config, detector) -> None:
     from qamposer_vision.grid import GridConfig
 

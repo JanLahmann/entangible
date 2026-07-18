@@ -30,6 +30,7 @@ from qamposer_vision.markers import ARUCO_DICT_NAME, CORNER_IDS
 #   RX: pi/4=20 pi/2=21 pi=22 -pi/2=23
 #   RY: pi/4=24 pi/2=25 pi=26 -pi/2=27
 #   RZ: pi/4=28 pi/2=29 pi=30 -pi/2=31
+#   S=40 (emitted as RZ(pi/2))   T=41 (emitted as RZ(pi/4))
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +58,8 @@ SCENARIOS: list[Scenario] = [
         ),
     ),
     Scenario("warn_lone_control", ((10, 0, 0), (14, 1, 1))),
+    # S and T tiles on q0: H then S (→ RZ(pi/2)) then T (→ RZ(pi/4)).
+    Scenario("s_and_t", ((10, 0, 0), (40, 0, 1), (41, 0, 2))),
 ]
 
 SCENARIOS_BY_NAME = {s.name: s for s in SCENARIOS}

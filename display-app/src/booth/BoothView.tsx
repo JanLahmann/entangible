@@ -1,104 +1,202 @@
 /**
- * BoothView — the big-screen kiosk view.
+ * BoothView — the big-screen kiosk view (M3 "booth experience").
  *
- * The physical table is the source of truth: the composer runs in CONTROLLED
- * mode (its `circuit` prop is driven entirely by the `/ws/state` feed and local
- * on-screen edits are ignored — see note below). `realtimeAdapter={localAdapter()}`
- * makes the histogram and Q-sphere update in-browser on every stable change, so
- * no backend is required.
+ * Layout follows docs/booth-ux.md: a header (wordmark + connection dot), a
+ * 62/38 split of circuit | histogram, a message strip beneath the histogram,
+ * and a hint-ticker footer that warnings temporarily replace. Over the top sit
+ * three overlays: celebrations (confetti + banner), attract mode (idle loop),
+ * and the optional staff-only noisy-Run control.
  *
- * No celebrations here yet — those land in M3.
+ * The physical table is the source of truth. The circuit editor runs in
+ * CONTROLLED mode — its `circuit` prop is driven entirely by `/ws/state` and we
+ * do not wire `onCircuitChange`, so on-screen drags cannot persist (the next WS
+ * frame re-asserts the physical layout). The histogram is computed locally from
+ * the statevector, so no backend is required.
+ *
+ * The moment engine is wired on LIVE circuit changes only: `useEntangibleState`
+ * exposes the deduped snapshot (a replayed/duplicate `seq` never advances it),
+ * and we additionally guard on the message object identity so React StrictMode's
+ * double-invoke can never double-fire a celebration.
  */
-import { useMemo } from 'react';
-import { Qamposer } from '@qamposer/react/visualization';
-import { createDefaultCircuit, localAdapter, type Circuit } from '@qamposer/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ThemeProvider,
+  QamposerProvider,
+  CircuitEditor,
+  createDefaultCircuit,
+  type Circuit,
+} from '@qamposer/react';
 import { useEntangibleState } from '../ws/useEntangibleState';
 import { friendlyWarning } from './warnings';
 import type { ConnectionState } from '../ws/stateSocket';
+import type { CircuitMessage } from '../ws/messages';
+import {
+  evaluateMoment,
+  initialMomentState,
+  type MomentState,
+} from '../quantum/moments';
+import { shouldAttract } from './attract';
+import { Histogram } from './Histogram';
+import { MessageStrip, type StripMessage } from './MessageStrip';
+import { Celebrations, type CelebrationRequest } from './Celebrations';
+import { AttractMode } from './AttractMode';
+import { NoisyRun } from './NoisyRun';
 
-const BOARD_QUBITS = 5; // matches @qamposer/react default maxQubits and the board mat
+const BOARD_QUBITS = 5;
 
-function connectionLabel(state: ConnectionState): { text: string; cls: string } {
+const HINTS = [
+  '● and ⊕ in the same column make a CNOT — entanglement in one move.',
+  'An H tile puts a qubit into superposition — 0 and 1 at once.',
+  'Place tiles left-to-right; each column is one step in time.',
+  'Two entangled qubits always agree — measure one, know the other.',
+];
+const HINT_ROTATE_MS = 7000;
+
+function connectionInfo(state: ConnectionState): { label: string; cls: string } {
   switch (state) {
     case 'open':
-      return { text: 'Live', cls: 'is-live' };
+      return { label: 'Connected', cls: 'is-live' };
     case 'connecting':
-      return { text: 'Connecting…', cls: 'is-pending' };
+      return { label: 'Connecting', cls: 'is-pending' };
     case 'reconnecting':
-      return { text: 'Reconnecting…', cls: 'is-pending' };
-    case 'closed':
+      return { label: 'Reconnecting', cls: 'is-pending' };
     default:
-      return { text: 'Disconnected', cls: 'is-down' };
+      return { label: 'Disconnected', cls: 'is-down' };
   }
 }
 
 export function BoothView() {
   const { circuit, detection, connectionState } = useEntangibleState();
 
-  // Stable local simulator instance for realtime ideal results.
-  const realtimeAdapter = useMemo(() => localAdapter(), []);
-
   const liveCircuit: Circuit = circuit?.circuit ?? createDefaultCircuit(BOARD_QUBITS);
-  const isEmpty = liveCircuit.gates.length === 0;
-
-  const qasmLineCount = circuit?.qasm
-    ? circuit.qasm.trimEnd().split('\n').length
-    : 0;
-
   const warnings = detection?.warnings ?? [];
-  const conn = connectionLabel(connectionState);
+  const markersPresent = (detection?.markers?.length ?? 0) > 0;
+  const conn = connectionInfo(connectionState);
+
+  // --- moment engine (live circuit changes only) ---------------------------
+  const momentStateRef = useRef<MomentState>(initialMomentState);
+  const prevCircuitRef = useRef<Circuit>(createDefaultCircuit(BOARD_QUBITS));
+  const processedMsgRef = useRef<CircuitMessage | null>(null);
+  const tokenRef = useRef(0);
+  const [strip, setStrip] = useState<StripMessage | null>(null);
+  const [celebration, setCelebration] = useState<CelebrationRequest | null>(null);
+
+  // --- attract mode bookkeeping --------------------------------------------
+  const lastActivityRef = useRef<number>(Date.now());
+  const boardEmptyRef = useRef(true);
+  const markersRef = useRef(false);
+  const [attract, setAttract] = useState(false);
+
+  boardEmptyRef.current = liveCircuit.gates.length === 0;
+  markersRef.current = markersPresent;
+
+  function pushStrip(text: string) {
+    setStrip({ text, token: ++tokenRef.current });
+  }
+
+  // Run the moment engine whenever a new (deduped) circuit message arrives.
+  useEffect(() => {
+    if (!circuit) return;
+    if (processedMsgRef.current === circuit) return; // StrictMode / re-render guard
+    processedMsgRef.current = circuit;
+
+    const next = circuit.circuit;
+    const result = evaluateMoment(
+      prevCircuitRef.current,
+      next,
+      momentStateRef.current,
+      Date.now(),
+    );
+    momentStateRef.current = result.state;
+    prevCircuitRef.current = next;
+
+    if (result.stripMessage) pushStrip(result.stripMessage);
+    if (result.celebration) {
+      setCelebration({ ...result.celebration, token: ++tokenRef.current });
+    }
+
+    // Any live circuit change is activity → leave attract instantly.
+    lastActivityRef.current = Date.now();
+    setAttract(false);
+  }, [circuit]);
+
+  // Markers (a hand at the table) are activity too → instant attract exit.
+  useEffect(() => {
+    if (markersPresent) {
+      lastActivityRef.current = Date.now();
+      setAttract(false);
+    }
+  }, [detection, markersPresent]);
+
+  // Slow poll: engage attract once the idle window elapses on an empty board.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setAttract(
+        shouldAttract({
+          boardEmpty: boardEmptyRef.current,
+          markersPresent: markersRef.current,
+          msSinceActivity: Date.now() - lastActivityRef.current,
+        }),
+      );
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // --- rotating hint ticker -------------------------------------------------
+  const [hintIndex, setHintIndex] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setHintIndex((i) => (i + 1) % HINTS.length), HINT_ROTATE_MS);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const qamposerConfig = useMemo(() => ({ maxQubits: BOARD_QUBITS }), []);
 
   return (
     <div className="booth">
       <header className="booth__header">
+        <span className={`booth__conn ${conn.cls}`} title={conn.label}>
+          <span className="booth__dot" aria-hidden="true" />
+        </span>
         <h1 className="booth__title">Entangible</h1>
-        <span className="booth__tag">QAMPoser physical composer</span>
+        <span className="booth__conn-label">{conn.label}</span>
       </header>
 
-      <main className="booth__main">
-        <div className="booth__composer">
-          {/*
-            Controlled mode: `circuit` is fully driven by the table. We do NOT
-            wire `onCircuitChange`, so any drag/drop on screen cannot persist —
-            the next WS frame re-asserts the physical layout. This is how the
-            design's "on-screen editing disabled" is expressed in the 0.2 API
-            (there is no explicit readOnly prop).
-          */}
-          <Qamposer
-            circuit={liveCircuit}
-            realtimeAdapter={realtimeAdapter}
-            defaultTheme="dark"
-            showThemeToggle={false}
-            showHeader={false}
-            title="Entangible"
-          />
-          {isEmpty && (
-            <div className="booth__empty-hint" role="status">
-              Place a tile on the board to begin
-            </div>
-          )}
-        </div>
-      </main>
+      <ThemeProvider defaultTheme="dark">
+        <QamposerProvider circuit={liveCircuit} config={qamposerConfig}>
+          <main className="booth__main">
+            <section className="booth__circuit">
+              <CircuitEditor />
+            </section>
 
-      {warnings.length > 0 && (
-        <div className="booth__warnings" role="status">
-          {warnings.map((w, i) => (
-            <span className="booth__warning" key={`${w.code}-${w.col ?? i}`}>
-              {friendlyWarning(w)}
-            </span>
-          ))}
-        </div>
-      )}
+            <aside className="booth__side">
+              <div className="booth__histo">
+                <Histogram circuit={liveCircuit} />
+                <NoisyRun circuit={liveCircuit} onMessage={pushStrip} />
+              </div>
+              <MessageStrip message={strip} />
+            </aside>
+          </main>
+        </QamposerProvider>
+      </ThemeProvider>
 
-      <footer className="booth__footer">
-        <span className={`booth__conn ${conn.cls}`}>
-          <span className="booth__dot" aria-hidden="true" />
-          {conn.text}
-        </span>
-        <span className="booth__qasm">
-          {qasmLineCount} QASM {qasmLineCount === 1 ? 'line' : 'lines'}
-        </span>
+      <footer className={`booth__footer ${warnings.length > 0 ? 'has-warnings' : ''}`}>
+        {warnings.length > 0 ? (
+          <div className="booth__warnings" role="status">
+            {warnings.map((w, i) => (
+              <span className="booth__warning" key={`${w.code}-${w.col ?? i}`}>
+                {friendlyWarning(w)}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="booth__hint" key={hintIndex}>
+            {HINTS[hintIndex]}
+          </div>
+        )}
       </footer>
+
+      <Celebrations celebration={celebration} />
+      {attract && <AttractMode />}
     </div>
   );
 }

@@ -34,6 +34,8 @@ Z = "#33b1ff"
 RX = "#9f1853"
 RY = "#9f1853"
 RZ = "#33b1ff"
+S = "#33b1ff"               # S tile — Z-family colour (emitted as RZ(pi/2))
+T = "#33b1ff"               # T tile — Z-family colour (emitted as RZ(pi/4))
 CNOT = "#002d9c"
 
 [colors.neutral]            # IBM Carbon grays for mat structure
@@ -58,6 +60,8 @@ H = 6
 X = 6
 Y = 4
 Z = 4
+S = 2
+T = 2
 CNOT_control = 4
 CNOT_target = 4
 rotations_each = 1          # one of each RX/RY/RZ x angle variant (12 tiles)

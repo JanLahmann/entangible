@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from qamposer_vision.circuit_builder import TilePlacement, build_circuit
 
 QUBITS = 5
@@ -10,6 +12,8 @@ QUBITS = 5
 H, X, Y, Z = 10, 11, 12, 13
 CTRL, TGT = 14, 15
 RX_HALF_PI = 21  # RX(pi/2)
+RZ_HALF_PI = 29  # RZ(pi/2)
+S, T = 40, 41    # emitted as RZ(pi/2) / RZ(pi/4)
 
 
 def _cnot_pairs(gates: list[dict]) -> set[tuple[int, int, int]]:
@@ -37,6 +41,46 @@ def test_rotation_gate_includes_parameter() -> None:
     assert gate["position"] == 3
     assert abs(gate["parameter"] - 1.5707963267948966) < 1e-12
     assert gate["id"] == "rx-2-3"
+
+
+def test_s_tile_emits_rz_half_pi() -> None:
+    result = build_circuit([TilePlacement(S, 0, 2)], QUBITS)
+    assert result.circuit == {
+        "qubits": 5,
+        "gates": [
+            {
+                "id": "rz-0-2",
+                "type": "RZ",
+                "qubit": 0,
+                "position": 2,
+                "parameter": math.pi / 2,
+            }
+        ],
+    }
+    assert result.warnings == []
+
+
+def test_t_tile_emits_rz_quarter_pi() -> None:
+    (gate,) = build_circuit([TilePlacement(T, 1, 0)], QUBITS).circuit["gates"]
+    assert gate["type"] == "RZ"
+    assert gate["id"] == "rz-1-0"
+    assert abs(gate["parameter"] - math.pi / 4) < 1e-12
+
+
+def test_s_and_real_rz_coexist_without_collision() -> None:
+    # An S tile and a real RZ(pi/2) tile in *different* columns produce identical
+    # gates, but their ids differ by position, so React identity stays stable and
+    # nothing collides (design.md: this coexistence is intended).
+    result = build_circuit(
+        [TilePlacement(S, 0, 1), TilePlacement(RZ_HALF_PI, 0, 3)], QUBITS
+    )
+    gates = result.circuit["gates"]
+    ids = [g["id"] for g in gates]
+    assert ids == ["rz-0-1", "rz-0-3"]
+    assert len(set(ids)) == 2  # collision-free
+    assert all(g["type"] == "RZ" for g in gates)
+    assert all(abs(g["parameter"] - math.pi / 2) < 1e-12 for g in gates)
+    assert result.warnings == []
 
 
 def test_deterministic_ids_and_ordering() -> None:

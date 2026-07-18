@@ -19,6 +19,7 @@ SCENARIO_NAMES = [
     "ghz3",
     "all_families",
     "warn_lone_control",
+    "s_and_t",
 ]
 
 

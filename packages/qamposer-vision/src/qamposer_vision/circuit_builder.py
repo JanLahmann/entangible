@@ -83,6 +83,21 @@ class BuildResult:
 
 
 def _single_qubit_gate(spec: GateSpec, row: int, col: int) -> dict[str, Any]:
+    # Tiles without a native @qamposer/react type (S / T) are emitted as their
+    # RZ equivalent via ``emit_as`` — so the circuit JSON / QASM only ever carry
+    # RZ. The gate id uses the *emitted* type ("rz-0-2"); it stays collision-free
+    # against a real RZ(π/2) tile because the id embeds (row, col) and no two
+    # tiles share a cell (see build_circuit's cell-conflict handling).
+    if spec.emit_as is not None:
+        emit_type, emit_parameter = spec.emit_as
+        return {
+            "id": f"{emit_type.lower()}-{row}-{col}",
+            "type": emit_type,
+            "qubit": row,
+            "position": col,
+            "parameter": emit_parameter,
+        }
+
     gate: dict[str, Any] = {
         "id": f"{spec.gate.lower()}-{row}-{col}",
         "type": spec.gate,

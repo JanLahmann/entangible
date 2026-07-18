@@ -17,8 +17,8 @@ def test_gate_ids_are_the_kind_gate_entries():
         mid for mid, spec in MARKER_TABLE.items() if spec.kind == "gate"
     )
     assert GATE_IDS == expected
-    # 10-15 (H/X/Y/Z + CNOT halves) and 20-31 (rotations).
-    assert set(GATE_IDS) == set(range(10, 16)) | set(range(20, 32))
+    # 10-15 (H/X/Y/Z + CNOT halves), 20-31 (rotations) and 40/41 (S/T).
+    assert set(GATE_IDS) == set(range(10, 16)) | set(range(20, 32)) | {40, 41}
 
 
 @pytest.mark.parametrize("marker_id", GATE_IDS)
@@ -48,10 +48,25 @@ def test_band_color_matches_gate_color(marker_id):
         (13, ">Z<"),
         (14, "CONTROL"),
         (15, "TARGET"),
+        (40, ">S<"),
+        (41, ">T<"),
     ],
 )
 def test_single_and_cnot_labels(marker_id, fragment):
     assert fragment in tile_svg(marker_id, CFG)
+
+
+def test_s_and_t_tiles_use_z_family_color():
+    # S/T print in the Z-family colour and carry a big single-letter label,
+    # exactly like H/X/Y/Z.
+    z_color = CFG.colors.for_gate("Z")
+    for marker_id, letter in ((40, "S"), (41, "T")):
+        spec = MARKER_TABLE[marker_id]
+        assert tile_label(spec) == letter
+        assert CFG.colors.for_gate(spec.gate) == z_color
+        svg = tile_svg(marker_id, CFG)
+        assert z_color in svg
+        assert f">{letter}<" in svg
 
 
 @pytest.mark.parametrize("marker_id", range(20, 32))

@@ -126,6 +126,8 @@ class Colors:
     RX: str
     RY: str
     RZ: str
+    S: str
+    T: str
     CNOT: str
     neutral: NeutralColors
 
@@ -168,6 +170,8 @@ class KitConfig:
     X: int
     Y: int
     Z: int
+    S: int
+    T: int
     CNOT_control: int
     CNOT_target: int
     rotations_each: int

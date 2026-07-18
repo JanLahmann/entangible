@@ -14,7 +14,9 @@ Marker scheme (``DICT_4X4_50``):
 * 10–13 single-qubit gates H/X/Y/Z
 * 14/15 CNOT control ``●`` / target ``⊕``
 * 20–31 rotation gates RX/RY/RZ, one distinct ID per angle variant
-* 40–49 reserved for future tiles (S/T/SWAP), see :data:`RESERVED_IDS`
+* 40/41 S / T gates — emitted as their RZ equivalents (RZ(π/2) / RZ(π/4)),
+  see :attr:`GateSpec.emit_as`
+* 42–49 reserved for future tiles (SWAP, …), see :data:`RESERVED_IDS`
 """
 
 from __future__ import annotations
@@ -51,9 +53,12 @@ CORNER_ROLES: tuple[str, str, str, str] = ("TL", "TR", "BR", "BL")
 #: Marker ID -> corner role for the four board corners.
 CORNER_IDS: dict[int, str] = {0: "TL", 1: "TR", 2: "BR", 3: "BL"}
 
-#: Valid single-/two-qubit gate types, matching ``@qamposer/react``'s ``GateType``.
+#: Valid tile gate types. ``H``/``X``/``Y``/``Z``/``RX``/``RY``/``RZ``/``CNOT``
+#: match ``@qamposer/react``'s ``GateType``; ``S``/``T`` are physical-tile
+#: identities that carry an :attr:`GateSpec.emit_as` mapping and are emitted as
+#: their RZ equivalents until ``@qamposer/react`` gains native S/T gate types.
 GATE_TYPES: frozenset[str] = frozenset(
-    {"H", "X", "Y", "Z", "RX", "RY", "RZ", "CNOT"}
+    {"H", "X", "Y", "Z", "RX", "RY", "RZ", "CNOT", "S", "T"}
 )
 
 #: Rotation gate families that come in angle variants.
@@ -67,10 +72,11 @@ ROTATION_ANGLES: tuple[float, float, float, float] = (
     -math.pi / 2,
 )
 
-#: IDs reserved for future tiles (S / T / SWAP, added in M6). Never emitted by
-#: the current detector or assets generator, but claimed here so no other gate
-#: is assigned into this range.
-RESERVED_IDS = range(40, 50)
+#: IDs reserved for future tiles (SWAP, …). IDs 40/41 in the 40–49 block are now
+#: live S/T tiles; 42–49 stay reserved — never emitted by the current detector
+#: or assets generator, but claimed here so no other gate is assigned into this
+#: range.
+RESERVED_IDS = range(42, 50)
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +98,12 @@ class GateSpec:
         parameter: Rotation angle in radians for RX/RY/RZ, else ``None``.
         role: For corners one of ``TL|TR|BR|BL``; for CNOT ``control|target``;
             otherwise ``None``.
+        emit_as: For tiles with no native ``@qamposer/react`` gate type (S / T),
+            the ``(gate_type, parameter)`` the circuit builder should emit
+            instead — e.g. ``("RZ", π/2)`` for an S tile. ``None`` for tiles
+            emitted verbatim. Both the print label (``label``) and this
+            emission mapping live on the one :data:`MARKER_TABLE` entry so the
+            physical tile and the runtime circuit can never drift.
     """
 
     kind: Literal["corner", "gate"]
@@ -99,6 +111,7 @@ class GateSpec:
     label: str
     parameter: float | None = None
     role: str | None = None
+    emit_as: tuple[str, float] | None = None
 
     @property
     def param_label(self) -> str | None:
@@ -185,6 +198,12 @@ def _build_marker_table() -> dict[int, GateSpec]:
                 parameter=angle,
             )
         base += len(ROTATION_ANGLES)
+
+    # 40/41: S and T. No native @qamposer/react gate type yet, so each carries an
+    # ``emit_as`` mapping to its RZ equivalent (see design.md / docs/marker-ids.md);
+    # the tile face is still labelled "S"/"T" in the Z-family colour.
+    table[40] = GateSpec(kind="gate", gate="S", label="S", emit_as=("RZ", math.pi / 2))
+    table[41] = GateSpec(kind="gate", gate="T", label="T", emit_as=("RZ", math.pi / 4))
 
     return table
 

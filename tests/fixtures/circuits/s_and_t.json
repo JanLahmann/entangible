@@ -1,0 +1,8 @@
+{
+  "qubits": 5,
+  "gates": [
+    { "id": "h-0-0", "type": "H", "qubit": 0, "position": 0 },
+    { "id": "rz-0-1", "type": "RZ", "qubit": 0, "position": 1, "parameter": 1.5707963267948966 },
+    { "id": "rz-0-2", "type": "RZ", "qubit": 0, "position": 2, "parameter": 0.7853981633974483 }
+  ]
+}

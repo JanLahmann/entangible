@@ -36,12 +36,34 @@ current scheme plus the reserved range).
 | 29 | gate | RZ | RZ(π/2) | π/2 |  |
 | 30 | gate | RZ | RZ(π) | π |  |
 | 31 | gate | RZ | RZ(-π/2) | -π/2 |  |
+| 40 | gate | S | S |  |  |
+| 41 | gate | T | T |  |  |
+
+## S / T tiles (40 / 41)
+
+**S (ID 40)** and **T (ID 41)** are printed in the Z-family colour (`#33b1ff`)
+with a big single-letter label, exactly like H/X/Y/Z. `@qamposer/react@0.2` has
+no native `S`/`T` gate type, so the circuit builder emits each as its **RZ
+equivalent**, carried on the `GateSpec.emit_as` field of the one `MARKER_TABLE`
+entry:
+
+- **S → `RZ(π/2)`** — emitted as `{type: "RZ", parameter: π/2}`; QASM shows
+  `rz(pi/2)`.
+- **T → `RZ(π/4)`** — emitted as `{type: "RZ", parameter: π/4}`; QASM shows
+  `rz(pi/4)`.
+
+The emitted gate id uses the RZ type (e.g. `rz-0-2`). It stays collision-free
+against a real RZ(π/2) tile because the id embeds `(row, col)` and no two tiles
+can share a cell — an S tile and an RZ(π/2) tile produce identical gates, which
+is intended. When `@qamposer/react` gains native S/T types (gate table +
+matrices + `s`/`t` QASM), drop the `emit_as` mapping.
 
 ## Reserved
 
-IDs **40–49** (`RESERVED_IDS = range(40, 50)`) are reserved for future tiles
-(S / T / SWAP, added in milestone M6). They are never emitted by the current
-detector or assets generator, and no current gate is assigned into this range.
+IDs **42–49** (`RESERVED_IDS = range(42, 50)`) are reserved for future tiles
+(SWAP, …). They are never emitted by the current detector or assets generator,
+and no current gate is assigned into this range. (IDs 40/41 in the 40–49 block
+are now live S/T tiles — see above.)
 
 ## Notes
 

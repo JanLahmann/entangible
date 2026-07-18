@@ -21,7 +21,7 @@ from qamposer_vision.markers import (
 )
 
 # The exact IDs the scheme documents (docs/marker-ids.md must match).
-EXPECTED_IDS = {0, 1, 2, 3, 10, 11, 12, 13, 14, 15, *range(20, 32)}
+EXPECTED_IDS = {0, 1, 2, 3, 10, 11, 12, 13, 14, 15, *range(20, 32), 40, 41}
 
 
 def test_no_cv2_import() -> None:
@@ -102,8 +102,32 @@ def test_rotation_angle_values() -> None:
 
 
 def test_no_id_collision_with_reserved_range() -> None:
-    assert RESERVED_IDS == range(40, 50)
+    assert RESERVED_IDS == range(42, 50)
     assert not (set(MARKER_TABLE) & set(RESERVED_IDS))
+
+
+def test_s_and_t_tiles() -> None:
+    s = MARKER_TABLE[40]
+    t = MARKER_TABLE[41]
+    assert s.kind == t.kind == "gate"
+    assert (s.gate, s.label) == ("S", "S")
+    assert (t.gate, t.label) == ("T", "T")
+    # No native @qamposer/react type: the tile's own parameter stays None; the
+    # RZ equivalent is carried on emit_as.
+    assert s.parameter is None
+    assert t.parameter is None
+    assert s.emit_as == ("RZ", math.pi / 2)
+    assert t.emit_as == ("RZ", math.pi / 4)
+
+
+def test_emit_as_only_on_s_and_t() -> None:
+    with_mapping = {mid for mid, spec in MARKER_TABLE.items() if spec.emit_as is not None}
+    assert with_mapping == {40, 41}
+    # Every emit_as target is itself a real, emittable gate type.
+    for spec in MARKER_TABLE.values():
+        if spec.emit_as is not None:
+            emit_type, _ = spec.emit_as
+            assert emit_type in GATE_TYPES
 
 
 def test_aruco_dict_name() -> None:

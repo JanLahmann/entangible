@@ -67,8 +67,9 @@ def _rotation_ids() -> list[int]:
 def kit_tile_ids(cfg: AssetsConfig) -> list[int]:
     """Expand ``[kit]`` quantities into a flat list of marker IDs to print.
 
-    Standard booth kit: H×6, X×6, Y×4, Z×4, ●×4, ⊕×4, and ``rotations_each`` of
-    every rotation variant (12 variants) — 40 tiles by default.
+    Standard booth kit: H×6, X×6, Y×4, Z×4, S×2, T×2, ●×4, ⊕×4, and
+    ``rotations_each`` of every rotation variant (12 variants) — 44 tiles by
+    default.
     """
     k = cfg.kit
     ids: list[int] = []
@@ -76,6 +77,8 @@ def kit_tile_ids(cfg: AssetsConfig) -> list[int]:
     ids += [_gate_id("X")] * k.X
     ids += [_gate_id("Y")] * k.Y
     ids += [_gate_id("Z")] * k.Z
+    ids += [_gate_id("S")] * k.S
+    ids += [_gate_id("T")] * k.T
     ids += [_gate_id("CNOT", "control")] * k.CNOT_control
     ids += [_gate_id("CNOT", "target")] * k.CNOT_target
     for mid in _rotation_ids():
