@@ -17,6 +17,7 @@ import ghz5 from '../../../examples/test-boards/05-ghz5.png?url';
 import allFamilies from '../../../examples/test-boards/06-all-families.png?url';
 import uniform32 from '../../../examples/test-boards/07-uniform-32.png?url';
 import loneControl from '../../../examples/test-boards/08-lone-control.png?url';
+import dials from '../../../examples/test-boards/09-dials.png?url';
 
 export interface TestBoard {
   /** Stable id (the source filename stem). */
@@ -77,5 +78,11 @@ export const TEST_BOARDS: readonly TestBoard[] = [
     src: loneControl,
     title: 'Lone control',
     blurb: 'A ● with no ⊕ partner — a friendly warning, no CNOT.',
+  },
+  {
+    id: '09-dials',
+    src: dials,
+    title: 'Dial tiles',
+    blurb: 'RX/RY/RZ dials — the tile’s rotation selects the angle.',
   },
 ];

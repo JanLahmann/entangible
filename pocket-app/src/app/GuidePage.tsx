@@ -167,10 +167,12 @@ export function GuidePage() {
           <Label>3D-print the tiles</Label>
           <p>
             For multi-material printers (Prusa MMU, Bambu AMS): every gate as a colored 3MF —
-            white body, black marker, gate-colored band — in two variants: flat tiles (6 mm)
-            and chunky cubes (60 mm, hollow). Open a 3MF in your slicer and map the three parts
-            to your filament slots; the included plate plan groups all 44 tiles into two
-            MMU-friendly print jobs. Use matte filament — glossy tops glare and hurt detection.
+            white body, black marker, gate-colored band — as flat tiles (6 mm), chunky cubes
+            (60 mm, hollow), and <b>double-faced flip pieces</b>: two gates per piece, one flip
+            apart (flip H to get X; flip a rotation to get its inverse). Open a 3MF in your
+            slicer and map the pre-colored parts to filament slots; included plate plans group
+            each kit into MMU-friendly jobs. Use matte filament — glossy tops glare and hurt
+            detection.
           </p>
           <a
             className="pk-guide-download"
