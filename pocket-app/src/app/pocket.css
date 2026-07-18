@@ -321,7 +321,9 @@ body,
 }
 
 .pk-zoom__btn:disabled {
-  color: var(--faint);
+  /* Dimmed but clearly present — an invisible "−" reads as a missing button. */
+  color: var(--muted);
+  opacity: 0.55;
   cursor: default;
 }
 
@@ -1382,6 +1384,18 @@ body,
 
 /* -- shared phone chrome: condensed topbar, 44px targets, no hint ticker -- */
 @media (max-width: 699px), (max-height: 450px) {
+  /* Zoom pill: real touch targets, and clear of the centered cam hint. */
+  .pk-zoom__btn {
+    width: 2.6rem;
+    height: 2.6rem;
+    font-size: 1.35rem;
+  }
+  .pk-cam-hint {
+    max-width: calc(100% - 9.5rem);
+    left: 0.5rem;
+    transform: none;
+  }
+
   /* Size to the *visual* viewport so iOS Safari's dynamic URL bar can't push
      the RESULTS panel off-screen (100dvh, not 100vh). */
   .pk {

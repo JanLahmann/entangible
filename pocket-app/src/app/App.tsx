@@ -488,13 +488,11 @@ export function App() {
         </a>
         <FullscreenButton variant="bar" />
         <SettingsControl />
-        {running ? (
+        {/* The idle-state CTA lives on the start card alone (a topbar twin
+            reads as two different actions); the topbar only offers Stop. */}
+        {running && (
           <button className="pk-btn is-stop" onClick={camera.stop}>
             Stop
-          </button>
-        ) : (
-          <button className="pk-btn" onClick={camera.start} disabled={camera.status === 'starting'}>
-            {camera.status === 'starting' ? 'Starting…' : 'Start camera'}
           </button>
         )}
       </header>
