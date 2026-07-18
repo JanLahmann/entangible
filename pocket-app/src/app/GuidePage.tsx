@@ -13,6 +13,7 @@ import { goBack, type NavWindow } from './hashNav';
 import { TEST_BOARDS } from './testBoards';
 import { reduceViewer, CLOSED, type ViewerAction } from './viewer';
 import kitPdf from '../../../examples/print/entangible-print-kit-A4.pdf?url';
+import tiles3d from '../../../examples/hardware/entangible-3d-tiles.zip?url';
 
 const REPO_URL = 'https://github.com/JanLahmann/entangible';
 const ISSUES_URL = 'https://github.com/JanLahmann/entangible/issues';
@@ -158,6 +159,31 @@ export function GuidePage() {
           </a>
           <p className="pk-guide-muted">
             An A1 single-sheet board for print shops lives in the repository.
+          </p>
+        </section>
+
+        {/* 4b. 3D-print the tiles */}
+        <section className="pk-guide-sec">
+          <Label>3D-print the tiles</Label>
+          <p>
+            For multi-material printers (Prusa MMU, Bambu AMS): every gate as a colored 3MF —
+            white body, black marker, gate-colored band — in two variants: flat tiles (6 mm)
+            and chunky cubes (60 mm, hollow). Open a 3MF in your slicer and map the three parts
+            to your filament slots; the included plate plan groups all 44 tiles into two
+            MMU-friendly print jobs. Use matte filament — glossy tops glare and hurt detection.
+          </p>
+          <a
+            className="pk-guide-download"
+            href={tiles3d}
+            download="entangible-3d-tiles.zip"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Download the 3D tiles (3MF, ZIP)
+          </a>
+          <p className="pk-guide-muted">
+            Rotation-gate variants carry tactile notches (1–4 = π/4, π/2, π, −π/2). Cubes prefer
+            a straight-overhead camera — their height parallax-shifts the face at steep angles.
           </p>
         </section>
 
