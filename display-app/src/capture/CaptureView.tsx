@@ -20,8 +20,25 @@ import {
   framesSocketUrl,
   canCapture,
 } from './streamController';
+import {
+  applyNativeZoom,
+  clampZoom,
+  cropRect,
+  DIGITAL_ZOOM_RANGE,
+  loadZoom,
+  pinchZoom,
+  pointerDistance,
+  readZoomCapability,
+  saveZoom,
+  stepZoom as stepZoomValue,
+  type Point as PinchPoint,
+  type ZoomRange,
+} from './zoom';
 import { StateSocket } from '../ws/stateSocket';
 import './capture.css';
+
+const ZOOM_STORAGE_KEY = 'entangible.capture.zoom';
+type ZoomMode = 'native' | 'digital';
 
 type Phase = 'idle' | 'streaming' | 'error';
 type FramesConn = 'connecting' | 'open' | 'closed';
@@ -73,6 +90,92 @@ export function CaptureView() {
   const wakeLockRef = useRef<WakeLockSentinelLike | null>(null);
   const streamingRef = useRef(false);
 
+  // Zoom state (see ./zoom). digitalZoomRef is the crop factor read by the
+  // capture loop — 1 when native zoom drives the sensor instead.
+  const [zoom, setZoomState] = useState(() => loadZoom(ZOOM_STORAGE_KEY, 1));
+  const [zoomMode, setZoomMode] = useState<ZoomMode>('digital');
+  const [zoomRange, setZoomRange] = useState<ZoomRange>(DIGITAL_ZOOM_RANGE);
+  const zoomTrackRef = useRef<MediaStreamTrack | null>(null);
+  const zoomModeRef = useRef<ZoomMode>('digital');
+  const digitalZoomRef = useRef(1);
+  const pointersRef = useRef<Map<number, PinchPoint>>(new Map());
+  const pinchStartRef = useRef<{ dist: number; zoom: number } | null>(null);
+  const lastTapRef = useRef(0);
+  const zoomValueRef = useRef(zoom);
+  zoomValueRef.current = zoom;
+
+  const applyZoom = useCallback((next: number, mode: ZoomMode) => {
+    setZoomState(next);
+    saveZoom(ZOOM_STORAGE_KEY, next);
+    if (mode === 'native') {
+      digitalZoomRef.current = 1;
+      const track = zoomTrackRef.current;
+      if (track) void applyNativeZoom(track, next);
+    } else {
+      digitalZoomRef.current = next;
+    }
+  }, []);
+
+  const setZoom = useCallback(
+    (next: number) => {
+      const r = zoomRange;
+      applyZoom(clampZoom(next, r.min, r.max), zoomModeRef.current);
+    },
+    [applyZoom, zoomRange],
+  );
+
+  const stepZoom = useCallback(
+    (dir: number) => {
+      const r = zoomRange;
+      applyZoom(stepZoomValue(zoomValueRef.current, dir, r.step, r.min, r.max), zoomModeRef.current);
+    },
+    [applyZoom, zoomRange],
+  );
+
+  const resetZoom = useCallback(() => {
+    applyZoom(clampZoom(1, zoomRange.min, zoomRange.max), zoomModeRef.current);
+  }, [applyZoom, zoomRange]);
+
+  const onZoomPointerDown = useCallback((e: React.PointerEvent) => {
+    if (!streamingRef.current) return;
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointersRef.current.size === 2) {
+      const [a, b] = [...pointersRef.current.values()];
+      pinchStartRef.current = { dist: pointerDistance(a, b), zoom: zoomValueRef.current };
+    }
+  }, []);
+
+  const onZoomPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!pointersRef.current.has(e.pointerId)) return;
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const start = pinchStartRef.current;
+      if (start && pointersRef.current.size === 2) {
+        const [a, b] = [...pointersRef.current.values()];
+        setZoom(pinchZoom(start.zoom, start.dist, pointerDistance(a, b), zoomRange.min, zoomRange.max));
+      }
+    },
+    [setZoom, zoomRange.min, zoomRange.max],
+  );
+
+  const onZoomPointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      const wasSolo = pointersRef.current.size === 1;
+      pointersRef.current.delete(e.pointerId);
+      if (pointersRef.current.size < 2) pinchStartRef.current = null;
+      if (wasSolo && streamingRef.current) {
+        const now = e.timeStamp || performance.now();
+        if (now - lastTapRef.current < 300) {
+          resetZoom();
+          lastTapRef.current = 0;
+        } else {
+          lastTapRef.current = now;
+        }
+      }
+    },
+    [resetZoom],
+  );
+
   // Feature-detect once on mount: no secure context / no getUserMedia → error.
   useEffect(() => {
     if (!canCapture()) {
@@ -123,14 +226,19 @@ export function CaptureView() {
       controller.markSendFailed();
       return;
     }
-    canvas.width = w;
-    canvas.height = h;
+    // Digital zoom: center-crop 1/zoom of the frame and encode only that
+    // region, so the streamed JPEG *is* the cropped region at native pixel
+    // density (source-rect drawImage — no extra full-frame copy). At zoom 1 (or
+    // native mode) sw=w, sh=h → the original full-frame draw.
+    const { sx, sy, sw, sh } = cropRect(digitalZoomRef.current, w, h);
+    canvas.width = sw;
+    canvas.height = sh;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       controller.markSendFailed();
       return;
     }
-    ctx.drawImage(video, 0, 0, w, h);
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
     canvas.toBlob(
       (blob) => {
         if (!blob) {
@@ -172,6 +280,7 @@ export function CaptureView() {
       for (const track of stream.getTracks()) track.stop();
       streamRef.current = null;
     }
+    zoomTrackRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
 
     const ws = framesWsRef.current;
@@ -214,13 +323,36 @@ export function CaptureView() {
         audio: false,
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          // Request 1080p: native zoom crops the sensor, digital zoom crops the
+          // frame — both want the extra pixels for pixels-per-marker.
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
         },
       });
       streamRef.current = stream;
       setPhase('streaming');
       streamingRef.current = true;
+
+      // Native vs digital zoom selection. iOS/iPadOS Safari does not expose a
+      // `zoom` capability on getUserMedia tracks, so phones there always take
+      // the digital crop path; some Android Chrome builds do expose native zoom.
+      const zoomTrack = stream.getVideoTracks()[0] ?? null;
+      zoomTrackRef.current = zoomTrack;
+      const native = zoomTrack ? readZoomCapability(zoomTrack) : null;
+      if (native) {
+        setZoomMode('native');
+        zoomModeRef.current = 'native';
+        setZoomRange(native);
+        applyZoom(clampZoom(zoomValueRef.current, native.min, native.max), 'native');
+      } else {
+        setZoomMode('digital');
+        zoomModeRef.current = 'digital';
+        setZoomRange(DIGITAL_ZOOM_RANGE);
+        applyZoom(
+          clampZoom(zoomValueRef.current, DIGITAL_ZOOM_RANGE.min, DIGITAL_ZOOM_RANGE.max),
+          'digital',
+        );
+      }
 
       const video = videoRef.current;
       if (video) {
@@ -297,7 +429,7 @@ export function CaptureView() {
       });
       setPhase('error');
     }
-  }, [acquireWakeLock, captureLoop, onVisibility]);
+  }, [acquireWakeLock, captureLoop, onVisibility, applyZoom]);
 
   // Clean up everything if the page unmounts mid-stream.
   useEffect(() => stop, [stop]);
@@ -305,8 +437,17 @@ export function CaptureView() {
   const connDotClass =
     framesConn === 'open' ? 'cap__dot--ok' : framesConn === 'connecting' ? 'cap__dot--warn' : 'cap__dot--bad';
 
+  const previewScale = zoomMode === 'digital' ? zoom : 1;
+
   return (
-    <div className={`cap${phase !== 'streaming' ? ' cap--landing' : ''}`}>
+    <div
+      className={`cap${phase !== 'streaming' ? ' cap--landing' : ''}`}
+      onPointerDown={onZoomPointerDown}
+      onPointerMove={onZoomPointerMove}
+      onPointerUp={onZoomPointerUp}
+      onPointerCancel={onZoomPointerUp}
+      style={phase === 'streaming' ? { touchAction: 'none' } : undefined}
+    >
       {phase !== 'streaming' && (
         <div className="cap__card">
           <h1 className="cap__wordmark">
@@ -342,7 +483,10 @@ export function CaptureView() {
         playsInline
         muted
         autoPlay
-        style={{ display: phase === 'streaming' ? 'block' : 'none' }}
+        style={{
+          display: phase === 'streaming' ? 'block' : 'none',
+          transform: `scale(${previewScale})`,
+        }}
       />
       <canvas ref={canvasRef} style={{ display: 'none' }} />
 
@@ -361,6 +505,31 @@ export function CaptureView() {
             </span>
           </div>
           <div className="cap__footer">
+            <div
+              className="cap__zoom"
+              onPointerDown={(e) => e.stopPropagation()}
+              onPointerUp={(e) => e.stopPropagation()}
+            >
+              <button
+                className="cap__zoom-btn"
+                type="button"
+                aria-label="Zoom out"
+                onClick={() => stepZoom(-1)}
+                disabled={zoom <= zoomRange.min + 1e-6}
+              >
+                −
+              </button>
+              <span className="cap__zoom-val">{zoom.toFixed(1)}×</span>
+              <button
+                className="cap__zoom-btn"
+                type="button"
+                aria-label="Zoom in"
+                onClick={() => stepZoom(1)}
+                disabled={zoom >= zoomRange.max - 1e-6}
+              >
+                +
+              </button>
+            </div>
             <button className="cap__stop" type="button" onClick={stop}>
               Stop
             </button>

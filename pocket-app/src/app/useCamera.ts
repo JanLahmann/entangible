@@ -11,8 +11,22 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PocketPipeline, type FrameResult } from '../vision/pipeline';
+import {
+  applyNativeZoom,
+  clampZoom,
+  cropRect,
+  DIGITAL_ZOOM_RANGE,
+  loadZoom,
+  readZoomCapability,
+  saveZoom,
+  stepZoom as stepZoomValue,
+  type ZoomRange,
+} from './zoom';
 
 export type CameraStatus = 'idle' | 'starting' | 'running' | 'error';
+
+/** 'native' = sensor zoom via applyConstraints; 'digital' = center-crop fallback. */
+export type ZoomMode = 'native' | 'digital';
 
 export interface CameraState {
   status: CameraStatus;
@@ -21,6 +35,15 @@ export interface CameraState {
   start: () => void;
   stop: () => void;
   videoRef: React.RefObject<HTMLVideoElement>;
+  // Zoom
+  zoom: number;
+  zoomMode: ZoomMode;
+  zoomRange: ZoomRange;
+  /** CSS scale for the preview <video> (1 for native — the sensor already zoomed). */
+  previewScale: number;
+  setZoom: (zoom: number) => void;
+  stepZoom: (dir: number) => void;
+  resetZoom: () => void;
 }
 
 interface Options {
@@ -28,6 +51,7 @@ interface Options {
 }
 
 const TARGET_PROCESS_MS = 45; // aim ~20 detections/s; skip frames to hold it
+const ZOOM_STORAGE_KEY = 'entangible.pocket.zoom';
 
 export function useCamera({ onResult }: Options): CameraState {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -45,6 +69,27 @@ export function useCamera({ onResult }: Options): CameraState {
   const [error, setError] = useState<string | null>(null);
   const [fps, setFps] = useState(0);
   const fpsEmaRef = useRef(0);
+
+  // Zoom state. Start from the persisted value in the digital range; once a
+  // stream is running we may swap to a native range and re-clamp.
+  const [zoom, setZoomState] = useState(() => loadZoom(ZOOM_STORAGE_KEY, 1));
+  const [zoomMode, setZoomMode] = useState<ZoomMode>('digital');
+  const [zoomRange, setZoomRange] = useState<ZoomRange>(DIGITAL_ZOOM_RANGE);
+  const trackRef = useRef<MediaStreamTrack | null>(null);
+  const zoomModeRef = useRef<ZoomMode>('digital'); // read by the rAF loop
+  const digitalZoomRef = useRef(1); // crop factor for the loop (1 when native)
+
+  const applyZoom = useCallback((next: number, mode: ZoomMode) => {
+    setZoomState(next);
+    saveZoom(ZOOM_STORAGE_KEY, next);
+    if (mode === 'native') {
+      digitalZoomRef.current = 1;
+      const track = trackRef.current;
+      if (track) void applyNativeZoom(track, next);
+    } else {
+      digitalZoomRef.current = next;
+    }
+  }, []);
 
   const requestWakeLock = useCallback(async () => {
     try {
@@ -73,7 +118,13 @@ export function useCamera({ onResult }: Options): CameraState {
         if (canvas.height !== h) canvas.height = h;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         if (ctx) {
-          ctx.drawImage(video, 0, 0, w, h);
+          // Digital zoom: center-crop 1/zoom of the frame straight into the
+          // full canvas (source-rect drawImage — no extra full-frame copy). At
+          // zoom 1 (or native mode) this is the identity full-frame draw. The
+          // detector then works in this zoomed canvas-pixel space, which is the
+          // same space the overlay and CSS-scaled preview render in.
+          const { sx, sy, sw, sh } = cropRect(digitalZoomRef.current, w, h);
+          ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
           const image = ctx.getImageData(0, 0, w, h);
           const t0 = performance.now();
           const result = pipelineRef.current.processFrame({
@@ -107,6 +158,7 @@ export function useCamera({ onResult }: Options): CameraState {
       for (const track of streamRef.current.getTracks()) track.stop();
       streamRef.current = null;
     }
+    trackRef.current = null;
     if (wakeLockRef.current) {
       wakeLockRef.current.release().catch(() => undefined);
       wakeLockRef.current = null;
@@ -130,8 +182,10 @@ export function useCamera({ onResult }: Options): CameraState {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          // Request 1080p: native zoom crops the sensor, digital zoom crops the
+          // frame — both want the extra pixels for pixels-per-marker.
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
         },
         audio: false,
       });
@@ -142,6 +196,27 @@ export function useCamera({ onResult }: Options): CameraState {
       video.setAttribute('playsinline', 'true');
       video.muted = true;
       await video.play();
+
+      // Native vs digital zoom selection. iOS/iPadOS Safari does not expose a
+      // `zoom` capability on getUserMedia tracks, so it always lands on the
+      // digital path — which is why the pocket app is built around the crop.
+      const track = stream.getVideoTracks()[0] ?? null;
+      trackRef.current = track;
+      const native = track ? readZoomCapability(track) : null;
+      if (native) {
+        setZoomMode('native');
+        zoomModeRef.current = 'native';
+        setZoomRange(native);
+        const clamped = clampZoom(zoom, native.min, native.max);
+        applyZoom(clamped, 'native');
+      } else {
+        setZoomMode('digital');
+        zoomModeRef.current = 'digital';
+        setZoomRange(DIGITAL_ZOOM_RANGE);
+        const clamped = clampZoom(zoom, DIGITAL_ZOOM_RANGE.min, DIGITAL_ZOOM_RANGE.max);
+        applyZoom(clamped, 'digital');
+      }
+
       pipelineRef.current.reset();
       skipRef.current = 1;
       frameCountRef.current = 0;
@@ -160,7 +235,7 @@ export function useCamera({ onResult }: Options): CameraState {
             : `Could not start the camera (${name ?? 'unknown error'}).`,
       );
     }
-  }, [loop, requestWakeLock]);
+  }, [loop, requestWakeLock, zoom, applyZoom]);
 
   // Pause processing when the tab is hidden; resume (and re-acquire wake lock)
   // when it returns.
@@ -182,5 +257,43 @@ export function useCamera({ onResult }: Options): CameraState {
 
   useEffect(() => () => stop(), [stop]);
 
-  return { status, error, fps, start, stop, videoRef };
+  // ---- zoom controls ----------------------------------------------------
+  const setZoom = useCallback(
+    (next: number) => {
+      applyZoom(clampZoom(next, zoomRange.min, zoomRange.max), zoomModeRef.current);
+    },
+    [applyZoom, zoomRange.min, zoomRange.max],
+  );
+
+  const stepZoom = useCallback(
+    (dir: number) => {
+      applyZoom(
+        stepZoomValue(zoom, dir, zoomRange.step, zoomRange.min, zoomRange.max),
+        zoomModeRef.current,
+      );
+    },
+    [applyZoom, zoom, zoomRange.step, zoomRange.min, zoomRange.max],
+  );
+
+  const resetZoom = useCallback(() => {
+    applyZoom(clampZoom(1, zoomRange.min, zoomRange.max), zoomModeRef.current);
+  }, [applyZoom, zoomRange.min, zoomRange.max]);
+
+  const previewScale = zoomMode === 'digital' ? zoom : 1;
+
+  return {
+    status,
+    error,
+    fps,
+    start,
+    stop,
+    videoRef,
+    zoom,
+    zoomMode,
+    zoomRange,
+    previewScale,
+    setZoom,
+    stepZoom,
+    resetZoom,
+  };
 }

@@ -269,6 +269,54 @@ body,
   z-index: 3;
 }
 
+/* Zoom control (bottom-right pill over the preview). */
+.pk-zoom {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  background: rgba(15, 17, 23, 0.82);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem;
+  z-index: 3;
+}
+
+.pk-zoom__btn {
+  width: 1.7rem;
+  height: 1.7rem;
+  display: grid;
+  place-items: center;
+  font-family: var(--sans);
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pk-zoom__btn:active {
+  background: var(--bg-inset);
+}
+
+.pk-zoom__btn:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+
+.pk-zoom__val {
+  min-width: 2.7rem;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--text);
+}
+
 /* Start card (idle / secure-context error). */
 .pk-startcard {
   text-align: center;

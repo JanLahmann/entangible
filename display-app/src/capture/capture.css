@@ -167,8 +167,55 @@
 
 .cap__footer {
   display: flex;
+  align-items: center;
   justify-content: center;
+  gap: 0.75rem;
   padding: 0.75rem;
+}
+
+.cap__zoom {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.2rem;
+  background: rgba(22, 22, 22, 0.72);
+  border: 1px solid var(--cap-border);
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+}
+
+.cap__zoom-btn {
+  width: 2.4rem;
+  height: 2.4rem;
+  display: grid;
+  place-items: center;
+  font-family: inherit;
+  font-size: 1.4rem;
+  line-height: 1;
+  color: var(--cap-text);
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cap__zoom-btn:active {
+  filter: brightness(0.85);
+}
+
+.cap__zoom-btn:disabled {
+  color: var(--cap-dim);
+  cursor: default;
+}
+
+.cap__zoom-val {
+  min-width: 3rem;
+  text-align: center;
+  font-family: var(--ent-mono, ui-monospace, monospace);
+  font-size: 0.95rem;
+  color: var(--cap-text);
 }
 
 .cap__stop {

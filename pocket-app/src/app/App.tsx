@@ -20,6 +20,7 @@ import {
 import { activeQubits } from '@quantum/statevector';
 import { evaluateMoment, initialMomentState, type MomentState } from '@quantum/moments';
 import { useCamera } from './useCamera';
+import { pinchZoom, pointerDistance, type Point as PinchPoint } from './zoom';
 import { MessageStrip, type StripMessage } from './MessageStrip';
 import { Celebrations, type CelebrationRequest } from './Celebrations';
 import { ResultsHistogram } from './ResultsHistogram';
@@ -241,16 +242,78 @@ function CameraPanel({
   overlayRef: React.RefObject<HTMLCanvasElement>;
   boardLocked: boolean;
 }) {
-  const { status, error, fps, videoRef, start } = camera;
+  const { status, error, fps, videoRef, start, zoom, zoomRange, previewScale, setZoom, stepZoom, resetZoom } =
+    camera;
+
+  // Pinch-to-zoom (two pointers) + double-tap-to-reset on the preview.
+  const pointersRef = useRef<Map<number, PinchPoint>>(new Map());
+  const pinchStartRef = useRef<{ dist: number; zoom: number } | null>(null);
+  const lastTapRef = useRef(0);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointersRef.current.size === 2) {
+      const [a, b] = [...pointersRef.current.values()];
+      pinchStartRef.current = { dist: pointerDistance(a, b), zoom: zoomRef.current };
+    }
+  }, []);
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!pointersRef.current.has(e.pointerId)) return;
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const start = pinchStartRef.current;
+      if (start && pointersRef.current.size === 2) {
+        const [a, b] = [...pointersRef.current.values()];
+        setZoom(pinchZoom(start.zoom, start.dist, pointerDistance(a, b), zoomRange.min, zoomRange.max));
+      }
+    },
+    [setZoom, zoomRange.min, zoomRange.max],
+  );
+
+  const onPointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      const wasSolo = pointersRef.current.size === 1;
+      pointersRef.current.delete(e.pointerId);
+      if (pointersRef.current.size < 2) pinchStartRef.current = null;
+      // Double-tap (single-finger) resets to 1×.
+      if (wasSolo) {
+        const now = e.timeStamp || performance.now();
+        if (now - lastTapRef.current < 300) {
+          resetZoom();
+          lastTapRef.current = 0;
+        } else {
+          lastTapRef.current = now;
+        }
+      }
+    },
+    [resetZoom],
+  );
 
   return (
     <div>
       <div className="pk-label">Camera</div>
       {status === 'running' ? (
-        <div className="pk-cam">
-          <video ref={videoRef} playsInline muted />
+        <div
+          className="pk-cam"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          style={{ touchAction: 'none' }}
+        >
+          <video ref={videoRef} playsInline muted style={{ transform: `scale(${previewScale})` }} />
           <canvas ref={overlayRef} className="pk-overlay" />
           <span className="pk-cam-fps">{fps} fps</span>
+          <ZoomPill
+            zoom={zoom}
+            min={zoomRange.min}
+            max={zoomRange.max}
+            onIn={() => stepZoom(1)}
+            onOut={() => stepZoom(-1)}
+          />
           {!boardLocked && (
             <div className="pk-cam-hint">Point at the board — all four corners in view</div>
           )}
@@ -272,6 +335,46 @@ function CameraPanel({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function ZoomPill({
+  zoom,
+  min,
+  max,
+  onIn,
+  onOut,
+}: {
+  zoom: number;
+  min: number;
+  max: number;
+  onIn: () => void;
+  onOut: () => void;
+}) {
+  // Stop pointer events from reaching the pinch handler on the preview.
+  const swallow = (e: React.PointerEvent) => e.stopPropagation();
+  return (
+    <div className="pk-zoom" onPointerDown={swallow} onPointerUp={swallow}>
+      <button
+        type="button"
+        className="pk-zoom__btn"
+        aria-label="Zoom out"
+        onClick={onOut}
+        disabled={zoom <= min + 1e-6}
+      >
+        −
+      </button>
+      <span className="pk-zoom__val">{zoom.toFixed(1)}×</span>
+      <button
+        type="button"
+        className="pk-zoom__btn"
+        aria-label="Zoom in"
+        onClick={onIn}
+        disabled={zoom >= max - 1e-6}
+      >
+        +
+      </button>
     </div>
   );
 }
