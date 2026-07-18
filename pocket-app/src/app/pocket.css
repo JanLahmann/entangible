@@ -1666,3 +1666,16 @@ body,
     padding: 0.6rem;
   }
 }
+
+/* == Spectator circuit: hide the editor's interactive chrome ============ */
+/* The table is the editor — on-screen measurement toggles and toolbars
+   read as tappable UI on a display that is inspect-only. The classical
+   wire stays (authentic Composer language). */
+.pk-stage-editor .circuit-editor__measurements,
+.pk-stage-editor .circuit-editor__toolbar {
+  display: none;
+}
+
+.pk-stage-editor .circuit-editor__canvas {
+  pointer-events: none;
+}
