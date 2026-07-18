@@ -32,3 +32,10 @@ tests/                    # fixtures + unit suites
 uv sync                                  # create .venv, install all workspace members
 uv run pytest packages/qamposer-vision   # run the vision test suite
 ```
+
+## Test without a printer
+
+`examples/test-boards/` contains ready-made board images (empty → Bell → GHZ →
+warning cases): open one fullscreen on a monitor and point a camera at it —
+the [pocket app](https://entangible.org), the booth `/capture` page, or
+`uv run qamposer-vision detect --image …`. See the folder README.
