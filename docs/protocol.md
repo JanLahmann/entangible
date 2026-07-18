@@ -109,9 +109,12 @@ clients (forward-compatible).
 ### Client → server (additive, booth-v2)
 
 ```jsonc
-{ "type": "select_mode",   "mode": "golf" }
-{ "type": "select_layout", "sidebar": "left", "panels": ["results", "qasm"] }
+{ "type": "select_mode", "mode": "golf" }
+```
+
+```jsonc
 // partial select_layout allowed — omitted fields keep their current value
+{ "type": "select_layout", "sidebar": "left", "panels": ["results", "qasm"] }
 ```
 
 Both persist to `layout.toml` and trigger a `layout` broadcast. REST siblings:
