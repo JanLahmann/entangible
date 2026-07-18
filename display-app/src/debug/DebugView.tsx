@@ -297,7 +297,11 @@ export function DebugView() {
           </table>
         </section>
 
-        <section className="debug__section">
+        <LayoutCard />
+
+        {/* Volatile, per-frame lists live at the bottom (min-height reserved)
+            so their constant resizing never shifts the stable cards above. */}
+        <section className="debug__section" style={{ minHeight: '16rem' }}>
           <h2>markers ({markers.length})</h2>
           <table className="debug__table">
             <thead>
@@ -330,7 +334,7 @@ export function DebugView() {
           </table>
         </section>
 
-        <section className="debug__section">
+        <section className="debug__section" style={{ minHeight: '10rem' }}>
           <h2>warnings ({warnings.length})</h2>
           <table className="debug__table">
             <thead>
@@ -360,8 +364,6 @@ export function DebugView() {
             </tbody>
           </table>
         </section>
-
-        <LayoutCard />
 
         <PhoneCameraCard />
       </div>
