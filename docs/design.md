@@ -138,7 +138,11 @@ operator URL): full controls incl. the camera role. QR audiences: the
 hijack the booth camera and must never be shown to visitors).
 
 Key mechanism: a `StateSource` abstraction (`LocalPipelineSource` \|
-`BoothSocketSource`) feeding one shared shell; everything below it is already
+`BoothSocketSource` \| `ManualEditSource` — the last per Jan 2026-07-19: an
+explicit manual-editing input mode as fallback when no tiles/camera are
+available or desired; enables on-screen gate placement via the editor's
+native editing, camera strip hidden, everything downstream unchanged)
+feeding one shared shell; everything below it is already
 the shared `@quantum` layer. The host serves the unified app at `/` (it
 already serves the pocket build at `/pocket`); the staff `/debug` becomes a
 route of the same app.
