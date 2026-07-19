@@ -89,3 +89,42 @@ export function circuitBloch(circuit: Circuit): { qubit: number; vector: BlochVe
  * so BlochView can plant the target flag at the same projected position.
  */
 export const TARGET_PLUS: BlochVector = { x: 1, y: 0, z: 0 };
+
+// ---------------------------------------------------------------------------
+// Axis + state-label geometry (standard Bloch labelling)
+// ---------------------------------------------------------------------------
+
+/**
+ * Default view orientation for the Bloch sphere. Chosen (not the shared 0/0.35)
+ * so all three axes are well separated on screen and |0⟩ sits at the prominent
+ * NEAR pole: a small globe-spin (`yaw`) tips the x/y axes off the vertical, and
+ * a slight upward `pitch` puts +z (|0⟩) nearest the viewer at the top. At this
+ * orientation the six endpoints land in six distinct sectors — see
+ * `BLOCH_ENDPOINTS` and the projection tests.
+ */
+export const BLOCH_DEFAULT_YAW = 0.6;
+export const BLOCH_DEFAULT_PITCH = -0.35;
+
+/**
+ * One labelled end of a Bloch axis. `dir` is the unit model vector of the end;
+ * `ket` is the eigenstate that lives there (standard convention: +z=|0⟩,
+ * −z=|1⟩, +x=|+⟩, −x=|−⟩, +y=|i+⟩, −y=|i−⟩); `axisLetter` is the axis name shown
+ * only at the POSITIVE end (null on the negative end).
+ */
+export interface BlochEndpoint {
+  readonly axis: 'x' | 'y' | 'z';
+  readonly sign: 1 | -1;
+  readonly dir: BlochVector;
+  readonly ket: string;
+  readonly axisLetter: 'x' | 'y' | 'z' | null;
+}
+
+/** The six labelled axis endpoints (positive end first within each axis). */
+export const BLOCH_ENDPOINTS: readonly BlochEndpoint[] = [
+  { axis: 'x', sign: 1, dir: { x: 1, y: 0, z: 0 }, ket: '|+⟩', axisLetter: 'x' },
+  { axis: 'x', sign: -1, dir: { x: -1, y: 0, z: 0 }, ket: '|−⟩', axisLetter: null },
+  { axis: 'y', sign: 1, dir: { x: 0, y: 1, z: 0 }, ket: '|i+⟩', axisLetter: 'y' },
+  { axis: 'y', sign: -1, dir: { x: 0, y: -1, z: 0 }, ket: '|i−⟩', axisLetter: null },
+  { axis: 'z', sign: 1, dir: { x: 0, y: 0, z: 1 }, ket: '|0⟩', axisLetter: 'z' },
+  { axis: 'z', sign: -1, dir: { x: 0, y: 0, z: -1 }, ket: '|1⟩', axisLetter: null },
+];

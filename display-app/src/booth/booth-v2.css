@@ -514,6 +514,13 @@
   fill: var(--faint);
 }
 
+/* axis letters (x/y/z) — subordinate to the state kets */
+.bo-bl-axis-label {
+  fill: var(--faint);
+  font-size: 9px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+}
+
 /* ---- Quantum Golf scorecard ------------------------------------------ */
 .bo-golf-hole {
   display: flex;

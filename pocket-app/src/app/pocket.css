@@ -1147,6 +1147,13 @@ body,
   font-family: var(--mono);
 }
 
+/* axis letters (x/y/z) — subordinate to the state kets */
+.pk-bl-axis-label {
+  fill: var(--faint);
+  font-size: 8px;
+  font-family: var(--mono);
+}
+
 /* ---- OpenQASM panel --------------------------------------------------- */
 
 .pk-qasm {
