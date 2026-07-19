@@ -118,6 +118,31 @@ def test_qr_accepts_header_key():
         assert resp.status_code == 200
 
 
+def test_visitor_qr_is_open_and_encodes_pocket_connect():
+    app = _app()
+    token = app.state.operator_token
+    with TestClient(app) as client:
+        # No key needed — the visitor QR is view-only.
+        resp = client.get("/api/visitor-qr")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/png"
+        assert resp.content[:8] == b"\x89PNG\r\n\x1a\n"
+        encoded = resp.headers["X-Encoded-URL"]
+        assert encoded.endswith("/pocket?connect=1")
+        # The visitor QR must NEVER leak the operator token.
+        assert "key=" not in encoded
+        assert token not in encoded
+
+
+def test_visitor_qr_reflects_no_tls_scheme():
+    with TestClient(_app(tls=False, port=8080)) as client:
+        resp = client.get("/api/visitor-qr")
+        assert resp.status_code == 200
+        encoded = resp.headers["X-Encoded-URL"]
+        assert encoded.startswith("http://")
+        assert encoded.endswith(":8080/pocket?connect=1")
+
+
 def test_debug_snapshot_requires_key():
     with TestClient(_app()) as client:
         resp = client.get("/debug/snapshot.jpg")

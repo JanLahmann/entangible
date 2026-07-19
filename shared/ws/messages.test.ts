@@ -17,7 +17,8 @@ import {
   type SelectLayout,
 } from './messages';
 
-// Vitest runs with cwd = display-app; the docs live one level up at repo root.
+// This suite runs under the pocket app (SC1 rule: shared tests run once there);
+// cwd = pocket-app, and the docs live one level up at the repo root.
 const PROTOCOL_PATH = resolve(process.cwd(), '..', 'docs', 'protocol.md');
 const PROTOCOL = readFileSync(PROTOCOL_PATH, 'utf8');
 

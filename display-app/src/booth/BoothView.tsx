@@ -34,6 +34,7 @@ import { Histogram } from './Histogram';
 import { MessageStrip, type StripMessage } from './MessageStrip';
 import { Celebrations, type CelebrationRequest } from './Celebrations';
 import { AttractMode } from './AttractMode';
+import { VisitorQr } from './VisitorQr';
 import { NoisyRun } from './NoisyRun';
 import { TouchInspector } from './TouchInspector';
 import { Scorecard } from './Scorecard';
@@ -338,6 +339,8 @@ export function BoothView() {
         ) : (
           <div key={hintIndex}>{HINTS[hintIndex]}</div>
         )}
+        {/* Visitor QR — subtle, footer-sized (take-it-home T2). */}
+        <VisitorQr variant="footer" />
       </footer>
 
       <Celebrations celebration={celebration} />

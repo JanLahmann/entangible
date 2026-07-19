@@ -38,6 +38,20 @@ def test_pocket_root_redirects_to_trailing_slash(tmp_path):
         assert resp.headers["location"] == "/pocket/"
 
 
+def test_pocket_root_preserves_connect_query(tmp_path):
+    # The visitor QR points at /pocket?connect=1; the ?connect flag must survive
+    # the trailing-slash redirect so the app auto-connects to the booth.
+    dist = _build_fake_pocket(tmp_path)
+    with TestClient(_app(str(dist))) as client:
+        resp = client.get("/pocket?connect=1", follow_redirects=False)
+        assert resp.status_code == 307
+        assert resp.headers["location"] == "/pocket/?connect=1"
+        # And following it lands on the SPA index (which reads ?connect=1).
+        followed = client.get("/pocket?connect=1")
+        assert followed.status_code == 200
+        assert "Entangible Pocket" in followed.text
+
+
 def test_pocket_serves_index(tmp_path):
     dist = _build_fake_pocket(tmp_path)
     with TestClient(_app(str(dist))) as client:

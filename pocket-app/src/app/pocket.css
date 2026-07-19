@@ -994,6 +994,31 @@ body,
   line-height: 1.35;
 }
 
+/* Booth-host field (Display role). */
+.pk-input {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  margin: 0 0 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.pk-input:focus-visible {
+  outline: 2px solid var(--entangle, #7a5cff);
+  outline-offset: 1px;
+}
+
+.pk-drawer-sec .pk-btn {
+  width: 100%;
+  justify-content: center;
+}
+
 /* ---- Q-sphere (2D) ---------------------------------------------------- */
 
 .pk-qsphere {

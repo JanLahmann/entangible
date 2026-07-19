@@ -8,6 +8,7 @@
  * the parent unmounts it on any activity, which is the "< 100 ms instant cut"
  * exit (React removes it synchronously on the next paint).
  */
+import { VisitorQr } from './VisitorQr';
 
 const MINI_CONFETTI = ['#fa4d56', '#002d9c', '#9f1853', '#33b1ff'];
 
@@ -65,6 +66,9 @@ export function AttractMode({ branding }: { branding?: AttractBranding | null })
         <div className="ent-attract__cta">
           Build a quantum circuit with your hands — place a tile on the table
         </div>
+
+        {/* visitor QR — follow along on your phone + take the circuit home */}
+        <VisitorQr variant="attract" />
 
         {/* site + family credit — the booth's public face at events */}
         <div className="ent-attract__site">

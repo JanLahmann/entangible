@@ -6,6 +6,10 @@
   ``X-Operator-Key`` header) — the QR is a staff-distribution channel, and the
   token it embeds is what lets the scanning phone reach ``/capture`` /
   ``/ws/frames``. A missing/wrong key returns ``403`` JSON.
+* ``GET /api/visitor-qr`` — an UNGATED PNG QR encoding
+  ``https://<lan-ip>:<port>/pocket?connect=1``. The public "follow along + take
+  your circuit home" QR (booth footer + attract); it embeds NO token because the
+  pocket viewer connects read-only, so it is safe to show to visitors.
 * ``GET /{path}`` (registered LAST) — serves a file from ``display_dist`` when
   it exists, otherwise falls back to ``index.html`` for SPA client routes.
   Reserved prefixes (``/api``, ``/ws``, ``/qamposer-api``, ``/debug/stream``,
@@ -91,6 +95,26 @@ async def qr(request: Request, path: str = "/capture") -> Response:
     )
 
 
+@router.get("/api/visitor-qr")
+async def visitor_qr(request: Request) -> Response:
+    """UNGATED PNG QR for visitors: ``https://<lan-ip>:<port>/pocket?connect=1``.
+
+    This is the public "follow along + take your circuit home" QR shown on the
+    booth screen (footer + attract). It encodes NO operator token — the pocket
+    viewer connects to ``/ws/state`` read-only and needs no credential — so it
+    is safe to display to visitors, unlike the staff ``/api/qr`` / ``/capture``
+    QR (which can hijack the booth camera and stays on ``/debug`` only).
+    """
+    config = request.app.state.config
+    scheme = "https" if config.tls else "http"
+    url = f"{scheme}://{primary_lan_ip()}:{config.port}/pocket?connect=1"
+    return Response(
+        content=_qr_png(url),
+        media_type="image/png",
+        headers={"Cache-Control": "no-store", "X-Encoded-URL": url},
+    )
+
+
 @router.get("/api/info")
 async def info(request: Request) -> dict:
     """LAN reachability facts for the display/debug UI (QR + capture URL).
@@ -126,10 +150,13 @@ def _looks_like_asset(path: str) -> bool:
 
 
 @router.get("/pocket")
-async def pocket_root() -> RedirectResponse:
+async def pocket_root(request: Request) -> RedirectResponse:
     # Redirect to the trailing-slash form so relative './asset' URLs resolve
-    # under /pocket/ rather than the site root.
-    return RedirectResponse(url="/pocket/", status_code=307)
+    # under /pocket/ rather than the site root. Preserve the query string so the
+    # visitor-QR `?connect=1` (and any URL overrides) survive the redirect.
+    query = request.url.query
+    target = "/pocket/" + (f"?{query}" if query else "")
+    return RedirectResponse(url=target, status_code=307)
 
 
 @router.get("/pocket/{full_path:path}")

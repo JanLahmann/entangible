@@ -21,6 +21,8 @@ import {
   subscribeDeviceChange,
   type CameraDevice,
 } from './cameraDevices';
+import { boothLink, useBoothLink } from './boothLink';
+import { normalizeBoothUrl } from '../sources/boothUrl';
 
 const PANEL_LABELS: Record<PanelId, string> = {
   camera: 'Camera preview',
@@ -141,6 +143,62 @@ function CameraSection() {
   );
 }
 
+/**
+ * BOOTH section — the manual Display-role trigger (docs/pocket.md, "Booth").
+ * Enter a booth host (`wss://host:8443` / `https://host:8443` / bare host);
+ * Connect joins it as a read-only viewer. The URL persists in settings; the
+ * served-by-host and `?connect=1` triggers live in App, not here. Connecting
+ * NEVER sends any control message — the pocket viewer is view-only.
+ */
+function BoothSection() {
+  const settings = useSettings();
+  const link = useBoothLink();
+  const connected = link.url !== null;
+  const [draft, setDraft] = useState(settings.boothUrl ?? '');
+  const valid = normalizeBoothUrl(draft) !== null;
+
+  return (
+    <section className="pk-drawer-sec">
+      <div className="pk-label">Booth</div>
+      {connected ? (
+        <>
+          <p className="pk-drawer-hint">Connected — viewing the booth (read-only).</p>
+          <button type="button" className="pk-btn is-stop" onClick={() => boothLink.disconnect()}>
+            Disconnect
+          </button>
+        </>
+      ) : (
+        <>
+          <input
+            className="pk-input"
+            type="url"
+            inputMode="url"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="wss://booth.local:8443"
+            value={draft}
+            aria-label="Booth host"
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <button
+            type="button"
+            className="pk-btn"
+            disabled={!valid}
+            onClick={() => {
+              settingsStore.update({ boothUrl: draft.trim() || null });
+              boothLink.connect(draft);
+            }}
+          >
+            Connect to booth
+          </button>
+          <p className="pk-drawer-hint">Follow a booth’s screen and take its circuit home.</p>
+        </>
+      )}
+    </section>
+  );
+}
+
 export function SettingsControl() {
   const settings = useSettings();
   const [open, setOpen] = useState(false);
@@ -238,6 +296,8 @@ export function SettingsControl() {
               </section>
 
               <CameraSection />
+
+              <BoothSection />
 
               <section className="pk-drawer-sec">
                 <div className="pk-label">Power</div>

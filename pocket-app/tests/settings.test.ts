@@ -42,6 +42,14 @@ describe('parseUrlOverrides', () => {
   it('parses boolean synonyms', () => {
     expect(parseUrlOverrides('?debug=true&lowpower=0')).toEqual({ debug: true, lowpower: false });
   });
+
+  it('accepts a ?booth= host override (trimmed) and ignores an empty one', () => {
+    expect(parseUrlOverrides('?booth=wss://booth.local:8443').boothUrl).toBe(
+      'wss://booth.local:8443',
+    );
+    expect(parseUrlOverrides('?booth=%20%20')).toEqual({}); // whitespace-only → no override
+    expect(parseUrlOverrides('?mode=golf')).not.toHaveProperty('boothUrl');
+  });
 });
 
 describe('sanitize', () => {
@@ -55,6 +63,7 @@ describe('sanitize', () => {
       debug: true,
       wires: 'compact',
       cameraId: null,
+      boothUrl: null,
     });
   });
 
@@ -70,6 +79,27 @@ describe('sanitize', () => {
     expect(sanitize({ cameraId: '' }).cameraId).toBeNull(); // empty → automatic
     expect(sanitize({ cameraId: 42 }).cameraId).toBeNull(); // wrong type → automatic
     expect(sanitize({ cameraId: 'cam-b' }).cameraId).toBe('cam-b');
+  });
+
+  it('defaults boothUrl to null and keeps a non-empty string (trimmed)', () => {
+    expect(sanitize({}).boothUrl).toBeNull();
+    expect(sanitize({ boothUrl: '' }).boothUrl).toBeNull();
+    expect(sanitize({ boothUrl: '   ' }).boothUrl).toBeNull();
+    expect(sanitize({ boothUrl: 42 }).boothUrl).toBeNull(); // wrong type
+    expect(sanitize({ boothUrl: '  wss://booth.local:8443 ' }).boothUrl).toBe(
+      'wss://booth.local:8443',
+    );
+  });
+
+  it('persists a booth URL through the store round-trip', () => {
+    const storage = fakeStorage();
+    const store = createSettingsStore({ storage });
+    store.update({ boothUrl: 'wss://booth.local:8443' });
+    expect(store.get().boothUrl).toBe('wss://booth.local:8443');
+    // A fresh store over the same storage reads it back.
+    const reloaded = createSettingsStore({ storage });
+    expect(reloaded.get().boothUrl).toBe('wss://booth.local:8443');
+    expect(JSON.parse(storage._map.get(STORAGE_KEY)!).boothUrl).toBe('wss://booth.local:8443');
   });
 });
 

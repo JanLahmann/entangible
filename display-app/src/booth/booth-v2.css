@@ -329,6 +329,56 @@
   text-overflow: ellipsis;
 }
 
+/* Visitor QR — subtle, footer-sized; pinned to the right of the footer. */
+.bo-visitor-qr {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 1vh;
+  flex: none;
+  color: var(--muted);
+}
+
+.bo-visitor-qr img {
+  width: 5.2vh;
+  height: 5.2vh;
+  border-radius: 4px;
+  background: #fff;
+  padding: 0.4vh;
+  box-sizing: border-box;
+}
+
+.bo-visitor-qr__label {
+  font-size: 1.5vh;
+  max-width: 26vh;
+  line-height: 1.15;
+}
+
+/* Attract-screen QR — a touch larger, centered near the site line. */
+.ent-attract__qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.2vh;
+  margin-top: 2.4vh;
+  opacity: 0.9;
+}
+
+.ent-attract__qr img {
+  width: 12vh;
+  height: 12vh;
+  border-radius: 6px;
+  background: #fff;
+  padding: 0.8vh;
+  box-sizing: border-box;
+}
+
+.ent-attract__qr-label {
+  font-size: 1.9vh;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
 /* ---- overrides of M3 overlay pieces (loaded after styles.css) --------- */
 
 /* Message strip becomes a stage overlay pill, bottom-left. */

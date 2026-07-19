@@ -91,7 +91,8 @@ Serverless equivalents of the booth's /debug controls — all local
 - **Settings drawer**: gear pill in the topbar → right-side drawer (panel
   styling): MODE (composer | golf pills), PANELS (camera preview / results /
   state / qasm toggles — state+qasm ported from the booth), sidebar side,
-  low-power (confetti cap 60, process every 2nd frame), debug toggle.
+  CAMERA (device picker), BOOTH (host field + connect — see "Display role"
+  below), low-power (confetti cap 60, process every 2nd frame), debug toggle.
 - **Debug panel** (toggle or `?debug=1`): detect stats (candidates, blind,
   guided rescues, fps, corners, reprojection error), marker table
   (id/gate/row/col/off-grid), warnings verbatim, active detector params
@@ -107,6 +108,38 @@ Serverless equivalents of the booth's /debug controls — all local
   fidelity ≥ 0.99 → purple banner ("EAGLE!/BIRDIE!/PAR!/HOLE IN +n" by
   strokes vs par) + confetti; clearing the board advances to the next hole.
   Animated state evolution deliberately absent (that's qsphere-evolution).
+
+## Display role — follow a booth (Entangible One, U1b)
+
+The pocket app has two roles behind one shell (docs/design.md "Entangible One").
+**Standalone** is the default: the on-device camera + TS pipeline drive the
+display (everything above). **Display (viewer)** connects to a booth host over
+`/ws/state` and renders the booth's live circuit/state through the *exact same*
+downstream (editor, histogram, state/qasm, golf, celebrations, Transfer — the
+booth-built circuit leaves on the visitor's phone, take-it-home T2).
+
+- **State-source seam** (`src/sources/`): a `StateSource` yields neutral
+  `StateUpdate`s (`{circuit, warnings, source, qasm?, boothMode?, boothWires?,
+  connection?}`). `LocalPipelineSource` is a thin adapter the camera frame loop
+  feeds (`ingest(result)` → emits on `result.changed`, no behavior change);
+  `BoothSocketSource` wraps the shared `@shared/ws` client (moved there from the
+  display app) and maps circuit/detection/layout messages → updates. `App`
+  subscribes to whichever is active and runs the identical moment/golf logic on
+  both. (`ManualEditSource` is a separate later task.)
+- **Connect triggers**: (a) *served-by-host* — the app's own origin answers
+  `GET /api/info`, so the topbar offers "Connect to booth"; (b) *visitor QR* —
+  `…/pocket?connect=1` auto-connects to the serving host on load; (c) *manual* —
+  the drawer's BOOTH field takes `wss://host:8443` / `https://host:8443` / a
+  bare `host:8443` (normalized to the `/ws/state` URL; persisted in settings,
+  also `?booth=…`).
+- **Viewer policy (read-only)**: the pocket viewer NEVER sends a control message
+  (no camera/mode/layout swaps — it connects as a plain `hello {role:'display'}`
+  with no operator key). While connected the camera UI is hidden (video, zoom,
+  freeze, camera picker) and only a "Connected to booth · viewing" pill +
+  Disconnect show; local-only interactions stay (tap-to-inspect, sphere
+  rotation, panel toggles, Transfer). The booth's `mode`/`wires` (when
+  broadcast) override the local settings. Disconnect returns cleanly to the
+  standalone pipeline (the camera resumes if it was running).
 
 ## Wire display: compact by default (revised per Jan, 2026-07-18)
 

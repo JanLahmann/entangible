@@ -27,6 +27,7 @@ surfaces stay fully open (no token, zero friction).
 | `/ws/frames` (phone frame intake)                    | `?key=<token>` (else close `4403`) |
 | `GET /debug/stream`, `GET /debug/snapshot.jpg` (MJPEG preview) | `?key=` or `X-Operator-Key` header (else `403`) |
 | `GET /api/qr`                                        | `?key=` or `X-Operator-Key` header (else `403`) |
+| `GET /api/visitor-qr` (view-only pocket QR)          | **open** — embeds no token    |
 | `/`, `/pocket`, `/api/info`, the `/debug` page shell | **open**                      |
 
 Distribution: the staff cheat-sheet / host QR embeds the token so a scanned
@@ -159,6 +160,22 @@ clients (forward-compatible).
 Both persist to `layout.toml` and trigger a `layout` broadcast. REST siblings:
 `GET /api/layout` (current layout JSON), `GET /api/branding`
 (`{name, logoUrl|null, qrTarget}` from `branding.toml`, defaults when absent).
+
+## QR endpoints (HTTP, PNG)
+
+- `GET /api/qr?path=/capture` — **staff-gated** (operator token; §Staff
+  security). Encodes `<scheme>://<lan-ip>:<port><path>?key=<token>` — the
+  scanning phone arrives already carrying the token so it can reach `/capture`
+  + `/ws/frames`. Never shown to visitors.
+- `GET /api/visitor-qr` — **open** (no token). Encodes
+  `<scheme>://<lan-ip>:<port>/pocket?connect=1`; the pocket app auto-connects
+  to this host's `/ws/state` as a read-only viewer (the visitor "follow along +
+  take your circuit home" QR on the booth footer + attract screen). Embeds no
+  credential — a viewer needs none. `/pocket` preserves the `?connect=1` query
+  across its trailing-slash redirect.
+
+Both respond `image/png` with `Cache-Control: no-store` and an `X-Encoded-URL`
+header carrying the encoded target (for the `/debug` card + tests).
 
 ## `/ws/frames` — phone capture (M4; server side lands in M2)
 

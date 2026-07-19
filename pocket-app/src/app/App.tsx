@@ -18,6 +18,15 @@ import {
   type Circuit,
 } from '@qamposer/react';
 import { evaluateMoment, initialMomentState, type MomentState } from '@quantum/moments';
+import { defaultStateUrl } from '@shared/ws/stateSocket';
+import { friendlyWarning } from '@shared/display/warnings';
+import type { WarningInput } from '@shared/display/warnings';
+import type { Wires } from '@shared/display/wires';
+import { LocalPipelineSource } from '../sources/LocalPipelineSource';
+import { BoothSocketSource } from '../sources/BoothSocketSource';
+import type { BoothMode, ConnectionPhase, StateSource, StateUpdate } from '../sources/StateSource';
+import { boothLink, useBoothLink } from './boothLink';
+import { cameraSwitchAction, connectionPill, connectRequested } from '../sources/boothUrl';
 import { useCamera } from './useCamera';
 import { pinchZoom, pointerDistance, type Point as PinchPoint } from './zoom';
 import { MessageStrip, type StripMessage } from './MessageStrip';
@@ -47,7 +56,6 @@ import {
   LEVELS,
   type GolfState,
 } from '@quantum/golf';
-import { friendlyWarning } from './warnings';
 import {
   detectEnv,
   exitFullscreen,
@@ -59,7 +67,6 @@ import {
 } from './fullscreen';
 import { BOARD } from '../vision/geometry';
 import type { FrameResult } from '../vision/pipeline';
-import type { BuildWarning } from '../vision/circuitBuilder';
 import type { DetectedMarker } from '../vision/detect';
 import type { BoardResult } from '../vision/board';
 import { CORNER_IDS } from '../vision/geometry';
@@ -252,8 +259,20 @@ function drawOverlay(
 export function App() {
   const settings = useSettings();
   const route = useRoute();
+  const boothUrl = useBoothLink().url;
+  // Connected as a booth viewer when a link target is set (design: read-only
+  // Display role — the visitor QR is view-only).
+  const connected = boothUrl !== null;
   const [circuit, setCircuit] = useState<Circuit>(() => createDefaultCircuit(BOARD_QUBITS));
-  const [warnings, setWarnings] = useState<BuildWarning[]>([]);
+  const [warnings, setWarnings] = useState<WarningInput[]>([]);
+  // Booth-driven metadata (null while standalone). `boothMode`/`boothWires`
+  // override the local settings while connected.
+  const [conn, setConn] = useState<ConnectionPhase | null>(null);
+  const [boothMode, setBoothMode] = useState<BoothMode | null>(null);
+  const [boothWires, setBoothWires] = useState<Wires | null>(null);
+  // Served by a booth host? (its own origin answers /api/info) — enables the
+  // "Connect to booth" affordance. Cheap probe on startup; failures ignored.
+  const [servedByHost, setServedByHost] = useState(false);
   const [corners, setCorners] = useState(0);
   const [strip, setStrip] = useState<StripMessage | null>(null);
   const [celebration, setCelebration] = useState<CelebrationRequest | null>(null);
@@ -271,6 +290,15 @@ export function App() {
   const golfStateRef = useRef<GolfState>(golfState);
   const lastFrameRef = useRef<FrameResult | null>(null);
   const debugTickAtRef = useRef(0);
+  // State-source seam (Entangible One U1b): the local pipeline adapter is fed by
+  // the camera frame loop; the booth source is created on demand while
+  // connected. `appliedCircuitRef` dedupes downstream work (moments/golf) by
+  // circuit identity, so booth detection/status frames don't re-run it.
+  const localSourceRef = useRef<LocalPipelineSource>(new LocalPipelineSource());
+  const appliedCircuitRef = useRef<Circuit | null>(null);
+  // Remembers whether the camera was running when we entered booth mode, so a
+  // disconnect can resume the local pipeline cleanly.
+  const resumeCameraRef = useRef(false);
 
   // Keep frame-loop closures reading the current mode/debug flags.
   const modeRef = useRef(settings.mode);
@@ -282,38 +310,29 @@ export function App() {
     setStrip({ text, token: ++tokenRef.current });
   }, []);
 
-  const onResult = useCallback(
-    (result: FrameResult, video: HTMLVideoElement) => {
-      // Overlay every processed frame (cheap; keeps the debug view live).
-      if (overlayRef.current) {
-        drawOverlay(
-          overlayRef.current,
-          result.detected,
-          result.board,
-          video.videoWidth,
-          video.videoHeight,
-          result.stats,
-          fpsRef.current,
-        );
-      }
-      setCorners(result.corners);
-
-      lastFrameRef.current = result;
-      if (debugRef.current) {
-        const now = performance.now();
-        if (now - debugTickAtRef.current > DEBUG_THROTTLE_MS) {
-          debugTickAtRef.current = now;
-          setDebugTick((t) => t + 1);
-        }
+  // Apply one neutral update from the active state source. The circuit +
+  // moment/golf handling is IDENTICAL whether the update came from the local
+  // pipeline or the booth (design: the booth feeds the exact same downstream).
+  // Downstream work runs only when the circuit reference actually changed, so
+  // booth detection/status frames (same circuit ref) don't re-fire it.
+  const applyUpdate = useCallback(
+    (update: StateUpdate) => {
+      if (update.source === 'booth') {
+        if (update.connection) setConn(update.connection);
+        setBoothMode(update.boothMode ?? null);
+        setBoothWires(update.boothWires ?? null);
       }
 
-      if (!result.changed) return;
+      if (update.circuit === appliedCircuitRef.current) return;
+      appliedCircuitRef.current = update.circuit;
 
-      const next = result.circuit as unknown as Circuit;
+      const next = update.circuit;
       setCircuit(next);
-      setWarnings(result.warnings);
+      setWarnings(update.warnings);
 
-      if (modeRef.current === 'golf') {
+      // The booth's mode (when broadcast) overrides the local setting.
+      const effectiveMode: BoothMode = update.boothMode ?? modeRef.current;
+      if (effectiveMode === 'golf') {
         const step = golfStep(golfStateRef.current, next);
         golfStateRef.current = step.state;
         setGolfState(step.state);
@@ -342,6 +361,38 @@ export function App() {
     [pushStrip],
   );
 
+  const onResult = useCallback((result: FrameResult, video: HTMLVideoElement) => {
+    // Overlay every processed frame (cheap; keeps the debug view live). This +
+    // corners + debug stats stay in App because they are tightly video-coupled;
+    // the source seam sits at "circuit + warnings out" (LocalPipelineSource).
+    if (overlayRef.current) {
+      drawOverlay(
+        overlayRef.current,
+        result.detected,
+        result.board,
+        video.videoWidth,
+        video.videoHeight,
+        result.stats,
+        fpsRef.current,
+      );
+    }
+    setCorners(result.corners);
+
+    lastFrameRef.current = result;
+    if (debugRef.current) {
+      const now = performance.now();
+      if (now - debugTickAtRef.current > DEBUG_THROTTLE_MS) {
+        debugTickAtRef.current = now;
+        setDebugTick((t) => t + 1);
+      }
+    }
+
+    // Hand the frame to the local source; it emits a neutral update (→
+    // applyUpdate) only when the stable circuit changed. Ignored while a booth
+    // viewer owns the subscription (the camera is stopped then anyway).
+    localSourceRef.current.ingest(result);
+  }, []);
+
   // A chosen camera that no longer resolves: useCamera has already fallen back
   // to the default device — clear the stale id and give a gentle heads-up.
   const onCameraFallback = useCallback(() => {
@@ -357,6 +408,79 @@ export function App() {
     onCameraFallback,
   });
   fpsRef.current = camera.fps;
+
+  // Camera controls read through refs so the source/camera-switch effects can
+  // key on `boothUrl`/`connected` alone (camera.start's identity changes with
+  // zoom; re-running the switch effect then would clobber the resume flag).
+  const cameraStatusRef = useRef(camera.status);
+  cameraStatusRef.current = camera.status;
+  const cameraStartRef = useRef(camera.start);
+  cameraStartRef.current = camera.start;
+  const cameraStopRef = useRef(camera.stop);
+  cameraStopRef.current = camera.stop;
+
+  // Subscribe to the ACTIVE source: the booth socket while connected, else the
+  // local pipeline. Switching (connect/disconnect) tears the previous
+  // subscription down cleanly.
+  useEffect(() => {
+    if (boothUrl === null) {
+      // Standalone: clear any booth metadata, listen to the local pipeline.
+      setConn(null);
+      setBoothMode(null);
+      setBoothWires(null);
+      appliedCircuitRef.current = null;
+      const local: StateSource = localSourceRef.current;
+      const unsub = local.subscribe(applyUpdate);
+      local.start();
+      return () => unsub();
+    }
+    // Booth viewer (read-only). A fresh source resets the applied-circuit guard.
+    setConn('connecting');
+    appliedCircuitRef.current = null;
+    const source = new BoothSocketSource({ url: boothUrl });
+    const unsub = source.subscribe(applyUpdate);
+    source.start();
+    return () => {
+      unsub();
+      source.stop();
+    };
+  }, [boothUrl, applyUpdate]);
+
+  // Camera hand-off when the active source switches (design: hide the camera
+  // while viewing the booth; resume the local pipeline on disconnect if it was
+  // running before we connected).
+  useEffect(() => {
+    const cameraActive =
+      cameraStatusRef.current === 'running' || cameraStatusRef.current === 'starting';
+    const action = cameraSwitchAction(connected, cameraActive, resumeCameraRef.current);
+    if (action.stop) cameraStopRef.current();
+    if (action.start) void cameraStartRef.current();
+    resumeCameraRef.current = action.remember;
+  }, [connected]);
+
+  // Probe our own origin for a booth host (served-by-host trigger). Cheap;
+  // failures (e.g. entangible.org standalone) are ignored.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/info')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((info) => {
+        if (!cancelled && info && typeof info === 'object') setServedByHost(true);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Visitor-QR auto-connect: `?connect=1` connects to the serving host's
+  // `/ws/state` (same origin) as a read-only viewer.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (connectRequested(window.location.search)) {
+      boothLink.connect(defaultStateUrl());
+    }
+  }, []);
 
   const toggleFreeze = useCallback(() => setFrozen((f) => toggleFrozen(f)), []);
 
@@ -398,10 +522,15 @@ export function App() {
 
   const qamposerConfig = useMemo(() => ({ maxQubits: BOARD_QUBITS }), []);
 
+  // While connected the booth's broadcast mode/wires override the local
+  // settings; standalone they fall back to the settings store.
+  const effectiveMode: BoothMode = boothMode ?? settings.mode;
+  const effectiveWires: Wires = boothWires ?? settings.wires;
+
   // Display-only wire count: the recognized `circuit` is always 5 qubits, but
-  // the editor draws `settings.wires` wires (compact auto-grows 3→5). Panels,
+  // the editor draws `effectiveWires` wires (compact auto-grows 3→5). Panels,
   // simulation, histogram and QASM all keep the physical 5-qubit `circuit`.
-  const displayed = useMemo(() => displayCircuit(circuit, settings.wires), [circuit, settings.wires]);
+  const displayed = useMemo(() => displayCircuit(circuit, effectiveWires), [circuit, effectiveWires]);
 
   // Auto-fit the editor so every displayed wire is visible on short phone
   // stages; a no-op (scale 1) on roomy iPad/desktop stages.
@@ -430,9 +559,12 @@ export function App() {
       : { cls: 'is-searching', label: 'searching…' }
     : { cls: 'is-off', label: 'camera off' };
 
-  const isGolf = settings.mode === 'golf';
+  const isGolf = effectiveMode === 'golf';
   const hasPanel = (p: PanelId) => settings.panels.includes(p);
-  const showCamera = hasPanel('camera') || camera.status !== 'idle';
+  // Viewer policy (design: read-only Display role): while connected to a booth
+  // the camera UI is hidden entirely — the booth is the source of truth.
+  const showCamera = !connected && (hasPanel('camera') || camera.status !== 'idle');
+  const boothPill = connectionPill(conn ?? 'connecting');
   const currentLevel = LEVELS[golfState.levelIndex];
   const golfTargets = useMemo(
     () => new Set<number>([0, (1 << currentLevel.qubits) - 1]),
@@ -507,18 +639,39 @@ export function App() {
         </div>
         {isGolf && <span className="pk-pill pk-pill--mode">Quantum Golf</span>}
         <span className="pk-spacer" />
-        <span className={`pk-pill ${camPill.cls}`} aria-label={camPill.label} title={camPill.label}>
-          <span className="pk-dot" aria-hidden="true" />
-          <span className="pk-pill-label">{camPill.label}</span>
-        </span>
+        {connected ? (
+          // Viewer: booth status pill (never a camera pill — no local pipeline).
+          <span
+            className={`pk-pill ${boothPill.cls}`}
+            aria-label={boothPill.label}
+            title={boothPill.label}
+          >
+            <span className="pk-dot" aria-hidden="true" />
+            <span className="pk-pill-label">{boothPill.label}</span>
+          </span>
+        ) : (
+          <span className={`pk-pill ${camPill.cls}`} aria-label={camPill.label} title={camPill.label}>
+            <span className="pk-dot" aria-hidden="true" />
+            <span className="pk-pill-label">{camPill.label}</span>
+          </span>
+        )}
         <a className="pk-help" href="#guide" aria-label="Guide and about" title="Guide & about">
           ?
         </a>
         <FullscreenButton variant="bar" />
         <SettingsControl />
-        {/* One switch, one position: the topbar button toggles Start ↔ Stop.
-            The start card below carries no button of its own. */}
-        {running ? (
+        {/* Connected → a Disconnect button (returns to the local pipeline). The
+            served-by-host probe offers a one-tap Connect. Standalone → the
+            Start ↔ Stop camera toggle. */}
+        {connected ? (
+          <button className="pk-btn is-stop" onClick={() => boothLink.disconnect()}>
+            Disconnect
+          </button>
+        ) : servedByHost ? (
+          <button className="pk-btn" onClick={() => boothLink.connect(defaultStateUrl())}>
+            Connect to booth
+          </button>
+        ) : running ? (
           <button className="pk-btn is-stop" onClick={camera.stop}>
             Stop
           </button>

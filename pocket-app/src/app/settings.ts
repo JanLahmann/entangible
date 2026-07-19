@@ -46,6 +46,15 @@ export interface Settings {
    * at `getUserMedia` time (see useCamera) and is reset to `null` there.
    */
   readonly cameraId: string | null;
+  /**
+   * Manually entered booth host for the Display role (docs/pocket.md, "Booth").
+   * Free-form as typed (`wss://host:8443`, `https://host:8443`, or a bare
+   * `host:8443`); it is normalized to the `/ws/state` URL only at connect time
+   * (see `sources/boothUrl.ts`). `null` = no saved booth. Persisted; also
+   * URL-overridable via `?booth=…`. The served-by-host and `?connect=1`
+   * triggers do NOT use this field — they connect to the serving origin.
+   */
+  readonly boothUrl: string | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -58,6 +67,7 @@ export const DEFAULT_SETTINGS: Settings = {
   debug: false,
   wires: 'compact',
   cameraId: null,
+  boothUrl: null,
 };
 
 /**
@@ -135,6 +145,13 @@ export function parseUrlOverrides(search: string): Partial<Settings> {
   const wires = params.get('wires');
   if (wires === 'compact' || wires === 'all') out.wires = wires;
 
+  // Manual booth host override (the drawer's Booth field seeded from a link).
+  const booth = params.get('booth');
+  if (booth !== null) {
+    const trimmed = booth.trim();
+    if (trimmed) out.boothUrl = trimmed;
+  }
+
   return out;
 }
 
@@ -152,6 +169,10 @@ export function sanitize(raw: unknown): Settings {
   // and only proven dead when getUserMedia rejects — then useCamera resets it.
   const cameraId: string | null =
     typeof r.cameraId === 'string' && r.cameraId.length > 0 ? r.cameraId : null;
+  // Booth URL is stored as typed (trimmed); it is normalized only at connect
+  // time. Anything that is not a non-empty string means "no saved booth".
+  const boothUrl: string | null =
+    typeof r.boothUrl === 'string' && r.boothUrl.trim().length > 0 ? r.boothUrl.trim() : null;
   return {
     mode,
     panels,
@@ -160,6 +181,7 @@ export function sanitize(raw: unknown): Settings {
     debug: r.debug === true,
     wires,
     cameraId,
+    boothUrl,
   };
 }
 
