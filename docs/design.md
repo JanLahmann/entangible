@@ -286,17 +286,43 @@ whole lesson).
   optionally asymmetric like real devices), applied classically to the final
   32-probability vector — cheap and exact.
 
-**Presets** (named, human, the UI surface): `Ideal` (off) · `Today's
-hardware` (defaults above) · `Early device` (~10× worse). The story arc
-"hardware is improving" comes free. Defaults tuned so Bell is visibly
-degraded but clearly Bell, and GHZ-5 shows recognizable-but-eroded peaks —
-tune against the fixtures below before shipping.
+This is the same channel family Qiskit's `NoiseModel.from_backend()` builds
+from a device snapshot (depolarizing to match gate error + thermal
+relaxation from T1/T2 + readout confusion) — deliberately, so parameters
+can be *sourced from real devices*, not invented.
+
+**Presets — parameters from IBM fake-backend snapshots (decided with Jan
+2026-07-19).** The defaults above were hand-picked round numbers; instead,
+extract them from `qiskit_ibm_runtime.fake_provider` calibration snapshots
+(T1/T2, per-gate error + duration, per-qubit asymmetric readout error):
+- `Ideal` — noise off.
+- `Today's hardware` — **FakeAachen** (156-qubit Heron snapshot): median
+  1q/2q gate error → p1/p2; median T1/T2 + a moment duration set to the
+  median 2q-gate duration → per-moment γ₁/γ_φ; median readout confusion.
+- `Early device` — a Falcon-era **5-qubit** fake (FakeManilaV2 or
+  FakeLimaV2): its 5 qubits map 1:1 onto our 5 wires, so this preset gets
+  *per-qubit* T1/T2/readout for free and is a genuinely real 2021-era
+  device — better story than an artificial "10× worse".
+
+The story arc "hardware is improving" is now literal (2021 device vs 2026
+device). Sanity-check against the fixtures below that Bell stays visibly
+degraded-but-Bell and GHZ-5 shows recognizable-but-eroded peaks; if a
+median-based preset is too subtle on a 6-gate booth circuit, prefer
+switching the statistic (e.g. worst-quartile qubits) over inventing
+numbers. UI labels stay human ("Today's hardware"); the Guide/fine print
+names the source ("based on an ibm_aachen calibration snapshot, 2026") —
+consistent with the existing IBM trademark disclaimer.
 
 **Implementation plan**:
 - `shared/quantum/noise.ts`: `noisyProbabilities(circuit, params): number[]`
   over a small complex-matrix kernel (Float64Array, interleaved re/im).
   Refactor `statevector.ts` to EXPORT its gate unitaries (single source of
   gate definitions for both simulators — no drift).
+- `tools/extract_noise_presets.py`: one-off uv script (dev dependency on
+  `qiskit-ibm-runtime`, NOT a runtime dependency) that reads the fake
+  backends and writes `shared/quantum/noisePresets.json` — checked in, with
+  backend name + snapshot provenance in the file — so the browser never
+  needs Qiskit and presets change only via a reviewed re-run.
 - UI: the shared Histogram gains an optional paired-bar series (ideal solid,
   noisy dimmed/hatched; classPrefix-safe so booth + pocket both get it).
   Toggle lives in the settings drawer (`noise: 'off'|'today'|'early'`) and a
@@ -307,7 +333,10 @@ tune against the fixtures below before shipping.
   probabilities exactly (parity test); (2) closed-form goldens (depolarized
   Bell, amplitude-damped |1⟩, readout on known vectors); (3) JSON fixtures
   generated once with Qiskit Aer's density-matrix simulator, TS compares
-  within 1e-9; (4) invariants: trace 1, Hermitian, probs sum to 1.
+  within 1e-9; (4) invariants: trace 1, Hermitian, probs sum to 1;
+  (5) ballpark cross-check: Bell under `NoiseModel.from_backend(FakeAachen)`
+  in Aer vs our simplified preset — same qualitative shape (no tight
+  tolerance; ours is deliberately uniform-median, not per-qubit/per-gate).
 - Phasing: NM0 math core + parity/goldens → NM1 histogram pairing + presets
   + settings → NM2 kiosk flag + docs + Guide sentence. Est. ~300 lines + tests.
 
