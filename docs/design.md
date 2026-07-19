@@ -115,6 +115,39 @@ Per Jan's question 2026-07-18: detection already recovers each marker's 90°-ste
 
 Per Jan 2026-07-18: trim unused qubits from the on-screen view. The board keeps 5 physical rows and the wire circuit always reports `qubits: 5`, but the display could show only rows `0..max_used` (collapse trailing empty wires, min 2 for composure, gentle expand/collapse animation as tiles appear on lower rows). Biggest win is the **histogram**: a 2-qubit circuit reads as 4 bars instead of 32 sparse ones. Middle unused rows must stay visible (hiding them would break the physical row ↔ screen wire mapping visitors rely on); only trailing rows collapse. Purely display-level — protocol and QASM keep the full register. Pairs naturally with the 1-row mini-mat idea from Bloch Golf.
 
+### Entangible One — DECIDED target architecture (per Jan 2026-07-19)
+
+**The booth becomes a mode of the pocket app: one app, three roles.** The
+two-app split (display-app + pocket-app) is retired once parity is reached.
+
+| Role | Trigger | Behavior |
+|---|---|---|
+| **Standalone** | default (entangible.org, any device) | on-device camera + TS detection + display (today's pocket) |
+| **Display** | served by a host (origin answers `/api/info` → auto-connect) or manual/QR "connect to booth"; `?kiosk` selects the big-screen vh-scale skin | state from `/ws/state` instead of the local pipeline; host-driven layout/mode/wires; multi-viewer sync; camera fleet + noisy-backend Run |
+| **Camera** | connected to a host, camera role selected | absorbs `/capture`: streams JPEG frames to the host with pocket's camera UI (zoom, freeze) |
+
+Key mechanism: a `StateSource` abstraction (`LocalPipelineSource` \|
+`BoothSocketSource`) feeding one shared shell; everything below it is already
+the shared `@quantum` layer. The host serves the unified app at `/` (it
+already serves the pocket build at `/pocket`); the staff `/debug` becomes a
+route of the same app.
+
+**Phases (each leaves everything working):**
+1. **SC1** — move `display-app/src/quantum` → neutral top-level `shared/`
+   (both apps alias); consolidate pure logic duplicates (displayWires,
+   outcomes/histogram math, warnings, hints, inspectCopy already shared).
+2. **SC2** — unify structural components behind the `classPrefix` pattern
+   (Histogram, Celebrations, MessageStrip, QASM/State panels, Scorecard,
+   TouchInspector) + one shared `tokens.css` (single design-system source).
+3. **U1** — `StateSource` abstraction + WS source + host serves the unified
+   app at `/`; display-app enters deprecation (kept until parity verified).
+4. **U2** — Camera role absorbs `/capture`.
+5. **U3** — kiosk skin (`?kiosk`, vh scale) + host-layout mapping + `/debug`
+   route; delete display-app; M5 packages ONE app.
+
+Consequences: features ship once for all roles; one deploy/test surface; M5
+(RasQberry packaging) serves the same app that runs at entangible.org.
+
 ### Quantum Golf — DECIDED (per Jan 2026-07-19, build today)
 
 Unifies the former "Bloch Golf" and "Q-sphere Golf" ideas under one name and
