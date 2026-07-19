@@ -126,6 +126,17 @@ two-app split (display-app + pocket-app) is retired once parity is reached.
 | **Display** | served by a host (origin answers `/api/info` → auto-connect) or manual/QR "connect to booth"; `?kiosk` selects the big-screen vh-scale skin | state from `/ws/state` instead of the local pipeline; host-driven layout/mode/wires; multi-viewer sync; camera fleet + noisy-backend Run |
 | **Camera** | connected to a host, camera role selected | absorbs `/capture`: streams JPEG frames to the host with pocket's camera UI (zoom, freeze) |
 
+**Viewer policy (per Jan 2026-07-19 — the visitor QR is view-only):** the
+Display role has two policies. `viewer` (default for QR-connected clients):
+read-only — receives circuit/detection/layout, local-only interactions
+(inspect popovers, Q-sphere rotation, own panel toggles); NEVER sends
+`select_camera`/`select_layout`/`select_mode`; no freeze of the booth; no
+camera-role offer. `operator` (staff, reached via /debug or an explicit
+operator URL): full controls incl. the camera role. QR audiences: the
+**visitor QR** (booth footer + attract mode, U1) links to the viewer; the
+**staff QR** stays on /debug only (today's /capture QR is staff-only — it can
+hijack the booth camera and must never be shown to visitors).
+
 Key mechanism: a `StateSource` abstraction (`LocalPipelineSource` \|
 `BoothSocketSource`) feeding one shared shell; everything below it is already
 the shared `@quantum` layer. The host serves the unified app at `/` (it
