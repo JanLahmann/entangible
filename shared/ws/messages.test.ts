@@ -15,6 +15,7 @@ import {
   type SelectCamera,
   type SelectMode,
   type SelectLayout,
+  type SelectNoise,
 } from './messages';
 
 // This suite runs under the pocket app (SC1 rule: shared tests run once there);
@@ -129,6 +130,7 @@ const layoutSample = {
   sidebar: 'right',
   panels: ['results'],
   wires: 'compact',
+  noise: 'off',
 } satisfies LayoutMessage;
 
 const selectModeSample = {
@@ -143,6 +145,11 @@ const selectLayoutSample = {
   wires: 'all',
 } satisfies SelectLayout;
 
+const selectNoiseSample = {
+  type: 'select_noise',
+  preset: 'heron',
+} satisfies SelectNoise;
+
 const SAMPLES: Record<string, unknown> = {
   circuit: circuitSample,
   detection: detectionSample,
@@ -153,6 +160,7 @@ const SAMPLES: Record<string, unknown> = {
   select_camera: selectCameraSample,
   select_mode: selectModeSample,
   select_layout: selectLayoutSample,
+  select_noise: selectNoiseSample,
 };
 
 /**
@@ -193,9 +201,9 @@ function assertKeysSubset(doc: unknown, sample: unknown, path: string): void {
 describe('protocol.md ⇄ messages.ts parity', () => {
   it('finds the documented jsonc blocks', () => {
     // Documented objects: circuit, detection, status, hello, select_camera,
-    // layout, select_mode, select_layout (the last two share one fenced block).
-    // (The /ws/frames capture hello is inline code, not a fenced block.)
-    expect(DOC_BLOCKS.length).toBeGreaterThanOrEqual(8);
+    // layout, select_mode, select_layout (the last two share one fenced block),
+    // select_noise. (The /ws/frames capture hello is inline code, not a block.)
+    expect(DOC_BLOCKS.length).toBeGreaterThanOrEqual(9);
   });
 
   it('every documented block `type` is a known message type', () => {

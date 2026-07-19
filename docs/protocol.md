@@ -23,7 +23,7 @@ surfaces stay fully open (no token, zero friction).
 | Surface                                              | Gate                          |
 |------------------------------------------------------|-------------------------------|
 | `/ws/state` reads (circuit/detection/status/layout)  | **open** — any client         |
-| `/ws/state` `select_camera` / `select_mode` / `select_layout` | operator `hello` (below) |
+| `/ws/state` `select_camera` / `select_mode` / `select_layout` / `select_noise` | operator `hello` (below) |
 | `/ws/frames` (phone frame intake)                    | `?key=<token>` (else close `4403`) |
 | `GET /debug/stream`, `GET /debug/snapshot.jpg` (MJPEG preview) | `?key=` or `X-Operator-Key` header (else `403`) |
 | `GET /api/qr`                                        | `?key=` or `X-Operator-Key` header (else `403`) |
@@ -128,7 +128,8 @@ not send the `select_*` control messages.
   carrying the resulting standing.
 - `select_camera` swaps the pipeline's frame source at runtime; the server
   answers with a fresh `status`. **Operator-only** — a viewer's `select_camera`
-  / `select_mode` / `select_layout` is silently ignored (no error, no `status`).
+  / `select_mode` / `select_layout` / `select_noise` is silently ignored (no
+  error, no `status`).
 - Unknown/malformed client messages are logged and ignored — never fatal.
 
 ### `layout` — panel/mode state (additive, booth-v2)
@@ -139,7 +140,8 @@ not send the `select_*` control messages.
   "mode": "composer",                    // "composer" | "golf" | "attract"
   "sidebar": "right",                    // "right" | "left"
   "panels": ["results", "state", "qasm"], // visible panels, in order (registry names)
-  "wires": "compact"                     // "compact" | "all" — displayed wire count
+  "wires": "compact",                    // "compact" | "all" — displayed wire count
+  "noise": "off"                         // "off"|"falcon"|"eagle"|"heron"|"nighthawk" — booth noise preset
 }
 ```
 
@@ -157,6 +159,14 @@ clients (forward-compatible).
 ```jsonc
 // partial select_layout allowed — omitted fields keep their current value
 { "type": "select_layout", "sidebar": "left", "panels": ["results", "qasm"] }
+```
+
+```jsonc
+{ "type": "select_noise", "preset": "heron" }
+// preset: "off"|"falcon"|"eagle"|"heron"|"nighthawk" — the booth-wide in-browser
+// noise-model preset. Operator-only (silently ignored from viewers, like the
+// other select_*); an unknown value is ignored. Updates layout.noise, persists
+// to layout.toml, and triggers a layout broadcast (also in late-joiner replay).
 ```
 
 Both persist to `layout.toml` and trigger a `layout` broadcast. REST siblings:

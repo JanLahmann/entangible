@@ -30,8 +30,12 @@ router = APIRouter()
 DEFAULT_MODE = "composer"
 DEFAULT_SIDEBAR = "right"
 DEFAULT_WIRES = "compact"
+DEFAULT_NOISE = "off"
 VALID_SIDEBARS = ("left", "right")
 VALID_WIRES = ("compact", "all")
+#: In-browser noise-model presets (one per IBM chip generation, plus off). Kept
+#: in lockstep with `NoisePreset` in shared/quantum/noise.ts + shared/ws/messages.ts.
+VALID_NOISE = ("off", "falcon", "eagle", "heron", "nighthawk")
 
 #: Per-mode default (preset) panel stacks, in display order (registry names).
 MODE_PANELS: dict[str, list[str]] = {
@@ -51,12 +55,14 @@ def default_panels(mode: str) -> list[str]:
 
 @dataclass
 class LayoutState:
-    """Current display layout: mode + sidebar side + visible panels + wire count."""
+    """Current display layout: mode + sidebar side + visible panels + wire count
+    + booth-wide noise-model preset."""
 
     mode: str = DEFAULT_MODE
     sidebar: str = DEFAULT_SIDEBAR
     panels: list[str] = field(default_factory=lambda: default_panels(DEFAULT_MODE))
     wires: str = DEFAULT_WIRES
+    noise: str = DEFAULT_NOISE
 
     def to_message(self) -> dict:
         """The ``layout`` server message (camelCase wire JSON is already flat)."""
@@ -66,6 +72,7 @@ class LayoutState:
             "sidebar": self.sidebar,
             "panels": list(self.panels),
             "wires": self.wires,
+            "noise": self.noise,
         }
 
     def to_dict(self) -> dict:
@@ -74,6 +81,7 @@ class LayoutState:
             "sidebar": self.sidebar,
             "panels": list(self.panels),
             "wires": self.wires,
+            "noise": self.noise,
         }
 
 
@@ -88,6 +96,7 @@ def _dump_toml(state: LayoutState) -> str:
         f"sidebar = {_toml_str(state.sidebar)}\n"
         f"panels = [{panels}]\n"
         f"wires = {_toml_str(state.wires)}\n"
+        f"noise = {_toml_str(state.noise)}\n"
     )
 
 
@@ -96,6 +105,7 @@ def _state_from_toml(data: dict) -> LayoutState:
     sidebar = data.get("sidebar")
     panels = data.get("panels")
     wires = data.get("wires")
+    noise = data.get("noise")
     state = LayoutState()
     if isinstance(mode, str):
         state.mode = mode
@@ -105,6 +115,8 @@ def _state_from_toml(data: dict) -> LayoutState:
         state.panels = [str(p) for p in panels]
     if isinstance(wires, str) and wires in VALID_WIRES:
         state.wires = wires
+    if isinstance(noise, str) and noise in VALID_NOISE:
+        state.noise = noise
     return state
 
 
@@ -175,6 +187,20 @@ class LayoutStore:
             else:
                 logger.info("ignoring select_layout with unknown wires: %r", wires)
         if changed:
+            self._save()
+        return self._state
+
+    def select_noise(self, preset: str) -> LayoutState:
+        """Set the booth-wide noise-model preset (persist on change).
+
+        An unknown preset is ignored (state unchanged) — the wire protocol only
+        defines ``off | falcon | eagle | heron | nighthawk``.
+        """
+        if preset not in VALID_NOISE:
+            logger.info("ignoring select_noise with unknown preset: %r", preset)
+            return self._state
+        if preset != self._state.noise:
+            self._state.noise = preset
             self._save()
         return self._state
 

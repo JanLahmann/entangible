@@ -14,9 +14,12 @@ import { Histogram as SharedHistogram } from '@shared/display/Histogram';
 export function Histogram({
   circuit,
   displayQubits,
+  noisy,
 }: {
   circuit: Circuit;
   displayQubits: number;
+  /** Optional noisy probability vector (from `@quantum/noise`) → paired bars. */
+  noisy?: readonly number[];
 }) {
   return (
     <SharedHistogram
@@ -25,6 +28,7 @@ export function Histogram({
       classPrefix="bo"
       microColData={false}
       uniformSuffix=" possibilities"
+      noisy={noisy}
     />
   );
 }

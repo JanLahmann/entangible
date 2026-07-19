@@ -63,7 +63,7 @@ async def _handle_message(websocket: WebSocket, raw: str) -> None:
     mtype = msg.get("type")
     if mtype == "hello":
         await _handle_hello(websocket, msg)
-    elif mtype in ("select_camera", "select_mode", "select_layout"):
+    elif mtype in ("select_camera", "select_mode", "select_layout", "select_noise"):
         # Control messages are operator-only. A viewer's attempt is silently
         # ignored (per design): no error is returned, just a debug log.
         if not websocket.app.state.hub.is_operator(websocket):
@@ -73,6 +73,8 @@ async def _handle_message(websocket: WebSocket, raw: str) -> None:
             await _handle_select_camera(websocket, msg)
         elif mtype == "select_mode":
             await _handle_select_mode(websocket, msg)
+        elif mtype == "select_noise":
+            await _handle_select_noise(websocket, msg)
         else:
             await _handle_select_layout(websocket, msg)
     else:
@@ -134,6 +136,16 @@ async def _handle_select_mode(websocket: WebSocket, msg: dict) -> None:
         return
     store = websocket.app.state.layout_store
     store.select_mode(mode)
+    await websocket.app.state.hub.publish_layout(store.message())
+
+
+async def _handle_select_noise(websocket: WebSocket, msg: dict) -> None:
+    preset = msg.get("preset")
+    if not isinstance(preset, str):
+        logger.info("ignoring select_noise without a string preset: %r", msg)
+        return
+    store = websocket.app.state.layout_store
+    store.select_noise(preset)
     await websocket.app.state.hub.publish_layout(store.message())
 
 

@@ -10,8 +10,8 @@
  *
  * Mapping (see @shared/ws/messages): the latest `circuit` message → circuit +
  * qasm; `detection.warnings` → the shared `friendlyWarning` envelope; the
- * `layout` message → boothMode (`golf` | else composer) + boothWires; the
- * socket's connection state → a coarse phase for the status pill.
+ * `layout` message → boothMode (`golf` | else composer) + boothWires +
+ * boothNoise; the socket's connection state → a coarse phase for the status pill.
  */
 import type { Circuit } from '@qamposer/react';
 import {
@@ -71,6 +71,7 @@ export function snapshotToUpdate(
     warnings: (snap.detection?.warnings ?? []).map(detectionWarningToInput),
     boothMode,
     boothWires: layout?.wires,
+    boothNoise: layout?.noise,
     connection: connectionPhase(snap.connectionState),
   };
 }

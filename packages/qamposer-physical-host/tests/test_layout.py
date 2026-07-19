@@ -20,12 +20,14 @@ def test_defaults_are_composer_preset():
     assert state.sidebar == "right"
     assert state.panels == ["results", "state", "qasm"]
     assert state.wires == "compact"
+    assert state.noise == "off"
     assert store.message() == {
         "type": "layout",
         "mode": "composer",
         "sidebar": "right",
         "panels": ["results", "state", "qasm"],
         "wires": "compact",
+        "noise": "off",
     }
 
 
@@ -157,6 +159,7 @@ def test_api_layout_default_shape(tmp_path):
             "sidebar": "right",
             "panels": ["results", "state", "qasm"],
             "wires": "compact",
+            "noise": "off",
         }
 
 
@@ -204,3 +207,105 @@ def test_ws_select_layout_wires_broadcasts(tmp_path):
             assert layout["wires"] == "all"
             assert layout["panels"] == ["results", "state", "qasm"]  # unchanged
         assert client.get("/api/layout").json()["wires"] == "all"
+
+
+# --- noise (booth-wide in-browser noise-model preset) ----------------------
+
+
+def test_select_noise_sets_preset_and_keeps_omitted():
+    store = LayoutStore(None)
+    store.select_noise("heron")  # mode/sidebar/panels/wires untouched
+    assert store.state.noise == "heron"
+    assert store.state.mode == "composer"
+    assert store.state.wires == "compact"
+    assert store.state.panels == ["results", "state", "qasm"]
+
+
+def test_select_noise_invalid_ignored():
+    store = LayoutStore(None)
+    store.select_noise("qutrit")
+    assert store.state.noise == "off"
+
+
+def test_select_mode_keeps_noise():
+    store = LayoutStore(None)
+    store.select_noise("eagle")
+    store.select_mode("golf")  # switching mode must not reset the noise preset
+    assert store.state.noise == "eagle"
+
+
+def test_noise_persist_roundtrip(tmp_path):
+    path = tmp_path / "layout.toml"
+    store = LayoutStore(path)
+    store.select_noise("nighthawk")
+    reloaded = LayoutStore(path)
+    assert reloaded.state.noise == "nighthawk"
+
+
+def test_ws_select_noise_broadcasts_for_operator(tmp_path):
+    app = _app(tmp_path)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/state") as ws:
+            ws.receive_json()  # status
+            ws.receive_json()  # seeded layout
+            authenticate_operator(ws, app)
+            ws.send_json({"type": "select_noise", "preset": "heron"})
+            layout = ws.receive_json()
+            assert layout["type"] == "layout"
+            assert layout["noise"] == "heron"
+            assert layout["panels"] == ["results", "state", "qasm"]  # unchanged
+        assert client.get("/api/layout").json()["noise"] == "heron"
+
+
+def test_ws_select_noise_replayed_to_late_joiner(tmp_path):
+    app = _app(tmp_path)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/state") as ws1:
+            ws1.receive_json()  # status
+            ws1.receive_json()  # seeded layout
+            authenticate_operator(ws1, app)
+            ws1.send_json({"type": "select_noise", "preset": "falcon"})
+            ws1.receive_json()  # updated layout broadcast
+
+            # A late joiner receives the current (changed) noise after status.
+            with client.websocket_connect("/ws/state") as ws2:
+                assert ws2.receive_json()["type"] == "status"
+                layout = ws2.receive_json()
+                assert layout["type"] == "layout"
+                assert layout["noise"] == "falcon"
+
+
+def test_ws_select_noise_ignored_for_viewers(tmp_path):
+    app = _app(tmp_path)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/state") as ws:
+            ws.receive_json()  # status
+            ws.receive_json()  # seeded layout
+            # No operator hello → select_noise is silently ignored (no broadcast).
+            ws.send_json({"type": "select_noise", "preset": "heron"})
+            ws.send_text("not json {")  # still alive, still no response
+            # Authenticate, then the same select_noise is honored.
+            authenticate_operator(ws, app)
+            ws.send_json({"type": "select_noise", "preset": "heron"})
+            layout = ws.receive_json()
+            assert layout["type"] == "layout"
+            assert layout["noise"] == "heron"
+        # The viewer attempt never mutated state (only the operator one did).
+        assert client.get("/api/layout").json()["noise"] == "heron"
+
+
+def test_ws_select_noise_invalid_value_ignored(tmp_path):
+    app = _app(tmp_path)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/state") as ws:
+            ws.receive_json()  # status
+            ws.receive_json()  # seeded layout
+            authenticate_operator(ws, app)
+            # An invalid preset leaves the state at the default 'off' (the
+            # re-broadcast layout — like select_mode/select_layout no-ops —
+            # carries the unchanged value).
+            ws.send_json({"type": "select_noise", "preset": "qutrit"})
+            layout = ws.receive_json()
+            assert layout["type"] == "layout"
+            assert layout["noise"] == "off"
+        assert client.get("/api/layout").json()["noise"] == "off"

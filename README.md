@@ -5,9 +5,12 @@ events, fairs, and booths build real quantum circuits on a table from printed
 gate tiles laid out on a printed board mat; a camera recognizes the layout
 (ArUco fiducial markers → OpenCV) and a big screen shows the live circuit and
 its simulation results via the existing [`@qamposer/react`](https://github.com/QAMP-62)
-editor (controlled mode, in-browser `localAdapter`, OpenQASM 2 export). Hosts:
-Raspberry Pi 4/5 and macOS; cameras: USB / Pi Camera / Continuity Camera /
-iPhone browser streaming.
+editor (controlled mode, in-browser `localAdapter`, OpenQASM 2 export). An
+optional in-browser noise model pairs realistic results beside the ideal ones
+with zero infrastructure — presets are calibration snapshots of four IBM chip
+generations (Falcon → Eagle → Heron → Nighthawk), so the "why quantum is hard"
+contrast works offline. Hosts: Raspberry Pi 4/5 and macOS; cameras: USB / Pi
+Camera / Continuity Camera / iPhone browser streaming.
 
 **One app, every role** ("Entangible One"): the same React app is the
 standalone composer at [entangible.org](https://entangible.org) (on-device

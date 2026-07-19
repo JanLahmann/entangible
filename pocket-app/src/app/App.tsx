@@ -23,6 +23,7 @@ import { defaultStateUrl } from '@shared/ws/stateSocket';
 import { friendlyWarning } from '@shared/display/warnings';
 import type { WarningInput } from '@shared/display/warnings';
 import type { Wires } from '@shared/display/wires';
+import type { NoisePreset } from '@quantum/noise';
 import { LocalPipelineSource } from '../sources/LocalPipelineSource';
 import { BoothSocketSource } from '../sources/BoothSocketSource';
 import { CameraRoleSource } from '../sources/CameraRoleSource';
@@ -345,6 +346,7 @@ export function App() {
   const [conn, setConn] = useState<ConnectionPhase | null>(null);
   const [boothMode, setBoothMode] = useState<BoothMode | null>(null);
   const [boothWires, setBoothWires] = useState<Wires | null>(null);
+  const [boothNoise, setBoothNoise] = useState<NoisePreset | null>(null);
   // Served by a booth host? (its own origin answers /api/info) — enables the
   // "Connect to booth" affordance. Cheap probe on startup; failures ignored.
   const [servedByHost, setServedByHost] = useState(false);
@@ -408,6 +410,7 @@ export function App() {
         if (update.connection) setConn(update.connection);
         setBoothMode(update.boothMode ?? null);
         setBoothWires(update.boothWires ?? null);
+        setBoothNoise(update.boothNoise ?? null);
       }
 
       if (update.circuit === appliedCircuitRef.current) return;
@@ -598,6 +601,7 @@ export function App() {
     setConn(null);
     setBoothMode(null);
     setBoothWires(null);
+    setBoothNoise(null);
     appliedCircuitRef.current = null;
     const source: StateSource = manual ? manualSourceRef.current : localSourceRef.current;
     const unsub = source.subscribe(applyUpdate);
@@ -739,10 +743,11 @@ export function App() {
 
   const qamposerConfig = useMemo(() => ({ maxQubits: BOARD_QUBITS }), []);
 
-  // While connected the booth's broadcast mode/wires override the local
+  // While connected the booth's broadcast mode/wires/noise override the local
   // settings; standalone they fall back to the settings store.
   const effectiveMode: BoothMode = boothMode ?? settings.mode;
   const effectiveWires: Wires = boothWires ?? settings.wires;
+  const effectiveNoise: NoisePreset = boothNoise ?? settings.noise;
 
   // Display-only wire count: the recognized `circuit` is always 5 qubits, but
   // the editor draws `effectiveWires` wires (compact auto-grows 3→5). Panels,
@@ -797,8 +802,8 @@ export function App() {
   // (circuit, preset, mode): the density-matrix sim is ~ms but must not re-run
   // every render. `undefined` when off → the ideal-only chart is unchanged.
   const noisyProbs = useMemo(
-    () => noiseSeries(circuit, settings.noise, isGolf),
-    [circuit, settings.noise, isGolf],
+    () => noiseSeries(circuit, effectiveNoise, isGolf),
+    [circuit, effectiveNoise, isGolf],
   );
 
   const cameraPanel = (

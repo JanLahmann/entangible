@@ -21,7 +21,7 @@ import {
   storeOperatorKey,
   withKey,
 } from '@shared/ws/operatorKey';
-import type { DisplayMode, SidebarSide, Wires } from '@shared/ws/messages';
+import type { DisplayMode, NoisePreset, SidebarSide, Wires } from '@shared/ws/messages';
 import { markerLabel } from './markerLabels';
 import './debug.css';
 
@@ -102,6 +102,9 @@ function PhoneCameraCard() {
 
 const DISPLAY_MODES: DisplayMode[] = ['composer', 'golf', 'attract'];
 
+/** Booth-wide noise-model presets (one per IBM chip generation, plus off). */
+const NOISE_PRESETS: NoisePreset[] = ['off', 'falcon', 'eagle', 'heron', 'nighthawk'];
+
 /** Known panel registry names (booth-v2). Live layout may add more. */
 const PANEL_REGISTRY = [
   'results',
@@ -127,6 +130,7 @@ function LayoutCard() {
   const sidebar = layout?.sidebar;
   const panels = layout?.panels ?? [];
   const wires = layout?.wires;
+  const noise = layout?.noise;
 
   // Registry order first, then any live panels not in the registry.
   const knownPanels = [
@@ -139,6 +143,8 @@ function LayoutCard() {
     socket.sendMessage({ type: 'select_layout', sidebar: s });
   const setWires = (w: Wires) =>
     socket.sendMessage({ type: 'select_layout', wires: w });
+  const setNoise = (n: NoisePreset) =>
+    socket.sendMessage({ type: 'select_noise', preset: n });
   const togglePanel = (panel: string, show: boolean) => {
     const next = show
       ? [...panels, panel]
@@ -215,6 +221,24 @@ function LayoutCard() {
               onClick={() => setWires(w)}
             >
               {w}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: '0.9rem' }}>
+        <div style={{ color: 'var(--ent-text-dim)', fontSize: '0.8rem', marginBottom: '0.35rem' }}>
+          noise
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {NOISE_PRESETS.map((n) => (
+            <button
+              key={n}
+              type="button"
+              style={pillStyle(noise === n)}
+              onClick={() => setNoise(n)}
+            >
+              {n}
             </button>
           ))}
         </div>

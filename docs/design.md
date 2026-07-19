@@ -256,7 +256,7 @@ trustworthiness. T3/T4 achieve the same outcome with all credential moments
 on IBM's own domain. Revisit only if IBM ships an OAuth device flow with
 browser CORS.
 
-### In-browser noise model — CONCEPT (task #27; designed 2026-07-19, not yet built)
+### In-browser noise model (task #27; designed + implemented 2026-07-19)
 
 **Why**: the booth's best teaching moment is "this is why quantum computing is
 hard" — ideal vs realistic results side by side. Today that needs the optional
@@ -341,13 +341,28 @@ consistent with the existing IBM trademark disclaimer.
 - **Validation**: (1) `noise=0` must reproduce `statevector.ts`
   probabilities exactly (parity test); (2) closed-form goldens (depolarized
   Bell, amplitude-damped |1⟩, readout on known vectors); (3) JSON fixtures
-  generated once with Qiskit Aer's density-matrix simulator, TS compares
-  within 1e-9; (4) invariants: trace 1, Hermitian, probs sum to 1;
+  generated once with `qiskit.quantum_info` (DensityMatrix / Kraus), TS
+  compares within 1e-9; (4) invariants: trace 1, Hermitian, probs sum to 1;
   (5) ballpark cross-check: Bell under `NoiseModel.from_backend(FakeAachen)`
   in Aer vs our simplified preset — same qualitative shape (no tight
   tolerance; ours is deliberately uniform-median, not per-qubit/per-gate).
 - Phasing: NM0 math core + parity/goldens → NM1 histogram pairing + presets
   + settings → NM2 kiosk flag + docs + Guide sentence. Est. ~300 lines + tests.
+
+**As built (2026-07-19).** Shipped in phases: NM0 density-matrix core +
+parity/goldens (`bce1491`); one preset per IBM chip generation
+falcon/eagle/heron/nighthawk (`6de3d53`, `2212566`); NM1 paired ideal/noisy
+Histogram + `noise` setting + `?noise=` override + drawer UI (`b46abc0`); NM2
+booth-wide operator control + docs + Guide sentence (this change). NM2 adds a
+`noise` field to the `layout` broadcast and a `select_noise {preset}` operator
+message (host validates + persists + replays; silently ignored from viewers,
+like the other `select_*`), a `/debug` preset control, viewer/kiosk plumbing
+(a booth-pushed preset overrides the local setting while connected; the kiosk
+falls back to `?noise=` when the host broadcasts none). One deliberate
+deviation from the plan above: the validation fixtures use `qiskit.quantum_info`
+(DensityMatrix / Kraus) rather than Aer — independent, trusted linear algebra
+applying the exact documented channel schedule, which carries less alignment
+risk than matching Aer's implicit channel ordering.
 
 ### Quantum Golf — DECIDED (per Jan 2026-07-19, build today)
 

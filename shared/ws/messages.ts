@@ -108,12 +108,24 @@ import type { Wires } from '@shared/display/wires';
 export type { Wires };
 
 /**
+ * Booth-wide in-browser noise-model preset (additive). One per IBM chip
+ * generation (oldest → newest) plus `off`; the canonical union lives in
+ * `@quantum/noise` (type-only import — no runtime dependency on the simulator),
+ * re-exported here so protocol consumers keep importing it from `ws/messages`.
+ */
+import type { NoisePreset } from '@quantum/noise';
+export type { NoisePreset };
+
+/**
  * `layout` — panel/mode state (additive, booth-v2).
  *
  * `panels` are registry names in display order (`results`, `state`, `qasm`,
  * `qsphere`, `scorecard`, `minicircuit`, `branding`, …). Unknown names are
  * ignored by clients (forward-compatible). Broadcast on change; the latest is
  * replayed to new clients after `status`.
+ *
+ * `noise` is the operator-controlled noise-model preset (default `off`);
+ * viewers/kiosk honor the broadcast value, overriding their local setting.
  */
 export interface LayoutMessage {
   type: 'layout';
@@ -121,6 +133,7 @@ export interface LayoutMessage {
   sidebar: SidebarSide;
   panels: string[];
   wires: Wires;
+  noise: NoisePreset;
 }
 
 /**
@@ -191,7 +204,22 @@ export interface SelectLayout {
   wires?: Wires;
 }
 
-export type ClientMessage = ClientHello | SelectCamera | SelectMode | SelectLayout;
+/**
+ * `select_noise` — set the booth-wide noise-model preset (additive).
+ * Operator-only; a viewer's attempt is silently ignored (as with the other
+ * `select_*`). An unknown preset value is ignored server-side.
+ */
+export interface SelectNoise {
+  type: 'select_noise';
+  preset: NoisePreset;
+}
+
+export type ClientMessage =
+  | ClientHello
+  | SelectCamera
+  | SelectMode
+  | SelectLayout
+  | SelectNoise;
 
 // ---------------------------------------------------------------------------
 // Type-string tables (consumed by the parity test)
@@ -212,6 +240,7 @@ export const CLIENT_MESSAGE_TYPES = [
   'select_camera',
   'select_mode',
   'select_layout',
+  'select_noise',
 ] as const;
 
 /** Union of all documented `type` discriminators (server + client). */

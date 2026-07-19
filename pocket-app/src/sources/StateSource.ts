@@ -18,6 +18,7 @@
  */
 import type { Circuit } from '@qamposer/react';
 import type { Wires } from '@shared/display/wires';
+import type { NoisePreset } from '@quantum/noise';
 import type { WarningInput } from '@shared/display/warnings';
 
 /** Which kind of source produced an update. */
@@ -45,6 +46,8 @@ export interface StateUpdate {
   readonly boothMode?: BoothMode;
   /** Host-driven wire count; when present it overrides the local setting. */
   readonly boothWires?: Wires;
+  /** Host-driven noise preset; when present it overrides the local setting. */
+  readonly boothNoise?: NoisePreset;
   /** Connection phase (booth only). */
   readonly connection?: ConnectionPhase;
 }

@@ -68,7 +68,14 @@ describe('snapshotToUpdate (pure mapping)', () => {
         markers: [],
         warnings: [{ code: 'lone_control', message: 'lonely', col: 2 }],
       },
-      layout: { type: 'layout', mode: 'golf', sidebar: 'right', panels: ['results'], wires: 'all' },
+      layout: {
+        type: 'layout',
+        mode: 'golf',
+        sidebar: 'right',
+        panels: ['results'],
+        wires: 'all',
+        noise: 'heron',
+      },
     } as unknown as StateSnapshot;
 
     const update = snapshotToUpdate(snap, fallback);
@@ -78,6 +85,7 @@ describe('snapshotToUpdate (pure mapping)', () => {
     expect(update.warnings).toEqual([{ code: 'lone_control', col: 2, message: 'lonely' }]);
     expect(update.boothMode).toBe('golf');
     expect(update.boothWires).toBe('all');
+    expect(update.boothNoise).toBe('heron');
     expect(update.connection).toBe('open');
   });
 
@@ -88,6 +96,7 @@ describe('snapshotToUpdate (pure mapping)', () => {
     expect(update.qasm).toBeUndefined();
     expect(update.warnings).toEqual([]);
     expect(update.boothMode).toBeUndefined();
+    expect(update.boothNoise).toBeUndefined();
     expect(update.connection).toBe('connecting');
   });
 

@@ -36,7 +36,9 @@ import {
 import { useKioskState } from './kioskSocket';
 import { friendlyWarning } from '@shared/display/warnings';
 import type { ConnectionState } from '@shared/ws/stateSocket';
-import type { CircuitMessage, Wires } from '@shared/ws/messages';
+import type { CircuitMessage, NoisePreset, Wires } from '@shared/ws/messages';
+import { noiseSeries } from '../app/ResultsHistogram';
+import { parseUrlOverrides } from '../app/settings';
 import {
   evaluateMoment,
   initialMomentState,
@@ -121,11 +123,22 @@ export function KioskView() {
   const { circuit, detection, status, connectionState } = snapshot;
   // Layout arrives via an additive message; tolerate its absence.
   const layout = (
-    snapshot as { layout?: { panels?: string[]; mode?: string; wires?: Wires } }
+    snapshot as {
+      layout?: { panels?: string[]; mode?: string; wires?: Wires; noise?: NoisePreset };
+    }
   ).layout;
   const panels = layout?.panels ?? DEFAULT_PANELS;
   const mode = layout?.mode ?? 'composer';
   const wires: Wires = layout?.wires ?? 'compact';
+  // Noise preset precedence: the booth broadcast (layout.noise) wins; before any
+  // layout arrives (or an older host that omits it) fall back to the `?noise=`
+  // URL override; else off. Parsed once — the URL never changes mid-session.
+  const [urlNoise] = useState<NoisePreset | undefined>(() =>
+    typeof window !== 'undefined'
+      ? parseUrlOverrides(window.location.search).noise
+      : undefined,
+  );
+  const noisePreset: NoisePreset = layout?.noise ?? urlNoise ?? 'off';
 
   // Kiosk mode implies the Display role: it requires a connected booth source.
   // Show a clear connect-pending screen until the socket has opened at least
@@ -270,12 +283,20 @@ export function KioskView() {
 
   const qamposerConfig = useMemo(() => ({ maxQubits: BOARD_QUBITS }), []);
 
+  // In-browser noise model (composer only — golf stays ideal). Memoized on
+  // (circuit, preset, mode): the density-matrix sim is ~ms but must not re-run
+  // every render. `undefined` when off → the ideal-only histogram is unchanged.
+  const noisyProbs = useMemo(
+    () => noiseSeries(liveCircuit, noisePreset, mode === 'golf'),
+    [liveCircuit, noisePreset, mode],
+  );
+
   const panelFor = (name: string) => {
     switch (name) {
       case 'results':
         return (
           <div key="results">
-            <Histogram circuit={liveCircuit} displayQubits={displayedQubits} />
+            <Histogram circuit={liveCircuit} displayQubits={displayedQubits} noisy={noisyProbs} />
             <NoisyRun circuit={liveCircuit} onMessage={pushStrip} />
           </div>
         );

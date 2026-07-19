@@ -683,6 +683,65 @@
   text-align: center;
 }
 
+/* ---- Paired (ideal + noisy) bars + legend, big-screen scale ---------- */
+
+/* The pair wrapper stands in for a single bar; the two bars fill it,
+   bottom-aligned, so the surrounding column layout is unchanged. */
+.bo-h-pair {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.4vh;
+  width: 100%;
+}
+.bo-h-pair .bo-h-bar {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+/* Noisy bar: hatched amber — distinct from the solid ideal bar by both hue and
+   texture (so it reads even in grayscale / for color-vision deficiency). */
+.bo-h-bar--noisy {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--warn) 0,
+    var(--warn) 3px,
+    color-mix(in srgb, var(--warn) 40%, transparent) 3px,
+    color-mix(in srgb, var(--warn) 40%, transparent) 6px
+  );
+  opacity: 0.92;
+}
+
+.bo-h-legend {
+  display: flex;
+  gap: 2vh;
+  margin-top: 1vh;
+  font-size: 1.25vh;
+  color: var(--muted);
+}
+.bo-h-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6vh;
+}
+.bo-h-swatch {
+  width: 1.4vh;
+  height: 1.4vh;
+  border-radius: 2px;
+  background: var(--bars);
+  flex: none;
+}
+.bo-h-swatch--noisy {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--warn) 0,
+    var(--warn) 3px,
+    color-mix(in srgb, var(--warn) 40%, transparent) 3px,
+    color-mix(in srgb, var(--warn) 40%, transparent) 6px
+  );
+}
+
 /* ---- STATE stat rows -------------------------------------------------- */
 
 .bo-stats {
