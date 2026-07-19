@@ -55,11 +55,16 @@ export function zeroState(): StateVector {
 // ---------------------------------------------------------------------------
 
 /** Row-major 2×2 matrix: [m00, m01, m10, m11]. */
-type Matrix2 = readonly [Complex, Complex, Complex, Complex];
+export type Matrix2 = readonly [Complex, Complex, Complex, Complex];
 
 const R = Math.SQRT1_2;
 
-function gateMatrix(g: Gate): Matrix2 | null {
+/**
+ * The 2×2 unitary of a single-qubit gate (row-major), or `null` for CNOT
+ * (handled separately). Exported as the single source of gate definitions so
+ * the density-matrix noise simulator cannot drift from this one.
+ */
+export function singleQubitUnitary(g: Gate): Matrix2 | null {
   switch (g.type) {
     case 'H':
       return [cx(R), cx(R), cx(R), cx(-R)];
@@ -122,6 +127,45 @@ function applyCnot(state: StateVector, control: number, target: number): void {
 }
 
 // ---------------------------------------------------------------------------
+// Exported gate unitaries (single source for both simulators)
+// ---------------------------------------------------------------------------
+
+/**
+ * A gate as a dense unitary plus the qubits it acts on. `matrix` is row-major
+ * over the local 2^k-dimensional subspace, whose basis index orders the given
+ * `qubits` most-significant-first: for CNOT `qubits = [control, target]` and
+ * local index `(controlBit << 1) | targetBit`.
+ *
+ * This is the ONE place gate matrices are defined; the noise simulator consumes
+ * it so the two engines can never disagree (guarded by the parity test).
+ */
+export interface GateUnitary {
+  readonly matrix: readonly Complex[];
+  readonly qubits: readonly number[];
+}
+
+const CNOT_MATRIX: readonly Complex[] = [
+  cx(1), cx(0), cx(0), cx(0),
+  cx(0), cx(1), cx(0), cx(0),
+  cx(0), cx(0), cx(0), cx(1),
+  cx(0), cx(0), cx(1), cx(0),
+];
+
+/** Dense unitary of a gate, or `null` if it is malformed / out of range. */
+export function gateUnitary(g: Gate): GateUnitary | null {
+  if (g.type === 'CNOT') {
+    if (g.control == null || g.target == null) return null;
+    if (g.control >= NUM_QUBITS || g.target >= NUM_QUBITS) return null;
+    return { matrix: CNOT_MATRIX, qubits: [g.control, g.target] };
+  }
+  const q = g.qubit;
+  if (q == null || q >= NUM_QUBITS) return null;
+  const m = singleQubitUnitary(g);
+  if (!m) return null;
+  return { matrix: m, qubits: [q] };
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -138,7 +182,7 @@ export function statevector(circuit: Circuit): StateVector {
     } else {
       const q = g.qubit;
       if (q == null || q >= NUM_QUBITS) continue;
-      const m = gateMatrix(g);
+      const m = singleQubitUnitary(g);
       if (m) applySingle(state, q, m);
     }
   }
