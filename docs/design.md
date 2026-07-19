@@ -176,10 +176,12 @@ Consequences: features ship once for all roles; one deploy/test surface; M5
 
 **Simplified per Jan 2026-07-19: ONE "Transfer to IBM Composer" button** in
 the pocket app (visible whenever a circuit exists; also in the future viewer).
-Behavior: copy the QASM to the clipboard AND open the Composer in a new tab
-with the QASM attached as an optimistic URL param (old IQX `?initial=`
-convention — pre-fills if honored, harmless if ignored) + a toast: "QASM
-copied — paste into the Composer's code editor if it doesn't appear." A small
+Behavior: copy the QASM to the clipboard AND open the Composer in a new tab,
+with a confident toast: "QASM copied — in the Composer choose View → Code
+Editor and paste." (VERIFIED 2026-07-19 by analyzing the Composer's full
+8.5 MB client bundle incl. lazy chunks: the current cloud Composer has NO
+URL circuit initialization — the old IQX `?initial=` did not survive the
+platform migration. Clipboard+paste is the flow, not a fallback.) A small
 Guide note covers the free-account step. Copy/Download/Share and the Qiskit
 snippet remain optional extras, not requirements. Original phase sketch kept
 below for reference:
