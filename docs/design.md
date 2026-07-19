@@ -131,6 +131,17 @@ MVP is the engine seed. Build plan (QG0–QG3):
 - **QG2 Level-1 Bloch view**: 2D Bloch projection (SVG, shared math in
   `@quantum`, per-app styling): ball at the state's (θ,φ), |0⟩ pole top,
   target flag, family styling. Levels 2–5 keep the 2D Q-sphere.
+- **QG2b standard Q-sphere display (per Jan 2026-07-19 — ours to build,
+  distinct from the animated evolution)**: a true 3D-projected Q-sphere,
+  Qiskit-style — |0…0⟩ north, latitude rings by Hamming weight, node radius =
+  |amplitude|, fill = phase hue, stems to center — implemented as pure math in
+  `display-app/src/quantum/qsphere.ts` (sphere layout + orthographic
+  projection with a rotatable view matrix) and thin per-app SVG renderers.
+  No WebGL/three.js (≤32 nodes; painter's-algorithm depth sort; Pi-friendly).
+  Motion = VIEW only: slow idle spin + drag-to-rotate (touch) — the camera
+  moves, never the state (state animation stays with qsphere-evolution).
+  Consumers: booth `qsphere` panel (registry slot exists), Quantum Golf
+  levels 2–5 (replaces the flat QSphere2D), pocket optional RESULTS panel.
 - **QG3 booth golf mode**: BoothView `mode === 'golf'` renders the golf
   sidebar (Bloch/Q-sphere view per level + scorecard; circuit stays on
   stage), hole-in celebrations, level advance on board clear — switched live
