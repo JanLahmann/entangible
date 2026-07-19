@@ -24,9 +24,15 @@ import type { WarningInput } from '@shared/display/warnings';
 import type { Wires } from '@shared/display/wires';
 import { LocalPipelineSource } from '../sources/LocalPipelineSource';
 import { BoothSocketSource } from '../sources/BoothSocketSource';
+import { CameraRoleSource } from '../sources/CameraRoleSource';
 import type { BoothMode, ConnectionPhase, StateSource, StateUpdate } from '../sources/StateSource';
 import { boothLink, useBoothLink } from './boothLink';
+import { cameraRoleLink, useCameraRole } from './cameraRoleLink';
 import { cameraSwitchAction, connectionPill, connectRequested } from '../sources/boothUrl';
+import { cameraRoleOffered, framesUrlFromStateUrl, roleRequested } from '../sources/cameraRole';
+import { getOperatorKey, withKey } from '@shared/ws/operatorKey';
+import { framesSocketUrl } from '@shared/capture/streamController';
+import type { FrameStreamerStatus } from '@shared/capture/frameStreamer';
 import { useCamera } from './useCamera';
 import { pinchZoom, pointerDistance, type Point as PinchPoint } from './zoom';
 import { MessageStrip, type StripMessage } from './MessageStrip';
@@ -256,6 +262,15 @@ function drawOverlay(
   ctx.fillText(line, pad, pad);
 }
 
+/** Status-pill label + style hook for the CAMERA role's streaming connection. */
+function cameraStreamPill(status: FrameStreamerStatus | null): { label: string; cls: string } {
+  if (!status || status.connection === 'connecting')
+    return { label: 'Connecting to booth…', cls: 'is-searching' };
+  if (status.connection === 'reconnecting') return { label: 'Reconnecting…', cls: 'is-searching' };
+  if (status.connection === 'closed') return { label: 'Stream stopped', cls: 'is-off' };
+  return { label: `Streaming to booth · ${Math.round(status.fps)} fps`, cls: 'is-live' };
+}
+
 export function App() {
   const settings = useSettings();
   const route = useRoute();
@@ -263,6 +278,13 @@ export function App() {
   // Connected as a booth viewer when a link target is set (design: read-only
   // Display role — the visitor QR is view-only).
   const connected = boothUrl !== null;
+  // Staff CAMERA role (U2): the phone streams frames to a host as its camera.
+  const cameraRoleState = useCameraRole();
+  const cameraRole = cameraRoleState.active;
+  // Operator credential present? (from `?key=`, or previously stored.) Reading
+  // it once here also persists any URL key and scrubs it from the address bar
+  // (shared operatorKey helper) — the credential is never shown in the UI.
+  const operatorKeyPresent = useMemo(() => getOperatorKey() != null, []);
   const [circuit, setCircuit] = useState<Circuit>(() => createDefaultCircuit(BOARD_QUBITS));
   const [warnings, setWarnings] = useState<WarningInput[]>([]);
   // Booth-driven metadata (null while standalone). `boothMode`/`boothWires`
@@ -281,6 +303,8 @@ export function App() {
   const [, setDebugTick] = useState(0);
   // Freeze: session-momentary; starts unfrozen and persists nothing.
   const [frozen, setFrozen] = useState(false);
+  // CAMERA role streaming status (fps + connection) for the status pill.
+  const [streamStatus, setStreamStatus] = useState<FrameStreamerStatus | null>(null);
 
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const fpsRef = useRef(0);
@@ -299,6 +323,8 @@ export function App() {
   // Remembers whether the camera was running when we entered booth mode, so a
   // disconnect can resume the local pipeline cleanly.
   const resumeCameraRef = useRef(false);
+  // CAMERA role streaming controller (frames socket + operator select_camera).
+  const cameraRoleSourceRef = useRef<CameraRoleSource | null>(null);
 
   // Keep frame-loop closures reading the current mode/debug flags.
   const modeRef = useRef(settings.mode);
@@ -400,12 +426,21 @@ export function App() {
     pushStrip('Selected camera unavailable — using default');
   }, [pushStrip]);
 
+  // CAMERA role sink: hand each zoomed camera frame to the streaming controller
+  // (which paces + JPEG-encodes + pushes it to the host). Reads the controller
+  // through a ref so its identity is stable; `undefined` while not in the role
+  // keeps useCamera on the normal detection path.
+  const onFrame = useCallback((canvas: HTMLCanvasElement) => {
+    cameraRoleSourceRef.current?.offerFrame(canvas);
+  }, []);
+
   const camera = useCamera({
     onResult,
     lowPower: settings.lowpower,
     paused: frozen,
     cameraId: settings.cameraId,
     onCameraFallback,
+    onFrame: cameraRole ? onFrame : undefined,
   });
   fpsRef.current = camera.fps;
 
@@ -474,13 +509,67 @@ export function App() {
   }, []);
 
   // Visitor-QR auto-connect: `?connect=1` connects to the serving host's
-  // `/ws/state` (same origin) as a read-only viewer.
+  // `/ws/state` (same origin) as a read-only viewer — UNLESS the staff QR also
+  // asked for the camera role (`?connect=1&role=camera`), which is handled below.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (connectRequested(window.location.search)) {
+    const search = window.location.search;
+    if (connectRequested(search) && roleRequested(search) === null) {
       boothLink.connect(defaultStateUrl());
     }
   }, []);
+
+  // Staff-QR camera-role auto-entry: `?connect=1&role=camera&key=<token>` opens
+  // the pocket app already streaming as the booth's camera. Requires the
+  // operator key (else the host would reject the frames socket); the serving
+  // origin IS the host, so we enter with the same-origin target (stateUrl null).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (roleRequested(window.location.search) === 'camera' && operatorKeyPresent) {
+      cameraRoleLink.enter(null);
+    }
+  }, [operatorKeyPresent]);
+
+  // CAMERA role lifecycle: while active, open the streaming controller (frames
+  // socket + operator `select_camera {kind:'push'}` on /ws/state) and poll its
+  // fps for the status pill. Cleanup on exit tears both sockets down; the still-
+  // running camera then falls back to the local pipeline (onFrame → undefined).
+  useEffect(() => {
+    if (!cameraRole) {
+      setStreamStatus(null);
+      return;
+    }
+    const stateUrl = cameraRoleState.stateUrl ?? defaultStateUrl();
+    const framesBase = cameraRoleState.stateUrl
+      ? framesUrlFromStateUrl(cameraRoleState.stateUrl)
+      : framesSocketUrl();
+    const source = new CameraRoleSource({
+      framesUrl: withKey(framesBase),
+      stateUrl,
+      operatorKey: () => getOperatorKey(),
+    });
+    cameraRoleSourceRef.current = source;
+    const unsub = source.subscribe(setStreamStatus);
+    source.start();
+    setStreamStatus(source.getStatus());
+    const poll = window.setInterval(() => setStreamStatus(source.getStatus()), 500);
+    return () => {
+      window.clearInterval(poll);
+      unsub();
+      source.stop();
+      cameraRoleSourceRef.current = null;
+    };
+  }, [cameraRole, cameraRoleState.stateUrl]);
+
+  // Entering the camera role auto-starts the camera (staff scan a QR and expect
+  // it streaming); leaving it keeps the camera running so the local pipeline
+  // resumes (design: "returning to standalone mode, local pipeline resumes").
+  useEffect(() => {
+    if (!cameraRole) return;
+    if (cameraStatusRef.current === 'idle' || cameraStatusRef.current === 'error') {
+      void cameraStartRef.current();
+    }
+  }, [cameraRole]);
 
   const toggleFreeze = useCallback(() => setFrozen((f) => toggleFrozen(f)), []);
 
@@ -565,6 +654,11 @@ export function App() {
   // the camera UI is hidden entirely — the booth is the source of truth.
   const showCamera = !connected && (hasPanel('camera') || camera.status !== 'idle');
   const boothPill = connectionPill(conn ?? 'connecting');
+  // Camera-role offer gating (design: "connected to a host, camera role
+  // selected"): only when a host is known AND an operator key is present.
+  const hostKnown = servedByHost || settings.boothUrl != null;
+  const cameraRoleAvailable = cameraRoleOffered({ hostKnown, hasKey: operatorKeyPresent });
+  const streamPill = cameraStreamPill(streamStatus);
   const currentLevel = LEVELS[golfState.levelIndex];
   const golfTargets = useMemo(
     () => new Set<number>([0, (1 << currentLevel.qubits) - 1]),
@@ -629,6 +723,50 @@ export function App() {
     </>
   );
 
+  // CAMERA role: a focused streaming screen (design: "streams JPEG frames to the
+  // host with pocket's camera UI"). The circuit stage is the host's job now, so
+  // the phone shows only its camera preview (zoom + freeze) + streaming status.
+  if (cameraRole) {
+    return (
+      <div className="pk pk--camera-role">
+        <header className="pk-topbar">
+          <div className="pk-brand">
+            <span className="en">En</span>
+            <span className="pk-brand-rest">tangible</span>
+            <small>camera</small>
+          </div>
+          <span className="pk-spacer" />
+          <span className={`pk-pill ${streamPill.cls}`} aria-label={streamPill.label} title={streamPill.label}>
+            <span className="pk-dot" aria-hidden="true" />
+            <span className="pk-pill-label">{streamPill.label}</span>
+          </span>
+          <a className="pk-help" href="#guide" aria-label="Guide and about" title="Guide & about">
+            ?
+          </a>
+          <FullscreenButton variant="bar" />
+          <SettingsControl cameraRoleAvailable={cameraRoleAvailable} />
+          <button className="pk-btn is-stop" onClick={() => cameraRoleLink.exit()}>
+            Stop
+          </button>
+        </header>
+        <main className="pk-main pk-camera-role-main">
+          <section className="pk-stage">
+            <CameraPanel
+              camera={camera}
+              overlayRef={overlayRef}
+              boardLocked={boardLocked}
+              visible
+              frozen={frozen}
+              onToggleFreeze={toggleFreeze}
+              stream={streamStatus}
+            />
+          </section>
+        </main>
+        {route === 'guide' && <GuidePage />}
+      </div>
+    );
+  }
+
   return (
     <div className="pk">
       <header className="pk-topbar">
@@ -659,7 +797,7 @@ export function App() {
           ?
         </a>
         <FullscreenButton variant="bar" />
-        <SettingsControl />
+        <SettingsControl cameraRoleAvailable={cameraRoleAvailable} />
         {/* Connected → a Disconnect button (returns to the local pipeline). The
             served-by-host probe offers a one-tap Connect. Standalone → the
             Start ↔ Stop camera toggle. */}
@@ -750,6 +888,7 @@ function CameraPanel({
   visible,
   frozen,
   onToggleFreeze,
+  stream = null,
 }: {
   camera: ReturnType<typeof useCamera>;
   overlayRef: React.RefObject<HTMLCanvasElement>;
@@ -757,9 +896,16 @@ function CameraPanel({
   visible: boolean;
   frozen: boolean;
   onToggleFreeze: () => void;
+  /**
+   * CAMERA role: when set, the panel is streaming to a host — the fps chip
+   * reflects the stream (not the local pipeline) and the hint reads "Streaming
+   * to booth" instead of the board-lock prompt. `null` → normal detection panel.
+   */
+  stream?: FrameStreamerStatus | null;
 }) {
   const { status, error, fps, videoRef, zoom, zoomRange, previewScale, setZoom, stepZoom, resetZoom } =
     camera;
+  const streaming = stream != null;
 
   // Pinch-to-zoom (two pointers) + double-tap-to-reset on the preview.
   const pointersRef = useRef<Map<number, PinchPoint>>(new Map());
@@ -834,7 +980,7 @@ function CameraPanel({
           <video ref={videoRef} playsInline muted style={{ transform: `scale(${previewScale})` }} />
           <canvas ref={overlayRef} className="pk-overlay" />
           <FullscreenButton variant="cam" />
-          <span className="pk-cam-fps">{fps} fps</span>
+          <span className="pk-cam-fps">{streaming ? Math.round(stream!.fps) : fps} fps</span>
           <FreezePill frozen={frozen} onToggle={onToggleFreeze} />
           <ZoomPill
             zoom={zoom}
@@ -845,7 +991,13 @@ function CameraPanel({
           />
           {frozen ? (
             <div className="pk-frozen-msg" role="status">
-              <span aria-hidden="true">❄</span> Frozen — circuit locked
+              <span aria-hidden="true">❄</span> Frozen — {streaming ? 'stream paused' : 'circuit locked'}
+            </div>
+          ) : streaming ? (
+            <div className="pk-cam-hint">
+              {stream!.connection === 'open'
+                ? 'Streaming to the booth — this phone is the camera'
+                : 'Connecting to the booth…'}
             </div>
           ) : (
             !boardLocked && (
@@ -858,15 +1010,25 @@ function CameraPanel({
           {/* Keep the video element mounted so the ref is stable across starts. */}
           <video ref={videoRef} playsInline muted style={{ display: 'none' }} />
           <div className={`pk-startcard ${status === 'error' ? 'is-error' : ''}`}>
-            <h2>{status === 'error' ? 'Camera unavailable' : 'Point your iPad at the board'}</h2>
+            <h2>
+              {status === 'error'
+                ? 'Camera unavailable'
+                : streaming
+                  ? 'Starting the booth camera…'
+                  : 'Point your iPad at the board'}
+            </h2>
             <p>
               {status === 'error'
                 ? error
-                : 'Start the camera, then frame the printed mat so all four corner markers are visible. Place tiles and watch the circuit build itself.'}
+                : streaming
+                  ? 'This phone is streaming its camera to the booth. Point it at the board from above; the booth screen shows the recognized circuit.'
+                  : 'Start the camera, then frame the printed mat so all four corner markers are visible. Place tiles and watch the circuit build itself.'}
             </p>
-            <a className="pk-startcard-link" href="#guide">
-              New here? Read the guide
-            </a>
+            {!streaming && (
+              <a className="pk-startcard-link" href="#guide">
+                New here? Read the guide
+              </a>
+            )}
           </div>
         </div>
       )}

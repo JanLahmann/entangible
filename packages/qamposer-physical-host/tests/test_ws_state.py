@@ -57,6 +57,36 @@ def test_operator_hello_acked_as_operator():
             assert ack == {"type": "hello_ack", "role": "operator"}
 
 
+def test_camera_role_hello_acked_as_operator():
+    # U2: the pocket CAMERA role announces itself as role='camera' and, with the
+    # operator key, gains operator standing (so its select_camera is honored) —
+    # while keeping the 'camera' label so the host can list it as a camera.
+    app = _make_app(FakePipeline())
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/state") as ws:
+            ws.receive_json()  # status
+            ws.receive_json()  # layout
+            ws.send_json(
+                {"type": "hello", "role": "camera", "client": "pocket-camera",
+                 "key": app.state.operator_token}
+            )
+            ack = ws.receive_json()
+            assert ack == {"type": "hello_ack", "role": "operator"}
+            roles = [c["role"] for c in app.state.hub._clients.values()]
+            assert "camera" in roles
+
+
+def test_camera_role_without_key_stays_viewer():
+    app = _make_app(FakePipeline())
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/state") as ws:
+            ws.receive_json()  # status
+            ws.receive_json()  # layout
+            ws.send_json({"type": "hello", "role": "camera", "client": "pocket-camera"})
+            ack = ws.receive_json()
+            assert ack == {"type": "hello_ack", "role": "viewer"}
+
+
 def test_select_camera_ignored_for_viewers():
     pipeline = FakePipeline()
     app = _make_app(pipeline)

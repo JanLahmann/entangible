@@ -108,10 +108,10 @@ not send the `select_*` control messages.
 
 ```jsonc
 { "type": "hello", "role": "display", "client": "booth-screen", "key": "<token>" }
-// role: "display" | "debug" | "capture-ui" | "operator"
+// role: "display" | "debug" | "capture-ui" | "camera" | "operator"
 // client: free-form label, optional
-// key: operator token; send it with role "operator" to unlock the select_* controls.
-//      Viewers omit it (or send any other role) and stay read-only.
+// key: operator token; send it with role "operator" (or "camera") to unlock the
+//      select_* controls. Viewers omit it (or send any other role) and stay read-only.
 ```
 
 ```jsonc
@@ -120,10 +120,11 @@ not send the `select_*` control messages.
 ```
 
 - `hello` is courtesy metadata (feeds `status.clients` labeling); the server
-  must not require it. A connection becomes **operator** only when
-  `role === "operator"` **and** `key` matches the host token (constant-time
-  compare); otherwise it stays a viewer regardless of the claimed role. The
-  server replies with `hello_ack` carrying the resulting standing.
+  must not require it. A connection becomes **operator** only when it is a staff
+  role (`role === "operator"` or the pocket-camera `role === "camera"`) **and**
+  `key` matches the host token (constant-time compare); otherwise it stays a
+  viewer regardless of the claimed role. The server replies with `hello_ack`
+  carrying the resulting standing.
 - `select_camera` swaps the pipeline's frame source at runtime; the server
   answers with a fresh `status`. **Operator-only** — a viewer's `select_camera`
   / `select_mode` / `select_layout` is silently ignored (no error, no `status`).

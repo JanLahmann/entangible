@@ -58,11 +58,18 @@ Print the phone-capture QR straight to the terminal without opening `/debug`:
 ```bash
 uv run qamposer-physical qr                    # https URL + ASCII QR
 uv run qamposer-physical qr --no-tls           # http URL variant
+uv run qamposer-physical qr --path /capture    # legacy display-app capture page
 ```
 
-The capture QR now carries the booth's **operator token** as `?key=…`, so the
-scanned `/capture` link is authenticated for the (token-gated) `/ws/frames`
-intake with no typing. Manage the token with:
+The staff QR now opens the **pocket app in its camera role**
+(`/pocket?connect=1&role=camera&key=…`): the phone streams its camera to the
+booth with pocket's richer camera UI (pinch/step zoom, freeze), while the booth
+does the detection. The QR carries the booth's **operator token** as `?key=…`,
+so the phone arrives pre-authorized for the token-gated `/ws/frames` intake and
+connects to `/ws/state` as an operator `camera` (no typing; the key is stored
+and immediately scrubbed from the address bar). The legacy display-app
+`/capture` page stays available via `--path /capture` (and `/api/qr?path=/capture`)
+until it is retired. Manage the token with:
 
 ```bash
 uv run qamposer-physical token                 # print the shared operator token

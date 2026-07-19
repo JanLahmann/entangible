@@ -86,3 +86,15 @@ def test_cli_qr_embeds_key(tmp_path, capsys):
     assert rc == 0
     out = capsys.readouterr().out
     assert f"/capture?key={token}" in out
+
+
+def test_cli_qr_default_is_pocket_camera_role(tmp_path, capsys):
+    # U2: the default `qr` target is the pocket camera role (staff QR flip); the
+    # legacy /capture path stays available via --path (covered above).
+    from qamposer_host.cli import main
+
+    token = ensure_token(tmp_path)
+    rc = main(["qr", "--cert-dir", str(tmp_path), "--no-tls"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert f"/pocket?connect=1&role=camera&key={token}" in out

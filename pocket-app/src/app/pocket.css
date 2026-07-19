@@ -277,6 +277,19 @@ body,
   place-items: center;
 }
 
+/* CAMERA role (U2): a focused single-column streaming screen — the booth owns
+   the circuit, so the phone shows only its (centered, capped) camera preview. */
+.pk-camera-role-main {
+  grid-template-columns: 1fr;
+}
+.pk-camera-role-main .pk-stage {
+  align-items: center;
+  justify-content: center;
+}
+.pk-camera-role-main .pk-stage > div {
+  width: min(100%, 720px);
+}
+
 .pk-cam-hint {
   position: absolute;
   left: 50%;

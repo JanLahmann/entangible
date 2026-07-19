@@ -1,11 +1,15 @@
 """Serve the built display app (SPA) and the capture QR code.
 
-* ``GET /api/qr?path=/capture`` — a PNG QR encoding
-  ``https://<lan-ip>:<port><path>?key=<operator-token>`` (``http`` when TLS is
+* ``GET /api/qr`` — a PNG QR encoding
+  ``https://<lan-ip>:<port><path>&key=<operator-token>`` (``http`` when TLS is
   off). **Staff-gated:** requires the operator token (query param or
   ``X-Operator-Key`` header) — the QR is a staff-distribution channel, and the
-  token it embeds is what lets the scanning phone reach ``/capture`` /
-  ``/ws/frames``. A missing/wrong key returns ``403`` JSON.
+  token it embeds is what lets the scanning phone reach the token-gated
+  ``/ws/frames``. A missing/wrong key returns ``403`` JSON. The default
+  ``path`` is ``/pocket?connect=1&role=camera`` (U2): the scanning phone opens
+  the **pocket app in its staff CAMERA role**, streaming with pocket's camera UI
+  (zoom, freeze). The legacy display-app page is still reachable with
+  ``?path=/capture`` (kept until U3 retires the display app).
 * ``GET /api/visitor-qr`` — an UNGATED PNG QR encoding
   ``https://<lan-ip>:<port>/pocket?connect=1``. The public "follow along + take
   your circuit home" QR (booth footer + attract); it embeds NO token because the
@@ -78,14 +82,16 @@ def _with_key(path: str, token: str) -> str:
 
 
 @router.get("/api/qr")
-async def qr(request: Request, path: str = "/capture") -> Response:
+async def qr(request: Request, path: str = "/pocket?connect=1&role=camera") -> Response:
     require_operator_key(request)
     config = request.app.state.config
     scheme = "https" if config.tls else "http"
     if not path.startswith("/"):
         path = "/" + path
     # The scanning phone must arrive already carrying the operator token, so it
-    # can open /capture and connect to /ws/frames (both token-gated).
+    # can enter the pocket camera role and connect to /ws/frames + /ws/state as
+    # an operator (both token-gated). `?path=/capture` still yields the legacy
+    # display-app capture QR.
     path = _with_key(path, request.app.state.operator_token)
     url = f"{scheme}://{primary_lan_ip()}:{config.port}{path}"
     return Response(

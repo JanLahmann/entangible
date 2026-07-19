@@ -149,8 +149,12 @@ export type ServerMessage =
 /**
  * `display` / `debug` / `capture-ui` are courtesy labels; `operator` is the
  * privileged role that (with a matching `key`) unlocks the `select_*` controls.
+ * `camera` is the pocket app's staff CAMERA role (U2): a phone streaming frames
+ * to the booth — it carries the operator `key` and is granted operator standing
+ * (so its `select_camera {kind:'push'}` is honored), while the distinct label
+ * lets the host log/list it as a camera rather than a generic operator.
  */
-export type ClientRole = 'display' | 'debug' | 'capture-ui' | 'operator';
+export type ClientRole = 'display' | 'debug' | 'capture-ui' | 'camera' | 'operator';
 
 /** `hello` — courtesy metadata; the server must not require it. */
 export interface ClientHello {

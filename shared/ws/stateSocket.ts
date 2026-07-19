@@ -204,11 +204,16 @@ export class StateSocket {
       const hello: ClientHello = { type: 'hello', role: this.role };
       if (this.client) hello.client = this.client;
       // Authenticate as operator when a key is available (staff surfaces). The
-      // server requires role === 'operator' AND a matching key, so we override
-      // the role here; viewer sockets (no key) keep their courtesy role.
+      // server grants operator standing for a staff role ('operator' | 'camera')
+      // with a matching key, so we attach the key and — for a plain courtesy
+      // role (display/debug/capture-ui) — promote it to 'operator'. An explicit
+      // staff role keeps its label (the pocket CAMERA role stays 'camera' so the
+      // host can list it as a camera). Viewer sockets (no key) keep their role.
       const key = this.operatorKey?.();
       if (key) {
-        hello.role = 'operator';
+        if (hello.role !== 'operator' && hello.role !== 'camera') {
+          hello.role = 'operator';
+        }
         hello.key = key;
       }
       try {

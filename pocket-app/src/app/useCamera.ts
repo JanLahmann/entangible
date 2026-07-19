@@ -68,6 +68,15 @@ interface Options {
    * the automatic camera. The app clears the stored id and shows a gentle toast.
    */
   onCameraFallback?: () => void;
+  /**
+   * CAMERA role (U2): when set, the rAF loop STREAMS instead of detecting — it
+   * draws the zoomed crop (native pixel density, like `/capture`) onto an
+   * offscreen canvas and hands it to this sink (which JPEG-encodes + pushes it
+   * to the host), and the local vision pipeline is not run. Freeze still gates
+   * the loop, so freezing pauses the frame pump; zoom still applies, so the
+   * streamed frame IS what the preview shows. `undefined` → normal detection.
+   */
+  onFrame?: (canvas: HTMLCanvasElement) => void;
 }
 
 const TARGET_PROCESS_MS = 45; // aim ~20 detections/s; skip frames to hold it
@@ -79,7 +88,14 @@ export function useCamera({
   paused = false,
   cameraId = null,
   onCameraFallback,
+  onFrame,
 }: Options): CameraState {
+  const onFrameRef = useRef(onFrame);
+  onFrameRef.current = onFrame;
+  // Dedicated streaming canvas (kept separate from the detection canvas, which
+  // uses a `willReadFrequently` context) so the two modes never fight over one
+  // canvas's context type.
+  const streamCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lowPowerRef = useRef(lowPower);
   lowPowerRef.current = lowPower;
   const pausedRef = useRef(paused);
@@ -145,8 +161,31 @@ export function useCamera({
       return;
     }
     // Frozen: keep the rAF alive (so unfreeze resumes cleanly) but feed no
-    // frames to the pipeline — the last detection / circuit and overlay hold.
+    // frames to the pipeline / stream — the last picture and circuit hold. In
+    // the camera role this is exactly the freeze semantic: the frame pump pauses.
     if (!shouldProcess(pausedRef.current)) {
+      rafRef.current = requestAnimationFrame(loop);
+      return;
+    }
+    // CAMERA role: stream the zoomed crop instead of detecting. Drawn at native
+    // pixel density (canvas sized to the crop, like `/capture`) so the streamed
+    // JPEG *is* the zoomed region; the sink paces itself, so we offer every rAF.
+    const sink = onFrameRef.current;
+    if (sink) {
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      if (w > 0 && h > 0) {
+        if (!streamCanvasRef.current) streamCanvasRef.current = document.createElement('canvas');
+        const canvas = streamCanvasRef.current;
+        const { sx, sy, sw, sh } = cropRect(digitalZoomRef.current, w, h);
+        if (canvas.width !== sw) canvas.width = sw;
+        if (canvas.height !== sh) canvas.height = sh;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+          sink(canvas);
+        }
+      }
       rafRef.current = requestAnimationFrame(loop);
       return;
     }

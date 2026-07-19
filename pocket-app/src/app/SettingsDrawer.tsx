@@ -22,6 +22,7 @@ import {
   type CameraDevice,
 } from './cameraDevices';
 import { boothLink, useBoothLink } from './boothLink';
+import { cameraRoleLink, useCameraRole } from './cameraRoleLink';
 import { normalizeBoothUrl } from '../sources/boothUrl';
 
 const PANEL_LABELS: Record<PanelId, string> = {
@@ -150,12 +151,40 @@ function CameraSection() {
  * served-by-host and `?connect=1` triggers live in App, not here. Connecting
  * NEVER sends any control message — the pocket viewer is view-only.
  */
-function BoothSection() {
+function BoothSection({
+  cameraRoleAvailable = false,
+  onClose,
+}: {
+  /** Offer the staff CAMERA role here (host known + operator key present). */
+  cameraRoleAvailable?: boolean;
+  onClose: () => void;
+}) {
   const settings = useSettings();
   const link = useBoothLink();
+  const cameraRole = useCameraRole();
   const connected = link.url !== null;
   const [draft, setDraft] = useState(settings.boothUrl ?? '');
   const valid = normalizeBoothUrl(draft) !== null;
+
+  // Already streaming as the booth's camera → offer only an exit.
+  if (cameraRole.active) {
+    return (
+      <section className="pk-drawer-sec">
+        <div className="pk-label">Booth</div>
+        <p className="pk-drawer-hint">This phone is the booth’s camera (streaming).</p>
+        <button
+          type="button"
+          className="pk-btn is-stop"
+          onClick={() => {
+            cameraRoleLink.exit();
+            onClose();
+          }}
+        >
+          Stop being the camera
+        </button>
+      </section>
+    );
+  }
 
   return (
     <section className="pk-drawer-sec">
@@ -193,13 +222,38 @@ function BoothSection() {
             Connect to booth
           </button>
           <p className="pk-drawer-hint">Follow a booth’s screen and take its circuit home.</p>
+          {/* Staff CAMERA role (U2): operator-gated — shown only when a host is
+              known AND an operator key is present. A visitor never sees this. */}
+          {cameraRoleAvailable && (
+            <>
+              <button
+                type="button"
+                className="pk-btn"
+                onClick={() => {
+                  const stateUrl = settings.boothUrl ? normalizeBoothUrl(settings.boothUrl) : null;
+                  cameraRoleLink.enter(stateUrl);
+                  onClose();
+                }}
+              >
+                Use this phone as the camera
+              </button>
+              <p className="pk-drawer-hint">
+                Stream this camera to the booth (staff). The booth does the detection.
+              </p>
+            </>
+          )}
         </>
       )}
     </section>
   );
 }
 
-export function SettingsControl() {
+export function SettingsControl({
+  cameraRoleAvailable = false,
+}: {
+  /** Offer the staff CAMERA role in the Booth section (host known + key present). */
+  cameraRoleAvailable?: boolean;
+} = {}) {
   const settings = useSettings();
   const [open, setOpen] = useState(false);
 
@@ -297,7 +351,7 @@ export function SettingsControl() {
 
               <CameraSection />
 
-              <BoothSection />
+              <BoothSection cameraRoleAvailable={cameraRoleAvailable} onClose={close} />
 
               <section className="pk-drawer-sec">
                 <div className="pk-label">Power</div>

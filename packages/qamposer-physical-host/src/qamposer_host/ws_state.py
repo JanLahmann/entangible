@@ -5,10 +5,11 @@ the client -> server messages:
 
 * ``hello`` — courtesy metadata (role label). It may additionally carry
   ``{role:'operator', key:<operator-token>}``; a connection is promoted to
-  *operator* only when the role is exactly ``operator`` **and** the key matches
-  the host token (constant-time compare). The server replies to every ``hello``
-  with ``{type:'hello_ack', role:'viewer'|'operator'}`` on that socket so the
-  client learns its standing.
+  *operator* only when the role is a staff role (``operator`` or the pocket
+  ``camera`` role) **and** the key matches the host token (constant-time
+  compare). The server replies to every ``hello`` with
+  ``{type:'hello_ack', role:'viewer'|'operator'}`` on that socket so the client
+  learns its standing.
 * ``select_camera`` / ``select_mode`` / ``select_layout`` — control messages,
   honored **only** for operator connections. From a viewer they are silently
   ignored (logged at debug level, no error sent back).
@@ -83,7 +84,11 @@ async def _handle_hello(websocket: WebSocket, msg: dict) -> None:
     role = str(msg.get("role", "display"))
     label = msg.get("client")
     token = websocket.app.state.operator_token
-    is_operator = role == "operator" and token_matches(msg.get("key"), token)
+    # Staff roles ('operator' and the pocket CAMERA role) gain operator standing
+    # when the key matches; the 'camera' label is kept so the host can log/list
+    # it as a camera rather than a generic operator. Any other role stays a
+    # viewer regardless of the claimed role.
+    is_operator = role in ("operator", "camera") and token_matches(msg.get("key"), token)
     websocket.app.state.hub.set_role(websocket, role, label, operator=is_operator)
     # Additive protocol: tell this socket (only) whether it is an operator.
     await websocket.send_json(

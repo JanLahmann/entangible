@@ -25,7 +25,13 @@ from .token import ensure_token, rotate_token
 def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--port", type=int, default=None, help="listen port (default 8443)")
     parser.add_argument("--no-tls", action="store_true", help="serve plain HTTP (dev)")
-    parser.add_argument("--path", default="/capture", help="capture path for QR URLs")
+    # U2: the staff QR opens the pocket app in its CAMERA role by default; the
+    # legacy display-app page is still reachable with `--path /capture`.
+    parser.add_argument(
+        "--path",
+        default="/pocket?connect=1&role=camera",
+        help="target path for QR URLs (default: pocket camera role; use /capture for legacy)",
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -108,7 +114,8 @@ def _cmd_qr(args: argparse.Namespace) -> int:
     scheme = "http" if args.no_tls else "https"
     path = args.path if args.path.startswith("/") else "/" + args.path
     # Embed the operator token so the scanning phone arrives already
-    # authenticated for /capture + /ws/frames (both token-gated).
+    # authenticated for the pocket camera role — /ws/frames + operator /ws/state
+    # (both token-gated). `--path /capture` yields the legacy display-app QR.
     token = ensure_token(config.cert_dir)
     sep = "&" if "?" in path else "?"
     path = f"{path}{sep}key={token}"

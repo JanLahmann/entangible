@@ -1,9 +1,16 @@
 # iPhone browser capture — booth-staff runbook
 
-This is the M4 "phone as camera" flow: an iPhone (or any modern phone) opens the
-host's `/capture` page in its browser, and streams its rear camera to the booth as
-JPEG frames over `/ws/frames`. The host feeds those frames into the vision
-pipeline exactly like a USB or Pi camera, so the big screen shows the live circuit.
+This is the "phone as camera" flow: an iPhone (or any modern phone) opens the
+booth in its browser and streams its rear camera to the host as JPEG frames over
+`/ws/frames`. The host feeds those frames into the vision pipeline exactly like a
+USB or Pi camera, so the big screen shows the live circuit.
+
+Since U2 the staff QR opens the **pocket app in its camera role**
+(`/pocket?connect=1&role=camera&key=…`) — the same streaming, now with pocket's
+richer camera UI: pinch/step **zoom** (what you zoom is what streams) and
+**freeze** (❄ pauses the frame pump). The older display-app `/capture` page
+still works as a fallback (see "Legacy /capture" below) until it is retired in
+U3. Both paths behave identically on the wire.
 
 Use this when the host is a Raspberry Pi (which cannot use Continuity Camera), or
 whenever a phone is the most convenient overhead camera. On a Mac, Continuity
@@ -11,14 +18,17 @@ Camera is usually simpler — see [`mac-booth.md`](mac-booth.md).
 
 ## How it works (one paragraph)
 
-`/capture` calls `getUserMedia` (rear camera, ideal 1280×720), draws each frame to
-a canvas, encodes it as JPEG at quality 0.7, and sends the bytes over a dedicated
-`wss://…/ws/frames` WebSocket at a 10 fps target. The client paces itself and
-enforces backpressure via `WebSocket.bufferedAmount` (it skips a frame when the
-socket is backed up or a previous encode is still in flight), and holds a **screen
-wake lock** so the phone doesn't sleep. On start it also sends
-`select_camera {kind:'push'}` so the host swaps its pipeline onto the shared push
-source. See [`protocol.md`](protocol.md) for the wire contract.
+The camera role calls `getUserMedia` (rear camera), draws each frame — the zoomed
+crop — to a canvas, encodes it as JPEG at quality 0.7, and sends the bytes over a
+dedicated `wss://…/ws/frames?key=…` WebSocket at a 10 fps target. The client paces
+itself and enforces backpressure via `WebSocket.bufferedAmount` (it skips a frame
+when the socket is backed up or a previous encode is still in flight), holds a
+**screen wake lock** so the phone doesn't sleep, and **freeze** pauses the pump.
+It also connects to `/ws/state` as an operator `camera` (its `hello` carries the
+token) and sends `select_camera {kind:'push'}` so the host swaps its pipeline onto
+the shared push source — so the host's `/debug` camera fleet lists the phone. The
+shared streaming core (`shared/capture`) is the same one the legacy `/capture`
+page uses. See [`protocol.md`](protocol.md) for the wire contract.
 
 ## Setup steps
 
@@ -27,11 +37,13 @@ source. See [`protocol.md`](protocol.md) for the wire contract.
    uv run qamposer-physical run          # https on :8443
    ```
 2. **Get the QR / URL.** Open `/debug` on the booth screen and find the
-   **Phone camera** card (QR + `https://<lan-ip>:8443/capture`), or print it in the
-   terminal with `uv run qamposer-physical qr`. The QR embeds the booth's
-   **operator token** as `?key=…`, so the scanned `/capture` link is
-   pre-authenticated for the token-gated frame intake — scan it fresh (don't
-   retype the URL without the `key`, or the stream will be refused).
+   **Phone camera** card, or print it in the terminal with
+   `uv run qamposer-physical qr`. The QR opens the pocket camera role and embeds
+   the booth's **operator token** as `?key=…`, so the phone arrives
+   pre-authorized for the token-gated frame intake — scan it fresh (don't retype
+   the URL without the `key`, or the stream will be refused). The key is stored
+   on the phone and immediately scrubbed from the address bar, so it never shows
+   in the UI or a shared link.
 3. **Scan the QR** with the iPhone Camera app and open the link in **Safari**.
 
 ### Accept the self-signed certificate (iOS Safari)
@@ -48,14 +60,28 @@ moves to a different network, which regenerates the SANs.)*
 
 ### Grant camera permission and start
 
-1. On `/capture`, tap the big **Start camera** button.
-2. iOS prompts **"…would like to Access the Camera"** — tap **Allow**.
-3. The live camera preview fills the screen with status chips at the top
-   (connection, fps sent, frames dropped, wake lock) and a **Stop** button.
+1. The camera role **auto-starts** the camera on open. iOS prompts
+   **"…would like to Access the Camera"** — tap **Allow**.
+2. The live camera preview fills the screen with a **Streaming to booth · N fps**
+   status pill, plus **zoom** (± / pinch) and **freeze** (❄) controls.
+3. To hand the booth back to another camera, tap **Stop** (in the top bar or the
+   settings **Booth** section) — the phone returns to standalone pocket.
 
-If the page shows an error card instead of the Start button, it is not a secure
+*(Staff can also enter the role manually from the pocket **Settings → Booth →
+"Use this phone as the camera"** — offered only when the phone is on a booth host
+and already holds the operator key.)*
+
+If the page shows an error card instead of the preview, it is not a secure
 context (you opened `http://…` or an IP without the cert accepted) — re-open the
 `https://` link and tap through the cert as above.
+
+### Legacy `/capture` fallback (until U3)
+
+The original display-app capture page is still available at
+`https://<lan-ip>:8443/capture?key=…`. Get its QR with
+`uv run qamposer-physical qr --path /capture` (or `/api/qr?path=/capture`). It
+streams the same JPEG frames over `/ws/frames`; it lacks the pocket camera role's
+zoom/freeze UI and is kept only until the display app is retired.
 
 ## Mounting the phone
 

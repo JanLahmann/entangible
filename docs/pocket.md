@@ -141,6 +141,37 @@ booth-built circuit leaves on the visitor's phone, take-it-home T2).
   broadcast) override the local settings. Disconnect returns cleanly to the
   standalone pipeline (the camera resumes if it was running).
 
+## Camera role — be the booth's camera (Entangible One, U2)
+
+A third role behind the same shell (docs/design.md "Entangible One"): a staff
+phone serves as the booth's **camera**, streaming JPEG frames to the host with
+pocket's richer camera UI, while the host does the detection. This absorbs the
+display-app `/capture` page (which stays as a fallback until U3).
+
+- **Trigger / gating** (design: "connected to a host, camera role selected"):
+  the role is offered ONLY when a booth host is known (served-by-host `/api/info`
+  probe, or a saved BOOTH URL) AND an **operator key** is present. The staff QR
+  encodes `…/pocket?connect=1&role=camera&key=<token>` and auto-enters the role;
+  the manual path is **Settings → Booth → "Use this phone as the camera"**. A
+  plain visitor (no key) NEVER sees the affordance — standalone entangible.org
+  shows zero new UI.
+- **Behavior** (`src/sources/CameraRoleSource.ts`): the local vision pipeline
+  STOPS; `useCamera` runs a streaming loop that draws the zoomed crop (native
+  density) to a canvas and hands it to the shared streaming core
+  (`@shared/capture` — `StreamController` pacing + `FrameStreamer` `/ws/frames`
+  socket with reconnect + backpressure). The camera UI stays live: **preview**,
+  **pinch/step zoom** (what you zoom is what streams, matching `/capture`),
+  **freeze** (❄ pauses the frame pump), **camera picker** (Continuity Camera).
+  It also connects to `/ws/state` as an operator `camera` (`hello {role:'camera',
+  key}`) and sends `select_camera {kind:'push'}` so the host hot-swaps onto the
+  push source and lists the phone in its `/debug` camera fleet. A **Streaming to
+  booth · N fps** pill + **Stop** show; Stop returns to standalone (the still-
+  running camera resumes the local pipeline).
+- **Security**: operator-gated end to end. The key arrives via `?key=` (shared
+  `@shared/ws/operatorKey`), is stored in `localStorage`, and is immediately
+  scrubbed from the address bar (`history.replaceState`) — never rendered into
+  the UI and never carried into a shared link.
+
 ## Wire display: compact by default (revised per Jan, 2026-07-18)
 
 **Display-only** — the physical table is always 5 qubits; detection, circuit

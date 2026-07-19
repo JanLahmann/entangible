@@ -97,6 +97,28 @@ def test_qr_returns_png_and_embeds_key():
         assert encoded.endswith(f"/capture?key={token}")
 
 
+def test_qr_default_targets_pocket_camera_role():
+    # U2: with no `path` param, the staff QR opens the pocket app in its CAMERA
+    # role, carrying the operator token so /ws/frames + operator /ws/state work.
+    app = _app()
+    token = app.state.operator_token
+    with TestClient(app) as client:
+        resp = client.get("/api/qr", params={"key": token})
+        assert resp.status_code == 200
+        encoded = resp.headers["X-Encoded-URL"]
+        assert encoded.endswith(f"/pocket?connect=1&role=camera&key={token}")
+
+
+def test_qr_legacy_capture_path_still_available():
+    # The display-app capture page stays reachable via ?path=/capture (until U3).
+    app = _app()
+    token = app.state.operator_token
+    with TestClient(app) as client:
+        resp = client.get("/api/qr", params={"path": "/capture", "key": token})
+        assert resp.status_code == 200
+        assert resp.headers["X-Encoded-URL"].endswith(f"/capture?key={token}")
+
+
 def test_qr_requires_key():
     with TestClient(_app()) as client:
         resp = client.get("/api/qr", params={"path": "/capture"})
