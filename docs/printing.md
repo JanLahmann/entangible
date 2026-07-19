@@ -32,7 +32,7 @@ Output layout:
 
 ```
 out/assets/
-  tiles/  booth-kit_A4-p01.pdf … p04.pdf   (40 tiles → 4 A4 pages)
+  tiles/  booth-kit_A4-p01.pdf … p05.pdf   (49 tiles → 5 A4 pages)
           sample_A4-p01.pdf … p02.pdf      (one of every gate)
   board/  board_full.pdf                    (720×500 mm, single page — print shops / A1)
           board_A4_tiled-p01.pdf … p09.pdf  (home-printer tiles, tape together)
@@ -40,11 +40,14 @@ out/assets/
 
 ### Per-format tile counts
 
-| Format | Tiles/page | Booth-kit pages (40 tiles) | Board tiled pages |
+Tiles are laid **edge-to-edge** (no gutter), so each boundary between two tiles
+is a single shared cut — see "Paper, cutting and lamination" below.
+
+| Format | Tiles/page | Booth-kit pages (49 tiles) | Board tiled pages |
 | ------ | ---------- | -------------------------- | ----------------- |
-| A4     | 3 × 4 = 12 | 4                          | 9 (3 × 3)         |
-| A3     | 4 × 6 = 24 | 2                          | 4 (2 × 2)         |
-| Letter | 3 × 4 = 12 | 4                          | 9 (3 × 3)         |
+| A4     | 3 × 4 = 12 | 5                          | 9 (3 × 3)         |
+| A3     | 4 × 6 = 24 | 3                          | 4 (2 × 2)         |
+| Letter | 3 × 4 = 12 | 5                          | 9 (3 × 3)         |
 
 For a seamless mat, use `board_full.pdf` (single 720 × 500 mm page) at a print
 shop; the tiled pages are for home printers.
@@ -69,8 +72,20 @@ From the spec's print-production notes:
 - **Matte cardstock ≥ 250 g/m².** Matte, not glossy — glare from gloss or from
   glossy lamination kills marker detection under booth lights.
 - If tiles are reused across events, **laminate matte**.
-- Cut tiles on the crop marks at each corner. The 4 mm corner radius is
-  optional when hand-cutting — the coloured frame tolerates square corners.
+- **Tiles are printed edge-to-edge, so cut once per shared boundary** — a single
+  straight cut splits the two neighbouring tiles at the same time. Line a ruler
+  between the pair of tick marks that flank each grid line (the ticks sit
+  *outside* the tile block, top/bottom for the vertical cuts and left/right for
+  the horizontal cuts) and cut straight across. This halves the number of cuts
+  versus per-tile gutters.
+- **Sliver caveat:** the ArUco marker's quiet zone sits safely inside each
+  tile's white field, but the 2.5 mm coloured frame runs right to the tile edge.
+  A slightly-off cut therefore leaves a thin sliver of the neighbouring tile's
+  frame colour on an edge — cosmetic only; detection is unaffected. To restore
+  classic per-tile corner crop marks (with a gutter between tiles), set
+  `[sheets] gutter` to a non-zero value in `assets.toml`.
+- The 4 mm corner radius is optional when hand-cutting — the coloured frame
+  tolerates square corners.
 - **Board mat (single page):** send `board_full.pdf` to a print shop (fits A1
   with trim). **Tiled:** print the `board_*_tiled-*.pdf` pages at 100 %, trim on
   the crop marks, and align using the centreline registration ticks; adjacent

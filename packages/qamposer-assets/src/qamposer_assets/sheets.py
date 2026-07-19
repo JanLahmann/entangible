@@ -6,10 +6,17 @@ Layouts per format (from ``docs/assets-design.md``):
 * A3     — 4 × 6 = 24 tiles/page
 * Letter — 3 × 4 = 12 tiles/page
 
-Every page carries crop marks at each tile's corners, a "print at 100 % scale"
-warning and a 100 mm calibration ruler so booth staff can confirm the scale
-before cutting. Kit composition (which tiles, how many) comes from ``[kit]`` in
-``assets.toml``.
+By default tiles are printed **edge-to-edge** (``[sheets] gutter = 0``): adjacent
+tiles share a boundary, so each internal grid line is a single cut serving both
+neighbours. Instead of per-tile corner crop marks (which would overlap or fall
+inside a neighbour), every shared cut line gets a pair of short tick marks that
+extend *outside* the tile block — top/bottom ticks for the vertical cuts,
+left/right ticks for the horizontal cuts — never printing inside a tile. Setting
+``gutter > 0`` restores classic per-tile corner crop marks.
+
+Every page also carries a "print at 100 % scale" warning and a 100 mm
+calibration ruler so booth staff can confirm the scale before cutting. Kit
+composition (which tiles, how many) comes from ``[kit]`` in ``assets.toml``.
 """
 
 from __future__ import annotations
@@ -18,7 +25,7 @@ from qamposer_vision.markers import DIAL_IDS, MARKER_TABLE, ROTATION_GATES
 
 from .config import AssetsConfig
 from .paper import calibration_ruler, page_size
-from .svgbase import crop_marks, fmt, rect, svg_document
+from .svgbase import crop_marks, fmt, line, rect, svg_document
 from .symbols import text
 from .tile_face import gate_marker_ids, tile_body
 
@@ -153,6 +160,82 @@ def _page_footer(
     return warning + ruler + caption
 
 
+def _cut_marks(
+    origin_x: float,
+    origin_y: float,
+    cols: int,
+    rows: int,
+    tile: float,
+    count: int,
+    *,
+    length: float = 3.0,
+    gap: float = 1.0,
+    stroke: str = "#000000",
+    stroke_width: float = 0.2,
+) -> str:
+    """Shared cut-line ticks for an edge-to-edge (gutter-0) tile block.
+
+    ``count`` tiles fill the ``cols`` × ``rows`` grid row-major, left to right,
+    so the last row may be partial. Every shared/outer grid line gets a pair of
+    short ticks that extend *outside* the occupied region — vertical cut lines
+    get ticks above the top and below the bottom, horizontal cut lines get ticks
+    left of the left edge and right of the right edge. Ragged bottom/right edges
+    of a partial last row are followed exactly, so no tick ever lands inside a
+    tile.
+    """
+    if count <= 0:
+        return ""
+    # Tiles per row and rows per column for a row-major, left-filled grid.
+    cols_in_row = [min(max(count - r * cols, 0), cols) for r in range(rows)]
+    rows_in_col = [sum(1 for r in range(rows) if r * cols + c < count) for c in range(cols)]
+
+    segs: list[str] = []
+
+    def vtick(x: float, y1: float, y2: float) -> None:
+        segs.append(line(x, y1, x, y2, stroke=stroke, stroke_width=stroke_width))
+
+    def htick(x1: float, x2: float, y: float) -> None:
+        segs.append(line(x1, y, x2, y, stroke=stroke, stroke_width=stroke_width))
+
+    # --- Vertical cut lines (column boundaries) ---
+    # Top ticks: only for boundaries present in the (full or partial) first row.
+    for i in range(cols_in_row[0] + 1):
+        x = origin_x + i * tile
+        vtick(x, origin_y - gap - length, origin_y - gap)
+    # Bottom ticks: each boundary extends to the deepest adjacent column.
+    for i in range(cols + 1):
+        depth = 0
+        if i - 1 >= 0:
+            depth = max(depth, rows_in_col[i - 1])
+        if i < cols:
+            depth = max(depth, rows_in_col[i])
+        if depth == 0:
+            continue
+        x = origin_x + i * tile
+        y = origin_y + depth * tile
+        vtick(x, y + gap, y + gap + length)
+
+    # --- Horizontal cut lines (row boundaries) ---
+    # Left ticks: only for boundaries present in the first column.
+    for j in range(rows_in_col[0] + 1):
+        y = origin_y + j * tile
+        htick(origin_x - gap - length, origin_x - gap, y)
+    # Right ticks: each boundary extends to the widest adjacent row.
+    for j in range(rows + 1):
+        width = 0
+        if j - 1 >= 0:
+            width = max(width, cols_in_row[j - 1])
+        if j < rows:
+            width = max(width, cols_in_row[j])
+        if width == 0:
+            continue
+        x = origin_x + width * tile
+        y = origin_y + j * tile
+        htick(x + gap, x + gap + length, y)
+
+    return "".join(segs)
+
+
 def _layout_page(
     cfg: AssetsConfig,
     ids: list[int],
@@ -176,11 +259,16 @@ def _layout_page(
         r, c = divmod(idx, cols)
         x = origin_x + c * (tile + gutter)
         y = top_margin + r * (tile + gutter)
-        parts.append(crop_marks(x, y, tile, tile, length=3.0, gap=1.0))
+        if gutter > 0:
+            # Tiles are separated — classic per-tile corner crop marks.
+            parts.append(crop_marks(x, y, tile, tile, length=3.0, gap=1.0))
         parts.append(
             f'<g transform="translate({fmt(x)},{fmt(y)})">'
             f"{tile_body(marker_id, cfg)}</g>"
         )
+    if gutter <= 0:
+        # Edge-to-edge: one shared cut per boundary, ticks outside the block.
+        parts.append(_cut_marks(origin_x, top_margin, cols, rows, tile, len(ids)))
     parts.append(_page_footer(cfg, page_w, page_h, note))
     return svg_document(page_w, page_h, "".join(parts), title=note)
 

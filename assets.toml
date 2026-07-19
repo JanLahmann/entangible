@@ -53,7 +53,8 @@ band_cap_height = 6.0       # gate label cap height on tiles
 row_label_cap_height = 10.0
 
 [sheets]
-gutter = 5.0
+gutter = 0.0                # tiles printed edge-to-edge: one cut per shared boundary
+                           # (set > 0 to restore per-tile gutters + corner crop marks)
 formats = ["A4", "A3", "Letter"]
 
 [kit]                       # standard booth kit tile quantities
