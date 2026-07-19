@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Circuit } from '@qamposer/react';
 import { qasmForCircuit } from './qasm';
-import { canTransfer } from './composerTransfer';
+import { canTransfer, usedQubits, SIGN_IN_HINT } from './composerTransfer';
 import { useComposerQr } from './composerQrCode';
 
 const CAPTION =
@@ -30,6 +30,9 @@ export function ComposerQr({ circuit }: { circuit: Circuit }) {
   // Only compute QASM (and the QR) while the overlay is actually open.
   const qasm = open && show ? qasmForCircuit(circuit) : '';
   const { svg, plan } = useComposerQr(qasm, open && show);
+  // A 5-qubit circuit opens fine but needs a sign-in to SIMULATE on the anon
+  // Composer (tops out at 4) — surfaced only when the circuit is pre-loadable.
+  const usesAll5 = qasm !== '' && !plan.overLong && usedQubits(qasm) === 5;
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -81,6 +84,7 @@ export function ComposerQr({ circuit }: { circuit: Circuit }) {
               dangerouslySetInnerHTML={{ __html: svg }}
             />
             <p className="pk-qr-caption">{plan.overLong ? CAPTION_OVERLONG : CAPTION}</p>
+            {usesAll5 && <p className="pk-qr-disclaimer">{SIGN_IN_HINT}</p>}
             <p className="pk-qr-disclaimer">{DISCLAIMER}</p>
           </div>
         </div>

@@ -18,7 +18,6 @@ import tiles3d from '../../../examples/hardware/entangible-3d-tiles.zip?url';
 const REPO_URL = 'https://github.com/JanLahmann/entangible';
 const ISSUES_URL = 'https://github.com/JanLahmann/entangible/issues';
 const QAMPOSER_URL = 'https://qamposer.org';
-const RASQBERRY_URL = 'https://rasqberry.org';
 
 /** Fun-with-Quantum sibling projects — same list and order as the family READMEs. */
 const FAMILY = [
@@ -98,8 +97,11 @@ export function GuidePage() {
             Entangible is a quantum circuit composer you operate with your hands: physical gate
             tiles on a printed board, read by a camera, simulated live. This pocket app is the
             zero-install edition — everything runs right here in your browser; no server, no
-            account, nothing leaves your device. Entangible is part of the QAMPoser open-source
-            family.
+            account, nothing leaves your device. Entangible is part of the{' '}
+            <a href={QAMPOSER_URL} target="_blank" rel="noopener noreferrer">
+              QAMPoser
+            </a>{' '}
+            open-source family.
           </p>
           <p className="pk-guide-muted">
             The name is a pun: <b>entangled + tangible = Entangible.</b>
@@ -253,16 +255,6 @@ export function GuidePage() {
               </a>
             </li>
             <li>
-              <a href={QAMPOSER_URL} target="_blank" rel="noopener noreferrer">
-                QAMPoser
-              </a>
-            </li>
-            <li>
-              <a href={RASQBERRY_URL} target="_blank" rel="noopener noreferrer">
-                RasQberry
-              </a>
-            </li>
-            <li>
               <a href={ISSUES_URL} target="_blank" rel="noopener noreferrer">
                 Report an issue
               </a>
@@ -292,10 +284,19 @@ export function GuidePage() {
         </section>
 
         <footer className="pk-guide-foot">
-          <p>Open source, Apache-2.0 licensed. Part of the Fun with Quantum family.</p>
           <p>
-            Entangible is an independent community project inspired by the IBM Quantum
-            Composer. It is not affiliated with, endorsed by, or sponsored by IBM. IBM,
+            Open source, Apache-2.0 licensed. Part of the{' '}
+            <a href="https://fun-with-quantum.org" target="_blank" rel="noopener noreferrer">
+              Fun with Quantum family
+            </a>
+            .
+          </p>
+          <p>
+            Entangible is an independent community project inspired by the{' '}
+            <a href="https://quantum.cloud.ibm.com/composer" target="_blank" rel="noopener noreferrer">
+              IBM Quantum Composer
+            </a>
+            . It is not affiliated with, endorsed by, or sponsored by IBM. IBM,
             IBM Quantum and Qiskit are trademarks of International Business Machines
             Corporation.
           </p>

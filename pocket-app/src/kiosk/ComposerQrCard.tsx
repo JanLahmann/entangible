@@ -13,7 +13,7 @@
  * URL as everywhere else (composerTransfer.ts); the QR is a canvas-free SVG.
  */
 import type { Circuit } from '@qamposer/react';
-import { canTransfer } from '../app/composerTransfer';
+import { canTransfer, usedQubits, SIGN_IN_HINT } from '../app/composerTransfer';
 import { qasmForCircuit } from '../app/qasm';
 import { QR_DEBOUNCE_MS, useComposerQr, useStable } from '../app/composerQrCode';
 
@@ -31,6 +31,8 @@ export function ComposerQrCard({
   const stable = useStable(live, QR_DEBOUNCE_MS);
   const active = stable !== '';
   const { svg } = useComposerQr(stable, active);
+  // Reuse the card's existing label text slot for the 5-qubit sign-in hint.
+  const usesAll5 = active && usedQubits(stable) === 5;
 
   if (!active || !svg) return null;
 
@@ -46,6 +48,7 @@ export function ComposerQrCard({
         <span className="bo-composer-qr__label">
           Scan to open this circuit in the IBM Quantum Composer — independent
           project, not affiliated with IBM.
+          {usesAll5 && ` ${SIGN_IN_HINT}`}
         </span>
       </div>
     </div>

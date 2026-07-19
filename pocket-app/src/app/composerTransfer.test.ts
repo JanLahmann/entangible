@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import LZString from 'lz-string';
 import { describe, it, expect, vi } from 'vitest';
 import type { Circuit } from '@qamposer/react';
@@ -8,10 +9,22 @@ import {
   canTransfer,
   composerUrl,
   transferToComposer,
+  usedQubits,
+  withUsedQubits,
   type TransferEnv,
 } from './composerTransfer';
+import { qasmForCircuit } from './qasm';
 
 const circuit = (gates: Circuit['gates']): Circuit => ({ qubits: 5, gates });
+
+/** QASM the app emits for a 5-wire board carrying `gates` (qreg/creg = 5). */
+const qasm5 = (gates: Circuit['gates']): string => qasmForCircuit(circuit(gates));
+
+/** Decode a `?initial=` Composer URL back to its {title, description, qasm}. */
+function decodePayload(url: string): { title: string; description: string; qasm: string } {
+  const component = decodeURIComponent(url.split('?initial=')[1]);
+  return JSON.parse(LZString.decompressFromEncodedURIComponent(component)!);
+}
 
 // The exact QASM `qasmForCircuit` emits for tests/fixtures/circuits/bell.json
 // (H on q0, CNOT 0→1), byte-identical to the Python golden bell.qasm.
@@ -24,6 +37,46 @@ describe('canTransfer', () => {
   });
   it('is false for an empty circuit', () => {
     expect(canTransfer(circuit([]))).toBe(false);
+  });
+});
+
+describe('usedQubits', () => {
+  it('is 1 for an empty circuit (never 0)', () => {
+    expect(usedQubits(qasm5([]))).toBe(1);
+  });
+  it('is 1 for a single gate on q0', () => {
+    expect(usedQubits(qasm5([{ id: 'h-0-0', type: 'H', qubit: 0, position: 0 }]))).toBe(1);
+  });
+  it('keeps the size at 5 for a gate on q4 (trailing wires below it stay)', () => {
+    expect(usedQubits(qasm5([{ id: 'x-4-0', type: 'X', qubit: 4, position: 0 }]))).toBe(5);
+  });
+  it('counts both ends of a CNOT spanning q0→q2', () => {
+    expect(
+      usedQubits(qasm5([{ id: 'cx-0-2', type: 'CNOT', control: 0, target: 2, position: 0 }])),
+    ).toBe(3);
+  });
+  it('is 2 for a Bell pair (H q0, CNOT 0→1)', () => {
+    expect(usedQubits(BELL_QASM)).toBe(2);
+  });
+});
+
+describe('withUsedQubits', () => {
+  it('rewrites qreg/creg of a Bell circuit from 5 down to 2, gates untouched', () => {
+    const sized = withUsedQubits(BELL_QASM);
+    expect(sized).toContain('qreg q[2];');
+    expect(sized).toContain('creg c[2];');
+    expect(sized).toContain('h q[0];');
+    expect(sized).toContain('cx q[0], q[1];');
+    expect(sized).not.toContain('q[5]');
+  });
+  it('keeps size 5 when a gate touches q4', () => {
+    const sized = withUsedQubits(qasm5([{ id: 'x-4-0', type: 'X', qubit: 4, position: 0 }]));
+    expect(sized).toContain('qreg q[5];');
+    expect(sized).toContain('creg c[5];');
+  });
+  it('is idempotent (sizing an already-trimmed circuit is a no-op)', () => {
+    const once = withUsedQubits(BELL_QASM);
+    expect(withUsedQubits(once)).toBe(once);
   });
 });
 
@@ -41,12 +94,17 @@ describe('composerUrl', () => {
     const url = composerUrl('OPENQASM 2.0;\nqreg q[2];\nh q[0];\n');
     expect(url.startsWith(`${COMPOSER_BASE}?initial=`)).toBe(true);
     // Round-trip: decode the param back to the payload.
-    const component = decodeURIComponent(url.split('?initial=')[1]);
-    const json = LZString.decompressFromEncodedURIComponent(component);
-    const payload = JSON.parse(json!);
+    const payload = decodePayload(url);
     expect(payload.qasm).toContain('h q[0];');
     expect(payload.title).toBe('Built with Entangible');
     expect(payload.description).toBe('');
+  });
+
+  it('trims the pre-loaded QASM to the used qubits (Bell payload → qreg q[2])', () => {
+    const payload = decodePayload(composerUrl(BELL_QASM));
+    expect(payload.qasm).toContain('qreg q[2];');
+    expect(payload.qasm).toContain('creg c[2];');
+    expect(payload.qasm).not.toContain('q[5]');
   });
 
   it('falls back to the plain URL when the payload would be enormous', () => {
@@ -71,7 +129,7 @@ describe('transferToComposer', () => {
   it('copies via the clipboard and opens the Composer tab (happy path)', async () => {
     const env = makeEnv();
     const result = await transferToComposer(BELL_QASM, env);
-    expect(env.clipboard!.writeText).toHaveBeenCalledWith(BELL_QASM);
+    expect(env.clipboard!.writeText).toHaveBeenCalledWith(withUsedQubits(BELL_QASM));
     expect(env.execCopy).not.toHaveBeenCalled();
     expect(env.open).toHaveBeenCalledWith(composerUrl(BELL_QASM), '_blank', 'noopener');
     expect(result).toMatchObject({ copied: true, opened: true, message: COPIED_MESSAGE });
@@ -84,7 +142,7 @@ describe('transferToComposer', () => {
       execCopy,
     });
     const result = await transferToComposer(BELL_QASM, env);
-    expect(execCopy).toHaveBeenCalledWith(BELL_QASM);
+    expect(execCopy).toHaveBeenCalledWith(withUsedQubits(BELL_QASM));
     expect(result.copied).toBe(true);
     expect(result.message).toBe(COPIED_MESSAGE);
   });

@@ -11,7 +11,8 @@
  * nothing) until the visitor has placed at least one tile.
  */
 import type { Circuit } from '@qamposer/react';
-import { canTransfer } from './composerTransfer';
+import { canTransfer, usedQubits, SIGN_IN_HINT } from './composerTransfer';
+import { qasmForCircuit } from './qasm';
 import { TransferButton } from './TransferButton';
 import { LiveComposerButton } from './LiveComposerButton';
 import { ComposerQr } from './ComposerQr';
@@ -24,6 +25,9 @@ export function ComposerHandoff({
   onToast: (text: string) => void;
 }) {
   if (!canTransfer(circuit)) return null;
+  // The recognized board is always 5 wires; the Composer only simulates ≤4 for
+  // an anonymous visitor, so flag it when the circuit actually touches all five.
+  const usesAll5 = usedQubits(qasmForCircuit(circuit)) === 5;
   return (
     <div className="pk-composer-handoff">
       <TransferButton circuit={circuit} onToast={onToast} />
@@ -31,6 +35,7 @@ export function ComposerHandoff({
         <LiveComposerButton circuit={circuit} onToast={onToast} />
         <ComposerQr circuit={circuit} />
       </div>
+      {usesAll5 && <p className="pk-transfer-note">{SIGN_IN_HINT}</p>}
     </div>
   );
 }

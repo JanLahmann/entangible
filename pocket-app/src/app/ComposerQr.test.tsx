@@ -4,7 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { Circuit } from '@qamposer/react';
 import { ComposerQr } from './ComposerQr';
-import { composerUrl } from './composerTransfer';
+import { composerUrl, SIGN_IN_HINT } from './composerTransfer';
 import { planComposerQr } from './composerQrCode';
 import { qasmForCircuit } from './qasm';
 
@@ -18,6 +18,14 @@ const bell: Circuit = {
   ],
 };
 const empty: Circuit = { qubits: 5, gates: [] };
+// Touches q4, so it uses all five wires — the sign-in hint should appear.
+const fiveWire: Circuit = {
+  qubits: 5,
+  gates: [
+    { id: 'h-0-0', type: 'H', qubit: 0, position: 0 },
+    { id: 'x-4-1', type: 'X', qubit: 4, position: 1 },
+  ],
+};
 
 let container: HTMLDivElement;
 let root: Root;
@@ -69,6 +77,29 @@ describe('ComposerQr', () => {
     expect(planComposerQr(qasmForCircuit(bell)).url).toBe(composerUrl(qasmForCircuit(bell)));
     expect(ov!.querySelector('.pk-qr-caption')!.textContent).toContain('Scan to open YOUR circuit');
     expect(ov!.querySelector('.pk-qr-disclaimer')!.textContent).toContain('not affiliated with IBM');
+  });
+
+  it('shows the 5-qubit sign-in hint only when the circuit uses all five wires', async () => {
+    // Bell uses 2 wires → no hint.
+    act(() => root.render(<ComposerQr circuit={bell} />));
+    await act(async () => {
+      qrButton()!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await flush();
+    expect(overlay()!.textContent).not.toContain(SIGN_IN_HINT);
+    await act(async () => {
+      (document.querySelector('.pk-qr-close') as HTMLButtonElement).dispatchEvent(
+        new MouseEvent('click', { bubbles: true }),
+      );
+    });
+
+    // A circuit touching q4 uses all five → hint appears.
+    act(() => root.render(<ComposerQr circuit={fiveWire} />));
+    await act(async () => {
+      qrButton()!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await flush();
+    expect(overlay()!.textContent).toContain(SIGN_IN_HINT);
   });
 
   it('closes on the X button', async () => {
