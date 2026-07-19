@@ -32,8 +32,10 @@ embedders, and I'd like to propose them:
    them for any single-qubit type would let a physical ● tile control *any*
    gate tile — and makes S vs RZ(π/2) physically distinguishable, which is a
    beautiful teaching moment.
-4. **Tiny bug**: `formatParameter` in `openqasm.ts` returns an empty string
-   for near-zero angles (`rx() q[0];`). One-line fix.
+4. **Tiny optional hardening**: while porting `circuitToQasm` to Python we
+   added an explicit guard + regression test around `formatParameter`'s
+   trailing-zero strip (we first suspected a bug there; turns out it's fine —
+   the guard just locks the invariant). Take it or skip it.
 5. **qamposer-backend on Python ≥3.11** (from 3.13) would let the Pi run one
    venv alongside picamera2.
 

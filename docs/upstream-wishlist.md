@@ -42,14 +42,15 @@ rendered/simulated/exported. Supporting `control` on any single-qubit gate type
 unlocks a lovely physical interaction in Entangible: a ● tile in the same column
 as any gate tile makes it controlled — ctrl-H with no new hardware.
 
-## 4. `formatParameter` emits an empty string for near-zero angles
+## 4. `formatParameter` — defensive hardening (optional)
 
-**Repo:** qamposer-react · **Bug, tiny fix**
+**Repo:** qamposer-react · **Hardening, not a live bug**
 
-`src/utils/openqasm.ts`: `value.toFixed(6).replace(/\.?0+$/, '')` maps values
-`< 5e-7` to `""`, producing invalid QASM like `rx() q[0];`. Suggested fix: return
-`'0'` when the stripped string is empty. (Found while porting `circuitToQasm` to
-Python for byte-identical output; the Python port already emits `0`.)
+While porting `circuitToQasm` to Python for byte-identical output we initially
+suspected `formatParameter` could emit an empty string for near-zero angles —
+on closer analysis it cannot (the leading digit always survives the regex).
+We still added an explicit `'' → '0'` guard + regression test in our fork as
+an invariant lock. Take it or skip it — zero pressure.
 
 ## 5. Relax qamposer-backend to Python ≥ 3.11
 
