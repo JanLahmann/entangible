@@ -24,6 +24,7 @@ from build123d import (
     FontStyle,
     Location,
     Plane,
+    Polygon,
     Pos,
     Rectangle,
     RectangleRounded,
@@ -181,6 +182,43 @@ def _glyph_sketch(layout: FaceLayout, config: AssetsConfig):
     )
 
 
+def _dial_text_sketch(label: str, font_size: float, theta: float):
+    """A bold text sketch recentred on its bbox, spun ``theta`` degrees (CCW).
+
+    Used for a dial's per-edge angle labels and axis caption; ``theta`` places
+    each edge label so it reads upright once the tile is turned to bring that
+    edge to board-top (see :class:`~qamposer_hardware.face.DialLabel`).
+    """
+    sk = Text(label, font_size=font_size, font=_FONT, font_style=FontStyle.BOLD)
+    c = sk.bounding_box().center()
+    sk = Pos(-c.X, -c.Y) * sk
+    if theta % 360.0 != 0.0:
+        sk = sk.rotate(Axis.Z, theta)
+    return sk
+
+
+def _dial_accent_sketch(layout: FaceLayout):
+    """Dial accent as one face sketch: colour frame + edge labels + ▲ + caption.
+
+    Unlike a classic tile (glyphs *cut out* of a colour band, reading
+    white-on-colour), a dial's labels/pointer/caption are colour-**on-white**:
+    they are unioned onto the frame ring so they stand proud of the white field
+    in the gate colour, exactly like the 2D dial face.
+    """
+    dial = layout.dial
+    assert dial is not None
+    # Colour frame ring = full footprint minus the white inner square.
+    sketch = _footprint(layout) - _white_field_sketch(layout)
+    for lab in dial.labels:
+        glyph = Pos(lab.cx, lab.cy) * _dial_text_sketch(
+            lab.text, dial.label_font, lab.theta
+        )
+        sketch = sketch + glyph
+    sketch = sketch + Polygon(*dial.pointer, align=None)
+    cap = Pos(*dial.caption_pos) * _dial_text_sketch(dial.caption, dial.caption_font, 0.0)
+    return sketch + cap
+
+
 def _chamfer_bottom(body: Solid, amount: float) -> Solid:
     if amount <= 0:
         return body
@@ -244,14 +282,21 @@ def build_tile(
     if magnets:
         body = _magnet_pockets(body, layout, params)
 
-    # --- top colour face: accent = slab - white-field - glyphs ---------------
-    slab = _extrude_top(_footprint(layout), height, fd)
-    white_field = _extrude_top(_white_field_sketch(layout), height, fd)
-    accent = slab - white_field
-    glyph_sk = _glyph_sketch(layout, config)
-    glyph_solid = _extrude_top(glyph_sk, height, fd) if glyph_sk is not None else None
-    if glyph_solid is not None:
-        accent = accent - glyph_solid
+    # --- top colour face -----------------------------------------------------
+    if layout.dial is not None:
+        # Dial: colour frame + edge labels + ▲ + caption, all colour-on-white.
+        accent = _extrude_top(_dial_accent_sketch(layout), height, fd)
+    else:
+        # Classic tile: accent = slab - white-field - glyphs (glyphs read white).
+        slab = _extrude_top(_footprint(layout), height, fd)
+        white_field = _extrude_top(_white_field_sketch(layout), height, fd)
+        accent = slab - white_field
+        glyph_sk = _glyph_sketch(layout, config)
+        glyph_solid = (
+            _extrude_top(glyph_sk, height, fd) if glyph_sk is not None else None
+        )
+        if glyph_solid is not None:
+            accent = accent - glyph_solid
 
     marker = _marker_solid(layout, height, fd, params.marker_bleed)
 

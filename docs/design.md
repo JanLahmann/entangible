@@ -115,7 +115,33 @@ Per Jan's question 2026-07-18: detection already recovers each marker's 90°-ste
 
 Per Jan 2026-07-18: trim unused qubits from the on-screen view. The board keeps 5 physical rows and the wire circuit always reports `qubits: 5`, but the display could show only rows `0..max_used` (collapse trailing empty wires, min 2 for composure, gentle expand/collapse animation as tiles appear on lower rows). Biggest win is the **histogram**: a 2-qubit circuit reads as 4 bars instead of 32 sparse ones. Middle unused rows must stay visible (hiding them would break the physical row ↔ screen wire mapping visitors rely on); only trailing rows collapse. Purely display-level — protocol and QASM keep the full register. Pairs naturally with the 1-row mini-mat idea from Bloch Golf.
 
-### Idea (unscheduled): physical Bloch Golf mode
+### Quantum Golf — DECIDED (per Jan 2026-07-19, build today)
+
+Unifies the former "Bloch Golf" and "Q-sphere Golf" ideas under one name and
+one progression: **Quantum Golf**, levels 1–5 where **level = qubit count**.
+Level 1 plays on a **Bloch sphere** view (single qubit — superposition hole);
+levels 2–5 play on the **Q-sphere** (Bell, GHZ-3/4/5). The pocket app's golf
+MVP is the engine seed. Build plan (QG0–QG3):
+
+- **QG0 rename**: pocket UI "Golf" → "Quantum Golf", holes → "Level 1…5"
+  with qubit count shown; docs updated.
+- **QG1 shared engine**: move pocket's `golf.ts` into
+  `display-app/src/quantum/golf.ts` (the shared home pocket already imports
+  via `@quantum`); add level metadata (number, name, view: bloch|qsphere).
+- **QG2 Level-1 Bloch view**: 2D Bloch projection (SVG, shared math in
+  `@quantum`, per-app styling): ball at the state's (θ,φ), |0⟩ pole top,
+  target flag, family styling. Levels 2–5 keep the 2D Q-sphere.
+- **QG3 booth golf mode**: BoothView `mode === 'golf'` renders the golf
+  sidebar (Bloch/Q-sphere view per level + scorecard; circuit stays on
+  stage), hole-in celebrations, level advance on board clear — switched live
+  from /debug (mode pills already exist). Same engine as pocket.
+
+The animated 3D evolution sphere remains the separate qsphere-evolution
+project (upstream family track); Quantum Golf ships with the 2D views now and
+upgrades its stage when that lands. bloch-golf upstream becomes an optional
+convergence (offer our engine/levels back), not a dependency.
+
+### Idea (unscheduled, superseded by Quantum Golf above): physical Bloch Golf mode
 
 Optional booth game mode reusing **`bloch-golf`** (existing QAMPoser repo: React + Three.js/R3F game where each gate in a `@qamposer/react` circuit rolls a golf ball on a grass-textured Bloch sphere toward a target state, with par scoring, physically-correct rotation trajectories, and hole-in celebrations). Physical variant: visitors place gate tiles on the table; the ball rolls on the big screen. Integration is small because bloch-golf is already driven by circuit-change events from the same editor component — feed it the `/ws/state` circuit instead of on-screen edits (single-qubit: row 0 only, or a dedicated 1-row mini-mat; column order = shot order). Tile coverage: H/X/Y/Z and RX/RY/RZ angle variants exist from M1; S/T need the reserved IDs 40–49 (M6). Needs bloch-golf factored to accept an external circuit source (controlled mode) — coordinate upstream. Would slot in as an alternate display-app view (e.g. a `/golf` route or attract-mode rotation) after M3.
 

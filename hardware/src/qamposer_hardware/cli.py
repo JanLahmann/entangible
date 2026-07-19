@@ -49,6 +49,12 @@ def _all_gate_ids() -> list[int]:
     return sorted(mid for mid, spec in MARKER_TABLE.items() if spec.kind == "gate")
 
 
+def _dial_ids() -> list[int]:
+    return sorted(
+        mid for mid, spec in MARKER_TABLE.items() if spec.dial_axis is not None
+    )
+
+
 def _gate_family(spec: GateSpec) -> str:
     """The ``--gates`` token that selects this tile (e.g. ``H``, ``RX``, ``CNOT``)."""
     return spec.gate
@@ -64,14 +70,19 @@ def _resolve_gates(arg: str) -> list[int]:
         return _all_gate_ids()
     wanted_families: set[str] = set()
     wanted_ids: set[int] = set()
+    want_dials = False
     for tok in arg.split(","):
         tok = tok.strip()
         if not tok:
             continue
         if tok.isdigit():
             wanted_ids.add(int(tok))
+        elif tok.upper() in ("DIAL", "DIALS"):
+            want_dials = True
         else:
             wanted_families.add(tok.upper())
+    if want_dials:
+        wanted_ids.update(_dial_ids())
     ids: list[int] = []
     for mid in _all_gate_ids():
         spec = MARKER_TABLE[mid]
@@ -292,7 +303,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     gen.add_argument(
         "--gates", default="all",
-        help="comma list of gate families/IDs, or 'all' (default: all)",
+        help="comma list of gate families/IDs, 'dials', or 'all' (default: all)",
     )
     gen.add_argument(
         "--magnets", action="store_true",

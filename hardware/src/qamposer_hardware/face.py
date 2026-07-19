@@ -22,12 +22,19 @@ from dataclasses import dataclass
 
 from qamposer_assets.config import AssetsConfig
 from qamposer_assets.marker_svg import marker_bit_matrix
-from qamposer_vision.markers import MARKER_TABLE, ROTATION_ANGLES, GateSpec
+from qamposer_vision.markers import (
+    MARKER_TABLE,
+    ROTATION_ANGLES,
+    GateSpec,
+    pretty_angle,
+)
 
 __all__ = [
     "Rect",
     "ModuleCell",
     "FaceLayout",
+    "DialLabel",
+    "DialFace",
     "accent_color_name",
     "face_layout",
     "notch_count",
@@ -89,6 +96,43 @@ class ModuleCell:
 
 
 @dataclass(frozen=True, slots=True)
+class DialLabel:
+    """One per-edge angle label on a dial face, in 3D face coords (mm, y up).
+
+    ``(cx, cy)`` is the label's centre; ``theta`` its CCW rotation (degrees) in
+    the 3D face frame; ``text`` the pretty angle (e.g. ``"π/2"``); ``r`` the
+    rotation index / edge it belongs to (0 top, 1 left, 2 bottom, 3 right at the
+    canonical orientation). ``theta = 90·r``: turning the physical tile clockwise
+    by ``r`` quarter-turns brings this edge to board-top reading upright — the
+    exact convention of the 2D ``tile_face._dial_body``.
+    """
+
+    cx: float
+    cy: float
+    theta: float
+    text: str
+    r: int
+
+
+@dataclass(frozen=True, slots=True)
+class DialFace:
+    """Dial-specific top-face geometry (edge labels, ▲ pointer, axis caption).
+
+    All coordinates are 3D face coords (mm, origin bottom-left, y up). Present
+    only on dial tiles (IDs 42/43/44); ``None`` on every classic tile. Mirrors
+    :func:`qamposer_assets.tile_face._dial_body` exactly so the 2D print and the
+    3D face are indistinguishable to a camera and a human.
+    """
+
+    labels: tuple[DialLabel, ...]  # the four per-edge angle labels
+    pointer: tuple[tuple[float, float], ...]  # ▲ solid at canonical top: 3 (x, y)
+    caption: str  # axis caption in the bottom band (e.g. "RX dial")
+    caption_pos: tuple[float, float]  # caption centre (x, y)
+    caption_font: float  # caption font size (mm)
+    label_font: float  # edge-label font size (mm)
+
+
+@dataclass(frozen=True, slots=True)
 class FaceLayout:
     """Everything :mod:`build` needs to place the top-face colour regions."""
 
@@ -108,6 +152,7 @@ class FaceLayout:
     notch_count: int
     notches: tuple[Rect, ...]  # bottom-edge tactile slots (angle differentiation)
     label: str  # band caption text (e.g. "RX π/2"); "" for CNOT tiles
+    dial: DialFace | None = None  # dial-face geometry (IDs 42/43/44), else None
 
     @property
     def black_cells(self) -> tuple[tuple[int, int], ...]:
@@ -220,6 +265,9 @@ def face_layout(marker_id: int, config: AssetsConfig) -> FaceLayout:
     if spec.kind != "gate":
         raise ValueError(f"marker {marker_id} is not a gate tile ({spec.label})")
 
+    if spec.dial_axis is not None:
+        return _dial_layout(marker_id, spec, config)
+
     t = config.tile
     size = t.size
     accent_hex = config.colors.for_gate(spec.gate)
@@ -287,3 +335,124 @@ def _band_label(spec: GateSpec) -> str:
     from qamposer_assets.tile_face import tile_label
 
     return tile_label(spec)
+
+
+def _dial_layout(marker_id: int, spec: GateSpec, config: AssetsConfig) -> FaceLayout:
+    """:class:`FaceLayout` for a dial tile (IDs 42/43/44).
+
+    Mirrors :func:`qamposer_assets.tile_face._dial_body` region-for-region so the
+    2D print and the 3D face read identically. Differences from a classic tile:
+
+    * the white field is the **full** inner square (no colour band) — a dial is
+      turned about its own centre;
+    * the ArUco marker is centred in that square (not pushed up under a band);
+    * there are no tactile notches (the *orientation*, not a notch count, sets
+      the angle); and
+    * the accent carries a :class:`DialFace`: four per-edge angle labels, a ▲
+      pointer at the canonical top edge, and the axis caption in the bottom band.
+
+    Every position is the vertical flip (``Y = size − y_svg``) of the exact SVG
+    coordinate the 2D face uses, so a camera looking down ``−Z`` sees the SVG.
+    """
+    t = config.tile
+    size = t.size
+    accent_hex = config.colors.for_gate(spec.gate)
+    inner_radius = max(t.corner_radius - t.frame_width, 0.0)
+
+    # Full inner white square (SVG: frame_width..size-frame_width both axes).
+    field_w = size - 2 * t.frame_width
+    centre = size / 2.0
+    white_field = Rect(cx=centre, cy=centre, w=field_w, h=field_w)
+
+    # Bottom band region — kept for structural parity with FaceLayout; it is NOT
+    # a coloured band on a dial (the whole field is white), only the caption sits
+    # there. The axis caption lives in DialFace.
+    band = Rect(
+        cx=centre,
+        cy=_flip_y(size, t.band_top + t.band_height / 2.0),
+        w=size,
+        h=t.band_height,
+    )
+
+    # Centred ArUco marker (marker_x == marker_y == (size - marker_size) / 2).
+    matrix = marker_bit_matrix(marker_id, config.aruco_dictionary)
+    n = len(matrix)
+    module = t.marker_size / n
+    m0 = (size - t.marker_size) / 2.0
+    cells: list[ModuleCell] = []
+    for r, row in enumerate(matrix):
+        for c, bit in enumerate(row):
+            x0 = m0 + c * module
+            y_svg_top = m0 + r * module
+            cx = x0 + module / 2.0
+            cy = _flip_y(size, y_svg_top + module / 2.0)
+            cells.append(
+                ModuleCell(
+                    row=r,
+                    col=c,
+                    bit=int(bit),
+                    rect=Rect(cx=cx, cy=cy, w=module, h=module),
+                )
+            )
+
+    # Four per-edge angle labels. SVG edge midpoints (x, y_svg, r) exactly as in
+    # _dial_body; flip y to 3D. theta = 90·r (CCW) is the 3D equivalent of the
+    # SVG spin θ_svg = ((-90·r)+180) mod 360 − 180 under the y-flip.
+    label_font = 4.0
+    inset = 8.0
+    svg_edges = (
+        (centre, inset, 0),          # top    → r=0 (π/4, upright)
+        (inset, centre, 1),          # left   → r=1 (π/2)
+        (centre, size - inset, 2),   # bottom → r=2 (π)
+        (size - inset, centre, 3),   # right  → r=3 (−π/2)
+    )
+    labels = tuple(
+        DialLabel(
+            cx=lx,
+            cy=_flip_y(size, ly_svg),
+            theta=(90.0 * r) % 360.0,
+            text=pretty_angle(ROTATION_ANGLES[r]),
+            r=r,
+        )
+        for lx, ly_svg, r in svg_edges
+    )
+
+    # ▲ pointer at the canonical (r=0) top edge, inside the frame.
+    apex_y = t.frame_width + 0.9
+    base_y = apex_y + 2.2
+    pointer = (
+        (centre, _flip_y(size, apex_y)),
+        (centre - 1.7, _flip_y(size, base_y)),
+        (centre + 1.7, _flip_y(size, base_y)),
+    )
+
+    caption = f"{spec.dial_axis} dial"
+    caption_pos = (centre, _flip_y(size, size - t.frame_width - 1.6))
+    dial = DialFace(
+        labels=labels,
+        pointer=pointer,
+        caption=caption,
+        caption_pos=caption_pos,
+        caption_font=2.4,
+        label_font=label_font,
+    )
+
+    return FaceLayout(
+        marker_id=marker_id,
+        spec=spec,
+        size=size,
+        corner_radius=t.corner_radius,
+        frame_width=t.frame_width,
+        band_height=t.band_height,
+        accent_hex=accent_hex,
+        accent_name=accent_color_name(accent_hex),
+        white_field=white_field,
+        inner_radius=inner_radius,
+        band=band,
+        module_size=module,
+        modules=tuple(cells),
+        notch_count=0,
+        notches=(),
+        label="",
+        dial=dial,
+    )
