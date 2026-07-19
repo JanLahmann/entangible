@@ -14,6 +14,7 @@ import { TEST_BOARDS } from './testBoards';
 import { reduceViewer, CLOSED, type ViewerAction } from './viewer';
 import kitPdf from '../../../examples/print/entangible-print-kit-A4.pdf?url';
 import tiles3d from '../../../examples/hardware/entangible-3d-tiles.zip?url';
+import cubeFamily from '../../../examples/renders/cube-family.png';
 
 const REPO_URL = 'https://github.com/JanLahmann/entangible';
 const ISSUES_URL = 'https://github.com/JanLahmann/entangible/issues';
@@ -219,6 +220,12 @@ export function GuidePage() {
             so a whole kit is a handful of open-slice-print files. Use matte filament — glossy
             tops glare and hurt detection.
           </p>
+          <img
+            className="pk-guide-render"
+            src={cubeFamily}
+            alt="Isometric rendering of the Entangible gate cubes: H, X, Y, Z, CNOT control and target, RX(π/2), S and T"
+            loading="lazy"
+          />
           <a
             className="pk-guide-download"
             href={tiles3d}

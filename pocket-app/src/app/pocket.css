@@ -1756,6 +1756,14 @@ body,
   margin: 0 0 0.9rem;
 }
 
+/* Rendered artwork (gate-cube isometric render) in guide sections. */
+.pk-guide-render {
+  display: block;
+  width: 100%;
+  max-width: 34rem;
+  margin: 0.4rem auto 0.9rem;
+}
+
 /* Inline links in guide prose (paragraphs + the how-to/run-it steps). Without
    this they fell back to the browser default blue/purple — near-invisible on
    the dark background. --link is the text-safe blue (~8:1). Scoped to prose so

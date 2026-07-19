@@ -9,6 +9,8 @@ Built with [build123d](https://github.com/gumyr/build123d) (OpenCASCADE). Output
 is one **MMU colour part per filament** plus a bundled coloured **3MF**, aimed at
 a **Prusa Core One with the MMU** (per-layer multi-colour).
 
+![Isometric rendering of the Entangible gate cubes](../examples/renders/cube-family.png)
+
 ## What it makes
 
 For every gate tile in `MARKER_TABLE` (IDs 10-15, 20-31, 40, 41 — H, X, Y, Z,

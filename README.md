@@ -18,6 +18,12 @@ camera + TS detection, no install), the booth big screen (`/?kiosk`), the
 visitor's read-only follow-along view (scan the booth QR), the staff phone
 camera (operator QR), and the staff `/debug` panel.
 
+![Gate cubes on the board mat: H plus a CNOT pair forming a Bell state](examples/renders/bell-on-mat.png)
+
+*The 3D-printed gate cubes on the printed board mat — H + CNOT = a Bell pair.
+Renders are generated from the same source of truth as the print kit and the
+vision detector (`tools/render_cube_art.py`).*
+
 ## Quick start
 
 ```sh
