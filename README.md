@@ -9,6 +9,19 @@ editor (controlled mode, in-browser `localAdapter`, OpenQASM 2 export). Hosts:
 Raspberry Pi 4/5 and macOS; cameras: USB / Pi Camera / Continuity Camera /
 iPhone browser streaming.
 
+**One app, every role** ("Entangible One"): the same React app is the
+standalone composer at [entangible.org](https://entangible.org) (on-device
+camera + TS detection, no install), the booth big screen (`/?kiosk`), the
+visitor's read-only follow-along view (scan the booth QR), the staff phone
+camera (operator QR), and the staff `/debug` panel.
+
+## Quick start
+
+```sh
+make demo    # build the app + serve a no-camera replay loop,
+             # then open http://localhost:8443/?kiosk&connect=1
+```
+
 ## Repo layout
 
 A uv workspace (three Python packages) plus one npm app. See
@@ -23,7 +36,7 @@ packages/
   qamposer-physical-host/ # FastAPI kiosk host (M2); serves the app at /, /?kiosk, /debug
 pocket-app/               # Vite + React + @qamposer/react — the ONE app (Entangible One)
 shared/                   # neutral @quantum engine + @shared display/ws/capture logic
-docs/                     # design, protocol, marker-ids, printing, rasqberry
+docs/                     # design, protocol, marker-ids, printing, pocket, booth-ux
 tests/                    # fixtures + unit suites
 ```
 

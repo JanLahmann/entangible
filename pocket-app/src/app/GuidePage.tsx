@@ -220,9 +220,15 @@ export function GuidePage() {
         <section className="pk-guide-sec">
           <Label>The full project</Label>
           <p>
-            The pocket app's big sibling is a booth installation: a Raspberry Pi kiosk (RasQberry)
-            with a large screen, a live camera rig, a phone-camera mode, celebrations and an
-            operator panel — built for fairs and events. Same tiles, same board, same engine.
+            This same app also runs the full booth installation: a Raspberry Pi kiosk (RasQberry)
+            with a large screen shows it in kiosk mode, a live camera rig or a staff phone feeds
+            it, and celebrations light up when entanglement appears — built for fairs and events.
+            One app, same tiles, same board, same engine.
+          </p>
+          <p>
+            At a booth, scan the <b>visitor QR</b> on the big screen to follow along on your own
+            phone — you'll see the circuit being built on the table, live, and can take it home
+            with the Transfer button.
           </p>
           <ul className="pk-guide-links">
             <li>

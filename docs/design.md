@@ -10,6 +10,37 @@ QAMPoser (github.com/QAMP-62) is an open-source, embeddable quantum circuit comp
 
 ## Architecture
 
+> **As built (post-U3, 2026-07-19).** The original two-app design (display-app
+> at `/`, phone `/capture` page) was superseded by "Entangible One" (section
+> below): ONE React app serves every role. The original diagram is kept
+> further below for history.
+
+```
+USB / PiCam / Continuity ─┐
+                          ├─▶ qamposer-vision ─────▶ ┌─────────────────────────────┐
+phone in camera role ─────┘   (Python / OpenCV      │ qamposer-physical-host      │
+  (the app itself; JPEG        ArUco pipeline,      │ (FastAPI, HTTPS :8443)      │
+  frames over /ws/frames,      in-process thread)   │ • /ws/state broadcast hub   │
+  operator-key gated)                               │ • serves THE app at /       │
+                                                    │ • operator-token security   │
+        ┌───────────────────────────────────────────┤ • /qamposer-api/* proxy ────┼──▶ qamposer-backend
+        ▼                                           └─────────────────────────────┘    (OPTIONAL, own venv,
+THE app (pocket-app/, React, also live at entangible.org)                              Qiskit/Aer :8001)
+  one build, role by URL/context:
+  • standalone  — on-device camera + TS detection (no host at all)
+  • kiosk       — /?kiosk&connect=1, booth big-screen skin, viewer of /ws/state
+  • viewer      — visitor QR → /?connect=1, read-only follow-along on the phone
+  • camera      — staff QR → /?connect=1&role=camera&key=…, streams frames
+  • /debug      — staff route: keyed MJPEG, fleet, layout card (operator)
+  @qamposer/react controlled mode; realtimeAdapter = localAdapter (in-browser)
+```
+
+- Vision runs as a worker thread inside the FastAPI app (no IPC); a standalone `qamposer-vision detect` CLI exists for dev/testing.
+- Single HTTPS origin `https://<host>:8443` (iPhone `getUserMedia` requires secure context): the app at `/` (SPA fallback covers `/debug` and client routes; `/pocket*` 307-redirects to `/` preserving the query for QRs in the wild), WebSockets under `/ws/*`. Self-signed cert auto-generated on first run (SANs = hostname + LAN IPs). Two QRs: the ungated visitor QR (`/api/visitor-qr` → `/?connect=1`) on the booth footer/attract screen, and the key-gated staff QR (`/api/qr` → camera role).
+- **Default mode needs no backend**: `realtimeAdapter={localAdapter()}` simulates ideally in the kiosk browser on every stable circuit change. When the backend is enabled (`--backend spawn|url|off`), the host reverse-proxies it at `/qamposer-api` (same origin → no CORS/mixed-content) and the UI offers "Run on noisy/real backend" (`profile: {type:'noisy_fake'|'real'}`).
+
+### Original (pre-Entangible-One) architecture — historical
+
 ```
 USB / PiCam / Continuity ─┐
                           ├─▶ qamposer-vision ─────▶ ┌─────────────────────────────┐
@@ -18,16 +49,12 @@ iPhone browser ───────────┘   (Python / OpenCV      │ 
   frames over /ws/frames       in-process thread)   │ • /ws/state broadcast hub   │
                                                     │ • serves display app        │
                                                     │ • /qamposer-api/* proxy ────┼──▶ qamposer-backend
-display-app (React) ◀───────────────────────────────┤   (only if enabled)         │    (OPTIONAL, own venv,
-  @qamposer/react                                   └─────────────────────────────┘     Qiskit/Aer :8001)
+display-app (React) ◀───────────────────────────────┤   (only if enabled)         │
+  @qamposer/react                                   └─────────────────────────────┘
   controlled mode; realtimeAdapter = localAdapter (in-browser, default)
 ```
 
-- Vision runs as a worker thread inside the FastAPI app (no IPC); a standalone `qamposer-vision detect` CLI exists for dev/testing.
-- Single HTTPS origin `https://<host>:8443` (iPhone `getUserMedia` requires secure context): display app at `/`, phone capture at `/capture`, diagnostics at `/debug`, WebSockets under `/ws/*`. Self-signed cert auto-generated on first run (SANs = hostname + LAN IPs); QR code on screen links phones to `/capture`.
-- **Default mode needs no backend**: `realtimeAdapter={localAdapter()}` simulates ideally in the kiosk browser on every stable circuit change. When the backend is enabled (`--backend spawn|url|off`), the host reverse-proxies it at `/qamposer-api` (same origin → no CORS/mixed-content) and the UI offers "Run on noisy/real backend" (`profile: {type:'noisy_fake'|'real'}`).
-
-## Repo layout (uv workspace + one npm app)
+## Repo layout (uv workspace + one npm app; as built post-U3)
 
 ```
 pyproject.toml            # uv workspace root
@@ -36,15 +63,16 @@ packages/
   qamposer-vision/        # Python ≥3.11: opencv-python-headless ≥4.8, numpy
     src/qamposer_vision/{markers,sources,board,grid,detector,stabilizer,circuit_builder,qasm,pipeline,annotate,cli}.py
   qamposer-physical-host/ # Python ≥3.11: fastapi, uvicorn, httpx, qrcode, cryptography
-    src/qamposer_host/{main,config,hub,ws_state,ws_frames,proxy,preview,certs,static,cli}.py
+    src/qamposer_host/{main,config,hub,ws_state,ws_frames,proxy,preview,certs,static,token,layout,branding,cli}.py
   qamposer-assets/        # printable asset generator: SVG source of truth, cairosvg → PDF
-    src/qamposer_assets/{config,marker_svg,tile_face,symbols,sheets,board,cli}.py
-display-app/              # Vite + React + TS + @qamposer/react ^0.2
-  src/{main.tsx, ws/{stateSocket,messages}.ts, booth/{BoothView,Celebrations}.tsx,
-       debug/DebugView.tsx, capture/CaptureView.tsx}
-docs/{protocol.md, marker-ids.md, printing.md, rasqberry.md}
-deploy/{rasqberry/install.sh, systemd/*.service, kiosk/start-kiosk.sh}
-hardware/                 # M6 stretch: STL/3MF sources consuming tile-face SVGs
+    src/qamposer_assets/{config,marker_svg,tile_face,symbols,sheets,board,cheatsheet,cli}.py
+pocket-app/               # THE app (Entangible One): Vite + React + TS + @qamposer/react
+  src/{app/…, kiosk/…, debug/…, sources/…, vision/…, pipeline/…}
+shared/                   # neutral cross-cutting layer, aliased @quantum / @shared
+  {quantum/…, display/…, ws/…, capture/…, tokens.css}
+hardware/                 # build123d 3D-printable tiles/cubes (colored 3MFs, print plates)
+examples/                 # test-board PNGs, print-kit PDF, 3D-tiles ZIP
+docs/{design,protocol,marker-ids,printing,pocket,booth-ux,mac-booth,iphone-capture,…}.md
 tests/                    # fixtures (golden circuits, synthetic + real images, recordings) + unit suites
 ```
 
@@ -167,21 +195,29 @@ the printed sheet = credential; cheatsheet CLI gains a `--token` option);
 docs recommend the booth runs its own AP/hotspot at venues. No accounts —
 right-sized for a booth appliance.
 
-**Phases (each leaves everything working):**
-1. **SC1** — move `display-app/src/quantum` → neutral top-level `shared/`
-   (both apps alias); consolidate pure logic duplicates (displayWires,
-   outcomes/histogram math, warnings, hints, inspectCopy already shared).
-2. **SC2** — unify structural components behind the `classPrefix` pattern
-   (Histogram, Celebrations, MessageStrip, QASM/State panels, Scorecard,
-   TouchInspector) + one shared `tokens.css` (single design-system source).
-3. **U1** — `StateSource` abstraction + WS source + host serves the unified
-   app at `/`; display-app enters deprecation (kept until parity verified).
-4. **U2** — Camera role absorbs `/capture`.
-5. **U3** — kiosk skin (`?kiosk`, vh scale) + host-layout mapping + `/debug`
-   route; delete display-app; M5 packages ONE app.
+**Phases (each leaves everything working) — ALL IMPLEMENTED 2026-07-19
+(commits e673edb..c31222f; suites 474 py + 400 ts at completion):**
+1. **SC1** ✅ `e673edb` — move `display-app/src/quantum` → neutral top-level
+   `shared/` (both apps alias); consolidate pure logic duplicates
+   (displayWires, outcomes/histogram math, warnings, hints, inspectCopy
+   already shared).
+2. **SC2** ✅ `6ec1a36` — unify structural components behind the `classPrefix`
+   pattern (Histogram, Celebrations, MessageStrip, QASM/State panels,
+   Scorecard, TouchInspector) + one shared `tokens.css` (single design-system
+   source).
+3. **U1** ✅ `7fae89d` + `04cf0ed` — `StateSource` abstraction + WS source +
+   operator-token security + viewer policy + visitor QR. (Ordering deviation:
+   `/` kept serving display-app until U3 parity, rather than flipping at U1 —
+   flipping earlier would have regressed the physical big screen.)
+4. **U2** ✅ `71a9bee` — Camera role absorbs `/capture` (staff QR flips to the
+   pocket camera role; zoomed crop is what streams).
+5. **U3** ✅ `c31222f` — kiosk skin (`?kiosk`, vh scale) + host-layout mapping
+   + `/debug` route; display-app deleted; M5 packages ONE app.
 
-Consequences: features ship once for all roles; one deploy/test surface; M5
-(RasQberry packaging) serves the same app that runs at entangible.org.
+Consequences (now in effect): features ship once for all roles; one
+deploy/test surface; M5 (RasQberry packaging) serves the same app that runs
+at entangible.org. A static policy test pins the only `select_*` send sites
+to the camera role and the /debug module.
 
 ### Take it home — run on real hardware (DECIDED per Jan 2026-07-19; T1 anytime, T2 after U1)
 
