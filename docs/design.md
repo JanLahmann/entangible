@@ -143,7 +143,14 @@ explicit manual-editing input mode as fallback when no tiles/camera are
 available or desired; enables on-screen gate placement via the editor's
 native editing, camera strip hidden, everything downstream unchanged)
 feeding one shared shell; everything below it is already
-the shared `@quantum` layer. The host serves the unified app at `/` (it
+the shared `@quantum` layer. **Additionally (per Jan 2026-07-19):
+`LocalPipelineSource` gets a pluggable FRAME input — `getUserMedia` or a
+remote camera stream (e.g. the host's MJPEG endpoint)** — enabling the
+"dumb network camera + one smart display" topology (a Pi serving only its
+CSI cam; the app detects locally). This complements, not replaces,
+`BoothSocketSource`: state broadcast stays the multi-viewer path (~1 KB per
+change vs 1–2 Mbit/s per video viewer; byte-identical sync via `seq`; no
+CV battery cost on passive phones). The host serves the unified app at `/` (it
 already serves the pocket build at `/pocket`); the staff `/debug` becomes a
 route of the same app.
 
