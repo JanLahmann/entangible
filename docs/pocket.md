@@ -26,7 +26,7 @@ pocket-app/                  # Vite + React + TS, static output (pocket-app/dist
     circuitBuilder.ts        # port of circuit_builder.py (CNOT pairing, warnings)
     stabilizer.ts            # asymmetric hysteresis (5-of-7 / 12-absent)
   src/app/                   # UI (booth-v2 tokens)
-  (imports display-app/src/quantum/{statevector,moments} via vite fs.allow —
+  (imports shared/quantum/{statevector,moments} via / aliases —
    single source, no copies)
 tools/export_dictionary.py   # qamposer_vision.markers + cv2 bit matrices → JSON
 ```
@@ -46,7 +46,7 @@ tools/export_dictionary.py   # qamposer_vision.markers + cv2 bit matrices → JS
   build time as JSON). Golden-fixture tests: the repo's
   `tests/fixtures/circuits/*.json` MUST pass through the TS builder
   byte-identically (same ids, same warnings).
-- **Simulation/UI**: reuse `display-app/src/quantum/*` (statevector, moments)
+- **Simulation/UI**: reuse `shared/quantum/*` (`@quantum`: statevector, moments)
   and the booth-v2 histogram/celebration components' design language.
 - **No server**: everything client-side; QASM shown locally; noisy-Run absent.
 
@@ -72,7 +72,7 @@ Landscape (primary, ~4:3):
 - Portrait: stacked — collapsible camera preview on top (thumbnail once the
   board locks), circuit, results.
 - Start state: big "Start camera" card (secure-context error card otherwise,
-  as in /capture). Camera: `facingMode: environment`, 1280×720.
+  as in the camera role). Camera: `facingMode: environment`, 1280×720.
 - The camera preview shows the detection overlay (marker outlines, board
   quad, fps chip) — it doubles as the /debug view here.
 - Wake lock while running; PWA manifest + icons so "Add to Home Screen"
@@ -145,8 +145,9 @@ booth-built circuit leaves on the visitor's phone, take-it-home T2).
 
 A third role behind the same shell (docs/design.md "Entangible One"): a staff
 phone serves as the booth's **camera**, streaming JPEG frames to the host with
-pocket's richer camera UI, while the host does the detection. This absorbs the
-display-app `/capture` page (which stays as a fallback until U3).
+pocket's richer camera UI, while the host does the detection. This absorbed the
+former display-app `/capture` page (removed in U3 — the camera role is now the
+only phone-camera path).
 
 - **Trigger / gating** (design: "connected to a host, camera role selected"):
   the role is offered ONLY when a booth host is known (served-by-host `/api/info`
@@ -160,7 +161,7 @@ display-app `/capture` page (which stays as a fallback until U3).
   density) to a canvas and hands it to the shared streaming core
   (`@shared/capture` — `StreamController` pacing + `FrameStreamer` `/ws/frames`
   socket with reconnect + backpressure). The camera UI stays live: **preview**,
-  **pinch/step zoom** (what you zoom is what streams, matching `/capture`),
+  **pinch/step zoom** (what you zoom is what streams, matching the former /capture),
   **freeze** (❄ pauses the frame pump), **camera picker** (Continuity Camera).
   It also connects to `/ws/state` as an operator `camera` (`hello {role:'camera',
   key}`) and sends `select_camera {kind:'push'}` so the host hot-swaps onto the

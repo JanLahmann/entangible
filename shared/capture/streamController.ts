@@ -2,12 +2,11 @@
  * Pure streaming-loop logic — the reusable frame-pacing core (shared, U2).
  *
  * This module has *no* DOM dependencies so the pacing / backpressure / fps
- * bookkeeping can be unit-tested with a fake clock. Both frame-streaming
- * clients drive it once per animation frame to decide whether to capture and
- * send the current frame: the display app's `CaptureView` (`/capture`) and the
- * pocket app's CAMERA role (via `@shared/capture/frameStreamer`). The caller
- * owns the `getUserMedia` video + canvas `toBlob`; `FrameStreamer` wraps the
- * `/ws/frames` socket (with reconnect) around this controller.
+ * bookkeeping can be unit-tested with a fake clock. The pocket app's CAMERA
+ * role drives it once per animation frame (via `@shared/capture/frameStreamer`)
+ * to decide whether to capture and send the current frame. The caller owns the
+ * `getUserMedia` video + canvas `toBlob`; `FrameStreamer` wraps the `/ws/frames`
+ * socket (with reconnect) around this controller.
  *
  * Decision order (see `docs/protocol.md` — the *client* paces itself and
  * enforces backpressure via `WebSocket.bufferedAmount`):

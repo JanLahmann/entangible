@@ -1,6 +1,6 @@
 /**
  * Map circuit-builder / detection warning codes to gentle, booth-friendly
- * wording — shared by the booth (`display-app`) and Pocket (`pocket-app`).
+ * wording — shared by the kiosk booth skin and the pocket surfaces.
  *
  * The two apps carry warnings in slightly different envelopes:
  *   - the booth's `DetectionWarning` (from the WS protocol) keys off `code`;

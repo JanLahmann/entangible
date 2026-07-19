@@ -1,16 +1,18 @@
 /**
  * Optional "Run on a noisy simulator" control (docs/booth-ux.md → Optional
- * noisy Run). Staff-only by intent: small, corner-placed, mouse-operated.
+ * noisy Run). Ported from the former display-app booth surface (Entangible One,
+ * phase U3). Staff-only by intent: small, corner-placed, mouse-operated.
  *
  * - Polls `/api/health` every 10 s; the control only appears when
- *   `backend.healthy` is true (hidden entirely at a backend-less booth).
+ *   `backend.healthy` is true (hidden entirely at a backend-less booth — the
+ *   probe stays graceful when no backend is enabled).
  * - On click it runs the circuit on a noisy fake backend via `qiskitAdapter`
  *   (baseUrl `/qamposer-api`, profile `noisy_fake`) and renders ideal (computed
  *   locally from the statevector, Carbon blue #0f62fe) vs noisy (from the
  *   backend, gray #8d8d8d) side-by-side bars.
  * - Auto-reverts to ideal-only on the next circuit change.
  * - Graceful: any error hides the control and logs `console.warn` — never
- *   throws into the booth view.
+ *   throws into the kiosk view.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { qiskitAdapter, type Circuit, type CircuitRequest } from '@qamposer/react';

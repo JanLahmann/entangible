@@ -26,9 +26,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # SC1: pocket-app imports the neutral top-level shared/ sources via the
+      # pocket-app imports the neutral top-level shared/ sources via the
       # @quantum/@shared aliases; @qamposer/react etc. resolve from pocket-app's
-      # own node_modules, so no display-app install is needed here.
+      # own node_modules. It is the ONE app (Entangible One) — served standalone
+      # here on Pages, and at / · /?kiosk · /debug by the booth host.
       - name: Install and build pocket-app
         run: |
           npm ci

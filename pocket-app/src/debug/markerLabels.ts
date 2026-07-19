@@ -1,5 +1,6 @@
 /**
- * Best-effort marker-id → human label map for the /debug view only.
+ * Best-effort marker-id → human label map for the /debug view only. Ported from
+ * the former display-app debug surface (Entangible One, phase U3).
  *
  * The authoritative table is `MARKER_TABLE` in `qamposer-vision/markers.py`
  * (mirrored in `docs/marker-ids.md`). This copy exists purely so booth staff can

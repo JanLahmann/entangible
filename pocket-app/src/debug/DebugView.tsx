@@ -1,22 +1,29 @@
 /**
- * DebugView (/debug) — booth-staff calibration screen.
+ * DebugView (/debug) — booth-staff calibration screen. Ported from the former
+ * display-app debug surface into the unified pocket app (Entangible One, phase
+ * U3); the host serves the pocket SPA at `/debug` and the app routes to this
+ * component on `location.pathname` (see `../app/surface`).
  *
  * Left: the live annotated MJPEG preview served by the host at /debug/stream.
- * Right: a dense monospace dump of the latest `detection` + `status` frames.
+ * Right: a dense monospace dump of the latest `detection` + `status` frames,
+ * plus the staff Layout card.
  *
- * Everything here is read-only diagnostics; nothing feeds back to the host.
+ * This is the ONLY pocket surface that authenticates as an OPERATOR and sends
+ * `select_layout` / `select_mode` (via the isolated `./debugSocket`) — the
+ * viewer-policy exception. Everything else here is read-only diagnostics.
  */
 import { useEffect, useState, type CSSProperties } from 'react';
-import { useEntangibleState } from '../ws/useEntangibleState';
-import { getStateSocket } from '../ws/stateSocket';
+import { useDebugState } from './debugSocket';
+import { getDebugSocket } from './debugSocket';
 import {
   clearOperatorKey,
   getOperatorKey,
   storeOperatorKey,
   withKey,
-} from '../ws/operatorKey';
-import type { DisplayMode, SidebarSide, Wires } from '../ws/messages';
+} from '@shared/ws/operatorKey';
+import type { DisplayMode, SidebarSide, Wires } from '@shared/ws/messages';
 import { markerLabel } from './markerLabels';
+import './debug.css';
 
 function fmt(n: number | null | undefined, digits = 2): string {
   return typeof n === 'number' ? n.toFixed(digits) : '—';
@@ -53,8 +60,8 @@ function PhoneCameraCard() {
       <h2>phone camera</h2>
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <img
-          src={withKey('/api/qr?path=/capture')}
-          alt="QR code linking to the /capture page"
+          src={withKey('/api/qr')}
+          alt="QR code opening the pocket camera role"
           width={168}
           height={168}
           style={{ background: '#fff', padding: 8, borderRadius: 6, flex: 'none' }}
@@ -109,11 +116,12 @@ const PANEL_REGISTRY = [
 /**
  * "Layout" card: staff-facing mode/panel/sidebar controls. Reflects the live
  * `layout` message and pushes `select_mode` / `select_layout` back to the host.
- * The booth screen consumes the broadcast — this card never touches it directly.
+ * The kiosk/viewers consume the broadcast — this card never touches them
+ * directly. This is the pocket app's ONLY `select_*` send site (operator only).
  */
 function LayoutCard() {
-  const { layout } = useEntangibleState();
-  const socket = getStateSocket();
+  const { layout } = useDebugState();
+  const socket = getDebugSocket();
 
   const mode = layout?.mode;
   const sidebar = layout?.sidebar;
@@ -295,7 +303,7 @@ function OperatorKeyPrompt({ rejected }: { rejected?: boolean }) {
 }
 
 export function DebugView() {
-  const { detection, status, connectionState, operator } = useEntangibleState();
+  const { detection, status, connectionState, operator } = useDebugState();
 
   // Gate the staff diagnostics behind the operator key. The page shell is
   // served openly by the host; the key lives client-side (localStorage / the

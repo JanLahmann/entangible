@@ -26,7 +26,7 @@ pytest.importorskip("qamposer_vision.sources")
 
 def _app():
     config = HostConfig.from_env(
-        source="replay:none", backend="off", display_dist="/no/such/dist"
+        source="replay:none", backend="off"
     )
     # Fake pipeline records swap_source; a REAL PushFrameSource is created by
     # ensure_push_source (the vision package is a workspace member here).

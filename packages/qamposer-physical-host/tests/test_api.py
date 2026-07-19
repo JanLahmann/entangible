@@ -11,7 +11,7 @@ from qamposer_host.main import create_app
 
 def _app(**overrides):
     config = HostConfig.from_env(
-        source="replay:none", backend="off", display_dist="/no/such/dist",
+        source="replay:none", backend="off", pocket_dist="/no/such/dist",
         **overrides,
     )
     # Inject a fake pipeline so the suite never depends on the vision package
@@ -39,7 +39,10 @@ def test_info_shape_tls_default():
         assert set(body) == {"lanIp", "port", "tls", "captureUrl", "security"}
         assert body["tls"] is True
         assert isinstance(body["port"], int)
-        assert body["captureUrl"] == f"https://{body['lanIp']}:{body['port']}/capture"
+        assert (
+            body["captureUrl"]
+            == f"https://{body['lanIp']}:{body['port']}/pocket?connect=1&role=camera"
+        )
         # Additive: token-enforcing hosts advertise operator security.
         assert body["security"] == {"operator": True}
 
@@ -50,7 +53,7 @@ def test_info_reflects_no_tls():
         assert body["tls"] is False
         assert body["port"] == 8080
         assert body["captureUrl"].startswith("http://")
-        assert body["captureUrl"].endswith(":8080/capture")
+        assert body["captureUrl"].endswith(":8080/pocket?connect=1&role=camera")
 
 
 def test_qamposer_api_503_when_off():
@@ -66,10 +69,10 @@ def test_static_fallback_when_dist_missing():
     with TestClient(_app()) as client:
         root = client.get("/")
         assert root.status_code == 200
-        assert "display app has not been built" in root.text.lower()
+        assert "app has not been built" in root.text.lower()
 
-        # SPA client route also gets the friendly page:
-        spa = client.get("/capture")
+        # SPA client routes (e.g. /debug) also get the friendly page:
+        spa = client.get("/debug")
         assert spa.status_code == 200
         assert "not been built" in spa.text.lower()
 
@@ -88,13 +91,13 @@ def test_qr_returns_png_and_embeds_key():
     app = _app()
     token = app.state.operator_token
     with TestClient(app) as client:
-        resp = client.get("/api/qr", params={"path": "/capture", "key": token})
+        resp = client.get("/api/qr", params={"path": "/pocket", "key": token})
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "image/png"
         assert resp.content[:8] == b"\x89PNG\r\n\x1a\n"
-        # The encoded capture URL carries the operator key for the phone.
+        # The encoded URL carries the operator key for the phone.
         encoded = resp.headers["X-Encoded-URL"]
-        assert encoded.endswith(f"/capture?key={token}")
+        assert encoded.endswith(f"/pocket?key={token}")
 
 
 def test_qr_default_targets_pocket_camera_role():
@@ -109,23 +112,13 @@ def test_qr_default_targets_pocket_camera_role():
         assert encoded.endswith(f"/pocket?connect=1&role=camera&key={token}")
 
 
-def test_qr_legacy_capture_path_still_available():
-    # The display-app capture page stays reachable via ?path=/capture (until U3).
-    app = _app()
-    token = app.state.operator_token
-    with TestClient(app) as client:
-        resp = client.get("/api/qr", params={"path": "/capture", "key": token})
-        assert resp.status_code == 200
-        assert resp.headers["X-Encoded-URL"].endswith(f"/capture?key={token}")
-
-
 def test_qr_requires_key():
     with TestClient(_app()) as client:
-        resp = client.get("/api/qr", params={"path": "/capture"})
+        resp = client.get("/api/qr", params={"path": "/pocket"})
         assert resp.status_code == 403
         assert resp.json()["detail"]["error"] == "operator_key_required"
 
-        wrong = client.get("/api/qr", params={"path": "/capture", "key": "nope"})
+        wrong = client.get("/api/qr", params={"path": "/pocket", "key": "nope"})
         assert wrong.status_code == 403
 
 
@@ -134,7 +127,7 @@ def test_qr_accepts_header_key():
     with TestClient(app) as client:
         resp = client.get(
             "/api/qr",
-            params={"path": "/capture"},
+            params={"path": "/pocket"},
             headers={"X-Operator-Key": app.state.operator_token},
         )
         assert resp.status_code == 200

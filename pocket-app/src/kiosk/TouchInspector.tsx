@@ -1,10 +1,11 @@
 /**
- * TouchInspector — booth binding of the shared TouchInspector (SC2).
+ * TouchInspector — kiosk binding of the shared TouchInspector (SC2). Ported from
+ * the former display-app booth surface (Entangible One, phase U3).
  *
  * The delegated-click engine lives in `@shared/display/TouchInspector`; this
- * binds the booth's `bo-` classes and its geometry (drop-below cutoff 140, clamp
+ * binds the kiosk's `bo-` classes and its geometry (drop-below cutoff 140, clamp
  * 220 / 12) and the `enabled` gate (`?touch=1` or a coarse pointer — see
- * `./touch`). The booth has no dismiss-guard: an empty-space tap always closes
+ * `./touch`). The kiosk has no dismiss-guard: an empty-space tap always closes
  * an open popover.
  */
 import type { Circuit } from '@qamposer/react';

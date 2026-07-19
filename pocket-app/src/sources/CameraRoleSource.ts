@@ -12,7 +12,7 @@
  *     connects with `hello {role:'camera', key}` (so the host lists it as a
  *     camera in the `/debug` fleet) and, once open, sends `select_camera
  *     {kind:'push'}` so the host hot-swaps its pipeline onto the push source —
- *     exactly what the display app's `/capture` page does today, mirrored here.
+ *     the behavior the former display-app `/capture` page had, now here.
  *
  * Zoom/freeze semantics come from the frame source (pocket's camera UI): the
  * streamed canvas is already the zoomed crop, and freeze pauses the frame pump

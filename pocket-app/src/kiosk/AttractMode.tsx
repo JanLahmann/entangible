@@ -1,5 +1,7 @@
 /**
- * AttractMode — the idle screensaver loop (docs/booth-ux.md → Attract mode).
+ * AttractMode — the kiosk idle screensaver loop (docs/booth-ux.md → Attract
+ * mode). Ported from the former display-app booth surface (Entangible One,
+ * phase U3).
  *
  * Pure CSS animations only (no canvas, no libraries): a slow ~12 s loop that
  * shows the wordmark, a ghost H tile sliding onto a drawn mini-board, a ghost

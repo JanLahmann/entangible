@@ -6,11 +6,10 @@ booth in its browser and streams its rear camera to the host as JPEG frames over
 USB or Pi camera, so the big screen shows the live circuit.
 
 Since U2 the staff QR opens the **pocket app in its camera role**
-(`/pocket?connect=1&role=camera&key=…`) — the same streaming, now with pocket's
-richer camera UI: pinch/step **zoom** (what you zoom is what streams) and
-**freeze** (❄ pauses the frame pump). The older display-app `/capture` page
-still works as a fallback (see "Legacy /capture" below) until it is retired in
-U3. Both paths behave identically on the wire.
+(`/pocket?connect=1&role=camera&key=…`) — with pocket's richer camera UI:
+pinch/step **zoom** (what you zoom is what streams) and **freeze** (❄ pauses the
+frame pump). This is now the ONLY phone-camera path: the former display-app
+`/capture` page was retired in U3.
 
 Use this when the host is a Raspberry Pi (which cannot use Continuity Camera), or
 whenever a phone is the most convenient overhead camera. On a Mac, Continuity
@@ -26,9 +25,8 @@ when the socket is backed up or a previous encode is still in flight), holds a
 **screen wake lock** so the phone doesn't sleep, and **freeze** pauses the pump.
 It also connects to `/ws/state` as an operator `camera` (its `hello` carries the
 token) and sends `select_camera {kind:'push'}` so the host swaps its pipeline onto
-the shared push source — so the host's `/debug` camera fleet lists the phone. The
-shared streaming core (`shared/capture`) is the same one the legacy `/capture`
-page uses. See [`protocol.md`](protocol.md) for the wire contract.
+the shared push source — so the host's `/debug` camera fleet lists the phone. See
+[`protocol.md`](protocol.md) for the wire contract.
 
 ## Setup steps
 
@@ -75,13 +73,13 @@ If the page shows an error card instead of the preview, it is not a secure
 context (you opened `http://…` or an IP without the cert accepted) — re-open the
 `https://` link and tap through the cert as above.
 
-### Legacy `/capture` fallback (until U3)
+### Retired: the legacy `/capture` page
 
-The original display-app capture page is still available at
-`https://<lan-ip>:8443/capture?key=…`. Get its QR with
-`uv run qamposer-physical qr --path /capture` (or `/api/qr?path=/capture`). It
-streams the same JPEG frames over `/ws/frames`; it lacks the pocket camera role's
-zoom/freeze UI and is kept only until the display app is retired.
+The original display-app `/capture` page was removed in U3 along with the
+display app. The pocket **camera role** (above) is now the only phone-camera
+path — it streams the same JPEG frames over `/ws/frames`, with a richer
+zoom/freeze UI. Old `/pocket?…&role=camera` QRs keep working (`/pocket`
+redirects to `/`).
 
 ## Mounting the phone
 
@@ -128,7 +126,7 @@ All testing so far is synthetic. These are the six M4 verification steps from
 - [ ] **Print the M1 kit** — gate tiles + board mat (`uv run qamposer-assets all`),
       lay the mat flat, place a couple of tiles.
 - [ ] **Scan the QR** from `/debug` (Phone camera card) with the iPhone and open
-      `/capture` in Safari.
+      the pocket **camera role** in Safari.
 - [ ] **Accept the self-signed cert** (Show Details → visit this website →
       Proceed); confirm the page reloads over `https://` and shows **Start camera**.
 - [ ] **Start camera + allow permission**; confirm the live preview fills the

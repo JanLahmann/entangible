@@ -20,8 +20,9 @@ pyproject.toml            # uv workspace root
 packages/
   qamposer-vision/        # OpenCV/ArUco pipeline; markers.py = single source of truth
   qamposer-assets/        # printable tile/board PDF generator (SVG -> PDF)
-  qamposer-physical-host/ # FastAPI kiosk host (M2)
-display-app/              # Vite + React + @qamposer/react (M2)
+  qamposer-physical-host/ # FastAPI kiosk host (M2); serves the app at /, /?kiosk, /debug
+pocket-app/               # Vite + React + @qamposer/react — the ONE app (Entangible One)
+shared/                   # neutral @quantum engine + @shared display/ws/capture logic
 docs/                     # design, protocol, marker-ids, printing, rasqberry
 tests/                    # fixtures + unit suites
 ```
@@ -37,7 +38,7 @@ uv run pytest packages/qamposer-vision   # run the vision test suite
 
 `examples/test-boards/` contains ready-made board images (empty → Bell → GHZ →
 warning cases): open one fullscreen on a monitor and point a camera at it —
-the [pocket app](https://entangible.org), the booth `/capture` page, or
+the [pocket app](https://entangible.org), a phone in the booth camera role, or
 `uv run qamposer-vision detect --image …`. See the folder README.
 
 ## Part of the Fun with Quantum family

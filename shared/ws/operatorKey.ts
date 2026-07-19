@@ -90,8 +90,8 @@ export function clearOperatorKey(): void {
  * Resolve the effective operator key, or `null` if none is available.
  *
  * A `?key=` in the URL wins and is persisted (the staff QR carries it), so a
- * fresh `/capture?key=…` or `/debug?key=…` visit is authenticated with no
- * prompt; otherwise the previously stored key is used.
+ * fresh `/pocket?…&role=camera&key=…` or `/debug?key=…` visit is authenticated
+ * with no prompt; otherwise the previously stored key is used.
  */
 export function getOperatorKey(): string | null {
   const fromUrl = readUrlKey();

@@ -1,5 +1,18 @@
 /**
- * BoothView — the big-screen kiosk view, v2 exhibit design (variant A).
+ * KioskView — the big-screen kiosk skin, v2 exhibit design (variant A).
+ *
+ * This is the former display-app `BoothView`, ported INTO the unified pocket
+ * app as its `?kiosk` surface (Entangible One, phase U3). It renders the SAME
+ * booth composition through the SAME shared `classPrefix` components (`bo-` /
+ * `ent-`) and the ported booth CSS (`./kiosk.css`, vh-authored) so the exhibit
+ * look is byte-identical to the old display app.
+ *
+ * Kiosk mode implies the read-only DISPLAY role: state arrives from the host's
+ * `/ws/state` over `useKioskState` (a viewer socket that NEVER sends `select_*`
+ * — see `./kioskSocket`), and the host's `select_layout`/`select_mode`
+ * broadcasts drive the panels/mode exactly as they drove BoothView (the
+ * "host-layout mapping"). When no booth source is connected yet, a clear
+ * connect-pending screen is shown instead of the empty stage.
  *
  * Spec: docs/booth-ux.md. Layered surfaces; topbar with status pills and the
  * event-branding slot; the circuit full-bleed as the stage with celebrations,
@@ -20,10 +33,10 @@ import {
   createDefaultCircuit,
   type Circuit,
 } from '@qamposer/react';
-import { useEntangibleState } from '../ws/useEntangibleState';
+import { useKioskState } from './kioskSocket';
 import { friendlyWarning } from '@shared/display/warnings';
-import type { ConnectionState } from '../ws/stateSocket';
-import type { CircuitMessage } from '../ws/messages';
+import type { ConnectionState } from '@shared/ws/stateSocket';
+import type { CircuitMessage, Wires } from '@shared/ws/messages';
 import {
   evaluateMoment,
   initialMomentState,
@@ -40,14 +53,13 @@ import { TouchInspector } from './TouchInspector';
 import { Scorecard } from './Scorecard';
 import { isTouchEnabled } from './touch';
 import { displayCircuit } from '@shared/display/displayWires';
-import type { Wires } from '../ws/messages';
 import { HINTS, HINT_ROTATE_MS } from '@shared/display/hints';
 import { QSphereView } from '@quantum/QSphereView';
 import { BlochView } from '@quantum/BlochView';
 import { golfStep, initialGolfState, LEVELS, type GolfState } from '@quantum/golf';
 import { QasmPanel as SharedQasmPanel } from '@shared/display/QasmPanel';
 import { StatePanel } from '@shared/display/StatePanel';
-import './booth-v2.css';
+import './kiosk.css';
 
 const BOARD_QUBITS = 5;
 const DEFAULT_PANELS = ['results', 'state', 'qasm'];
@@ -70,7 +82,7 @@ function connectionInfo(state: ConnectionState): { label: string; cls: string } 
 }
 
 /**
- * OPENQASM panel — booth binding of the shared QasmPanel. The QASM arrives
+ * OPENQASM panel — kiosk binding of the shared QasmPanel. The QASM arrives
  * pre-rendered from the host; show its last 7 non-empty lines, and hide the
  * panel entirely when there is nothing to show.
  */
@@ -82,8 +94,29 @@ function QasmPanel({ qasm }: { qasm: string | undefined }) {
   return <SharedQasmPanel lines={lines} classPrefix="bo" hideWhenEmpty />;
 }
 
-export function BoothView() {
-  const snapshot = useEntangibleState();
+/** Full-screen connect-pending screen while the booth source is not yet live. */
+function ConnectPending({ state }: { state: ConnectionState }) {
+  const message =
+    state === 'closed'
+      ? 'Booth disconnected — retrying…'
+      : 'Connecting to the booth…';
+  return (
+    <div className="bo bo--pending">
+      <div className="bo-connect" role="status">
+        <div className="bo-brand">
+          <span className="en">En</span>tangible
+        </div>
+        <div className="bo-connect__msg">{message}</div>
+        <div className="bo-connect__hint">
+          The big screen mirrors the booth. Waiting for the host to come online.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function KioskView() {
+  const snapshot = useKioskState();
   const { circuit, detection, status, connectionState } = snapshot;
   // Layout arrives via an additive message; tolerate its absence.
   const layout = (
@@ -92,6 +125,15 @@ export function BoothView() {
   const panels = layout?.panels ?? DEFAULT_PANELS;
   const mode = layout?.mode ?? 'composer';
   const wires: Wires = layout?.wires ?? 'compact';
+
+  // Kiosk mode implies the Display role: it requires a connected booth source.
+  // Show a clear connect-pending screen until the socket has opened at least
+  // once (then the topbar pill carries any later reconnect state, as on the
+  // booth screen, rather than flipping back to full-screen pending).
+  const [everConnected, setEverConnected] = useState(false);
+  useEffect(() => {
+    if (connectionState === 'open') setEverConnected(true);
+  }, [connectionState]);
 
   const liveCircuit: Circuit = circuit?.circuit ?? createDefaultCircuit(BOARD_QUBITS);
   // Display-only wire trim: the editor + histogram follow `wires`; every other
@@ -125,7 +167,7 @@ export function BoothView() {
   const [strip, setStrip] = useState<StripMessage | null>(null);
   const [celebration, setCelebration] = useState<CelebrationRequest | null>(null);
 
-  // --- golf engine (booth mode === 'golf'; best-of-session in memory) ------
+  // --- golf engine (kiosk mode === 'golf'; best-of-session in memory) ------
   const [golfState, setGolfState] = useState<GolfState>(() => initialGolfState());
   const golfStateRef = useRef<GolfState>(golfState);
   const modeRef = useRef(mode);
@@ -283,6 +325,8 @@ export function BoothView() {
       }
     : undefined;
 
+  if (!everConnected) return <ConnectPending state={connectionState} />;
+
   return (
     <div className="bo" onPointerDown={onRootPointerDown}>
       <header className="bo-topbar">
@@ -350,4 +394,4 @@ export function BoothView() {
   );
 }
 
-export default BoothView;
+export default KioskView;

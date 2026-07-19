@@ -1,8 +1,8 @@
 /**
- * Rotating footer "hint ticker" copy, shared by the booth (`display-app`) and
- * Pocket (`pocket-app`). Both footers cycle the same four teaching lines on the
- * same interval when no warning is showing; SC1 gives them one home so the copy
- * can't drift. The rotation state/effect stays in each app's component.
+ * Rotating footer "hint ticker" copy, shared by the kiosk booth skin and the
+ * pocket surfaces. Both footers cycle the same four teaching lines on the same
+ * interval when no warning is showing; SC1 gives them one home so the copy
+ * can't drift. The rotation state/effect stays in each surface's component.
  *
  * (App-specific hints — e.g. Pocket's iOS "Add to Home Screen" install hint —
  * are NOT here; they are not duplicated across the two apps.)

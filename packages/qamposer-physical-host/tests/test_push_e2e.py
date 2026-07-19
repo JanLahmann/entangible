@@ -64,7 +64,7 @@ def test_push_frames_drive_h_then_bell_over_ws_state():
 
     app = create_app(
         HostConfig.from_env(
-            source="replay:none", backend="off", display_dist="/no/such/dist"
+            source="replay:none", backend="off"
         )
     )
 

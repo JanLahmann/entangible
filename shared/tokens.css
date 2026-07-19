@@ -1,13 +1,9 @@
 /*
  * Entangible design tokens — the single source of truth for the design system
- * (SC2). Both apps import this before their own stylesheet:
- *   - display-app (booth): `@shared/tokens.css` in main.tsx, then styles.css /
- *     booth-v2.css. The booth's `.bo` shell used to redeclare these on itself;
- *     it now inherits them from :root (resolved values unchanged — the booth
- *     merely gains the extras it never referenced: --danger/--radius/--sans/
- *     --mono).
- *   - pocket-app: `@shared/tokens.css` in main.tsx, then pocket.css. Pocket's
- *     own :root block moved here verbatim; it is the superset.
+ * (SC2). Imported in main.tsx before any app stylesheet (pocket.css, and in
+ * kiosk mode the ported booth styles in kiosk/kiosk.css). The booth's `.bo`
+ * shell used to redeclare these on itself; since SC2 everything inherits them
+ * from :root (resolved values unchanged).
  *
  * Values are the layered near-black exhibit palette (docs/booth-ux.md): purple
  * reserved for entanglement, cyan histogram bars, IBM Plex. Changing a value

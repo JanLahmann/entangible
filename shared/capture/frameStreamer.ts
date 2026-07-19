@@ -10,10 +10,10 @@
  * canvas plumbing stays with the caller and this module unit-tests in node with
  * a mock WebSocket.
  *
- * The display app's `/capture` page keeps its own inline pump (unchanged until
- * U3); the pocket app's CAMERA role streams through this class, reusing pocket's
- * camera UI (preview, zoom, freeze) as the frame source. The `?key=` operator
- * token is expected to be baked into `url` already (see `withKey`).
+ * The pocket app's CAMERA role streams through this class, reusing pocket's
+ * camera UI (preview, zoom, freeze) as the frame source (the former display-app
+ * `/capture` page it replaced was removed in U3). The `?key=` operator token is
+ * expected to be baked into `url` already (see `withKey`).
  */
 import {
   StreamController,

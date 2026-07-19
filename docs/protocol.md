@@ -2,9 +2,9 @@
 
 > Single source of truth for the wire protocol between `qamposer-physical-host`
 > and its browser clients, and for the in-process contract between the vision
-> pipeline and the host. `display-app/src/ws/messages.ts` mirrors the schemas
-> here 1:1; a vitest parity test guards the field names. All JSON field names
-> are camelCase.
+> pipeline and the host. `shared/ws/messages.ts` (`@shared/ws`) is the canonical
+> TS schema — it mirrors the shapes here 1:1 and a vitest parity test guards the
+> field names. All JSON field names are camelCase.
 
 ## Endpoints (single HTTPS origin, default `:8443`)
 
@@ -31,8 +31,9 @@ surfaces stay fully open (no token, zero friction).
 | `/`, `/pocket`, `/api/info`, the `/debug` page shell | **open**                      |
 
 Distribution: the staff cheat-sheet / host QR embeds the token so a scanned
-`/capture?key=…` or `/debug?key=…` link authenticates with no typing; `/debug`
-otherwise prompts and stores the key in `localStorage` (`entangible.operator.key`).
+`/pocket?…&role=camera&key=…` or `/debug?key=…` link authenticates with no
+typing; `/debug` otherwise prompts and stores the key in `localStorage`
+(`entangible.operator.key`).
 
 ## `/ws/state` — server → client messages
 
@@ -164,10 +165,11 @@ Both persist to `layout.toml` and trigger a `layout` broadcast. REST siblings:
 
 ## QR endpoints (HTTP, PNG)
 
-- `GET /api/qr?path=/capture` — **staff-gated** (operator token; §Staff
-  security). Encodes `<scheme>://<lan-ip>:<port><path>?key=<token>` — the
-  scanning phone arrives already carrying the token so it can reach `/capture`
-  + `/ws/frames`. Never shown to visitors.
+- `GET /api/qr` — **staff-gated** (operator token; §Staff security). Default
+  `path` is `/pocket?connect=1&role=camera` (the camera role; `/pocket`
+  redirects to `/`). Encodes `<scheme>://<lan-ip>:<port><path>&key=<token>` —
+  the scanning phone arrives already carrying the token so it can reach the
+  camera role + `/ws/frames`. Never shown to visitors.
 - `GET /api/visitor-qr` — **open** (no token). Encodes
   `<scheme>://<lan-ip>:<port>/pocket?connect=1`; the pocket app auto-connects
   to this host's `/ws/state` as a read-only viewer (the visitor "follow along +

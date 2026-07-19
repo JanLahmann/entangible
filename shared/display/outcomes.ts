@@ -1,5 +1,5 @@
 /**
- * RESULTS-panel outcome math shared by the booth (`display-app`) and Pocket
+ * RESULTS-panel outcome math shared by the kiosk booth skin and the pocket surfaces
  * (`pocket-app`) histograms.
  *
  * The outcome space is the DISPLAYED qubit count `D` (rows 0..D-1), following

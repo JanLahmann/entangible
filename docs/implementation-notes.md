@@ -7,7 +7,7 @@ How to divide work between Claude models when implementing [design.md](design.md
 The design doc is deliberately detailed enough that most milestones are execution, not invention. Run these as plain Opus 4.8 sessions (`/model opus`), one per milestone or work chunk:
 
 - Scaffolding: uv workspace, the three Python packages, the Vite display app
-- Well-specified modules: `markers.py` table, SVG/PDF asset generator, FastAPI routes and WS hub, React components, `/capture` page
+- Well-specified modules: `markers.py` table, SVG/PDF asset generator, FastAPI routes and WS hub, React components, the camera role
 - Tests, fixtures, the synthetic board renderer, golden files
 - Deployment: install scripts, systemd units, kiosk launcher, docs
 

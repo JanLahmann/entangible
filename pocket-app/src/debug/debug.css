@@ -1,0 +1,110 @@
+/*
+ * Entangible /debug — booth-staff calibration screen styles. Ported from the
+ * former display-app `styles.css` `.debug` block into the unified pocket app
+ * (Entangible One, phase U3). Loaded ONLY by `DebugView`.
+ *
+ * Every rule is scoped to the `.debug*` families + the `--ent-*` custom
+ * properties, none of which the standalone pocket app uses — so bundling this
+ * globally leaves standalone rendering unchanged.
+ */
+
+/* Carbon `--ent-*` tokens the debug screen references (see kiosk.css for the
+ * shared copy; duplicated here so /debug is self-contained). */
+:root {
+  --ent-bg: #161616;
+  --ent-surface: #262626;
+  --ent-surface-2: #393939;
+  --ent-border: #393939;
+  --ent-text: #f4f4f4;
+  --ent-text-dim: #8d8d8d;
+  --ent-green: #24a148;
+  --ent-amber: #f1c21b;
+  --ent-red: #fa4d56;
+  --ent-font: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto,
+    Helvetica, Arial, sans-serif;
+  --ent-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+.debug {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 460px;
+  gap: 1px;
+  height: 100vh;
+  background: var(--ent-border);
+  color: var(--ent-text);
+  font-family: var(--ent-mono);
+  font-size: 12px;
+}
+
+.debug__left {
+  background: var(--ent-bg);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.debug__panel-label {
+  padding: 0.5rem 0.75rem;
+  color: var(--ent-text-dim);
+  border-bottom: 1px solid var(--ent-border);
+}
+
+.debug__stream {
+  flex: 1 1 auto;
+  min-height: 0;
+  object-fit: contain;
+  width: 100%;
+  background: #000;
+}
+
+.debug__right {
+  background: var(--ent-bg);
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+
+.debug__section {
+  margin-bottom: 1.25rem;
+}
+
+.debug__section h2 {
+  margin: 0 0 0.4rem;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ent-text-dim);
+  border-bottom: 1px solid var(--ent-border);
+  padding-bottom: 0.25rem;
+}
+
+.debug__kv td,
+.debug__table td,
+.debug__table th {
+  padding: 2px 8px 2px 0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.debug__kv td:first-child {
+  color: var(--ent-text-dim);
+  width: 130px;
+}
+
+.debug__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.debug__table th {
+  color: var(--ent-text-dim);
+  font-weight: 400;
+  border-bottom: 1px solid var(--ent-border);
+}
+
+.debug__row-off {
+  color: var(--ent-red);
+}
+
+.debug__muted {
+  color: var(--ent-text-dim);
+}

@@ -1,7 +1,8 @@
 # Entangible — booth experience spec (M3)
 
 > UX/visual spec for the big-screen booth display. Owned by the design track;
-> the display-app implements this. Context: a fair/booth screen viewed from
+> the pocket app's `?kiosk` surface implements this. Context: a fair/booth
+> screen viewed from
 > 1–3 m by passersby who got no instructions, interact for ~30 seconds, and
 > should leave having *felt* something quantum happen.
 

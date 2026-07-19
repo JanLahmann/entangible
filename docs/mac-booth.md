@@ -14,7 +14,7 @@ This guide covers the Mac-specific setup: TLS, the macOS Application Firewall
 ```bash
 # From the repo root, once:
 uv sync
-(cd display-app && npm ci && npm run build)
+(cd pocket-app && npm ci && npm run build)
 
 # Run the host (self-signed HTTPS on :8443 by default):
 uv run qamposer-physical run --source cv2:0        # a Mac/USB webcam
@@ -26,11 +26,13 @@ On start the host prints the URLs:
 
 ```
 Entangible host → https://192.168.178.107:8443/   (source: cv2:0, backend: off)
-  capture page:  https://192.168.178.107:8443/capture
+  kiosk screen:  https://192.168.178.107:8443/?kiosk&connect=1
   debug preview: https://192.168.178.107:8443/debug/snapshot.jpg
 ```
 
-Open `https://<that-ip>:8443/` on the booth screen. `/debug` shows the annotated
+Open `https://<that-ip>:8443/?kiosk&connect=1` on the booth screen for the
+big-screen kiosk skin (or `https://<that-ip>:8443/` for the standard app).
+`/debug` shows the annotated
 camera preview, the marker table, and a **Phone camera** card with the QR code
 and cert-tap-through steps.
 
@@ -56,9 +58,8 @@ uv run qamposer-physical run --no-tls          # http://<ip>:8443, dev only
 Print the phone-capture QR straight to the terminal without opening `/debug`:
 
 ```bash
-uv run qamposer-physical qr                    # https URL + ASCII QR
+uv run qamposer-physical qr                    # https URL + ASCII QR (camera role)
 uv run qamposer-physical qr --no-tls           # http URL variant
-uv run qamposer-physical qr --path /capture    # legacy display-app capture page
 ```
 
 The staff QR now opens the **pocket app in its camera role**
@@ -67,9 +68,9 @@ booth with pocket's richer camera UI (pinch/step zoom, freeze), while the booth
 does the detection. The QR carries the booth's **operator token** as `?key=…`,
 so the phone arrives pre-authorized for the token-gated `/ws/frames` intake and
 connects to `/ws/state` as an operator `camera` (no typing; the key is stored
-and immediately scrubbed from the address bar). The legacy display-app
-`/capture` page stays available via `--path /capture` (and `/api/qr?path=/capture`)
-until it is retired. Manage the token with:
+and immediately scrubbed from the address bar). (The former display-app
+`/capture` page was retired in U3 — the camera role is now the only
+phone-camera path.) Manage the token with:
 
 ```bash
 uv run qamposer-physical token                 # print the shared operator token
@@ -146,7 +147,7 @@ Trade-offs:
 
 - **Continuity Camera** = best image quality, no cert/firewall dance, no browser
   battery drain — but Mac-only and the iPhone must be near the Mac.
-- **iPhone-browser streaming** (`/capture`, push source) = works with any host
+- **iPhone-browser streaming** (the camera role, push source) = works with any host
   (Mac *or* Pi), any phone on the LAN — but needs the HTTPS cert tap-through and
   drains phone battery. This is the M4 path documented in
   [`iphone-capture.md`](iphone-capture.md).

@@ -1,10 +1,11 @@
 /**
- * MessageStrip — booth binding of the shared MessageStrip (SC2).
+ * MessageStrip — kiosk binding of the shared MessageStrip (SC2). Ported from the
+ * former display-app booth surface (Entangible One, phase U3).
  *
  * The queue-drop + min-dwell + cross-fade logic lives in
- * `@shared/display/MessageStrip`; this binds the booth's `ent-` class scheme
+ * `@shared/display/MessageStrip`; this binds the kiosk's `ent-` class scheme
  * (`ent-strip` / `ent-strip__text`, 32 px @1080p, docs/booth-ux.md). Re-exports
- * the type + timing constants so existing booth imports are unchanged.
+ * the type + timing constants so existing kiosk imports are unchanged.
  */
 import {
   MessageStrip as SharedMessageStrip,

@@ -125,16 +125,16 @@ def cheatsheet_svg(cfg: AssetsConfig) -> str:
     parts.append(_heading(lx, y, "START", fam, ink)); y += 7.0
     parts.append(rect(lx, y - 4.6, 96.0, 7.0, fill=_CARD_FILL, rx=1.5))
     parts.append(_mono(lx + 2.0, y, "make demo", fam, ink)); y += 5.5
-    parts.append(_body(lx + 2.0, y, "build the display app + serve the replay loop", fam, faint)); y += 7.0
+    parts.append(_body(lx + 2.0, y, "build the app + serve the replay loop", fam, faint)); y += 7.0
     parts.append(rect(lx, y - 4.6, 96.0, 7.0, fill=_CARD_FILL, rx=1.5))
     parts.append(_mono(lx + 2.0, y, "qamposer-physical run --open", fam, ink)); y += 5.5
     parts.append(_body(lx + 2.0, y, "kiosk host (HTTPS :8443) + open the booth screen", fam, faint)); y += 9.0
 
     parts.append(_heading(lx, y, "URLs  (on the host, :8443)", fam, ink)); y += 6.5
     for tag, url in (
-        ("display", "/"),
+        ("big screen", "/?kiosk"),
         ("staff", "/debug"),
-        ("phone camera", "/capture"),
+        ("phone camera", "/debug (QR)"),
         ("learn more", "entangible.org"),
     ):
         parts.append(_body(lx, y, tag, fam, label))
@@ -144,7 +144,7 @@ def cheatsheet_svg(cfg: AssetsConfig) -> str:
 
     parts.append(_heading(lx, y, "iPhone camera — accept the cert (Safari)", fam, ink)); y += 6.5
     for i, step in enumerate((
-        "Open the /capture link (scan the QR on /debug).",
+        "Scan the phone-camera QR on /debug.",
         "Tap Show Details → visit this website.",
         "Tap Proceed, then Start camera → Allow.",
     ), start=1):

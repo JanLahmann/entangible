@@ -2,7 +2,7 @@
 
 Open an image fullscreen on a monitor (high brightness, avoid glare)
 and point a camera at it from ~30–60 cm with all four corner markers
-in frame: the booth `/capture` page, the pocket app
+in frame: a phone in the camera role, the pocket app
 (https://entangible.org), or `uv run qamposer-vision detect --image`.
 Flip between images to simulate placing and moving tiles.
 

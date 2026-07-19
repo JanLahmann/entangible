@@ -1,5 +1,7 @@
 /**
- * Pure timing logic for attract mode (`docs/booth-ux.md` → Attract mode).
+ * Pure timing logic for the kiosk attract mode (`docs/booth-ux.md` → Attract
+ * mode). Ported verbatim from the former display-app booth surface (Entangible
+ * One, phase U3).
  *
  * Enter: board empty AND no circuit change for 90 s.
  * Exit:  ANY detection event with markers, OR a circuit change → instant cut.

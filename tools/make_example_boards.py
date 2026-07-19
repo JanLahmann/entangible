@@ -2,7 +2,7 @@
 
 Renders the real board mat + tiles (same SVG pipeline as the printed kit) into
 PNGs that can be shown fullscreen on a monitor and pointed at with a camera —
-a printer-free way to exercise the whole detection pipeline (booth /capture,
+a printer-free way to exercise the whole detection pipeline (the camera role,
 the pocket app, or `qamposer-vision detect`). Flip between images to simulate
 placing/moving tiles.
 
@@ -94,7 +94,7 @@ def main() -> None:
         "",
         "Open an image fullscreen on a monitor (high brightness, avoid glare)",
         "and point a camera at it from ~30–60 cm with all four corner markers",
-        "in frame: the booth `/capture` page, the pocket app",
+        "in frame: a phone in the camera role, the pocket app",
         "(https://entangible.org), or `uv run qamposer-vision detect --image`.",
         "Flip between images to simulate placing and moving tiles.",
         "",

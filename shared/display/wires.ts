@@ -1,7 +1,7 @@
 /**
  * Shared display-only "wire count" vocabulary for both Entangible apps.
  *
- * The booth (`display-app`) and Pocket (`pocket-app`) both offer a wires
+ * The kiosk booth skin and the pocket surfaces both offer a wires
  * setting that decides how many qubit wires the controlled `CircuitEditor`
  * draws (and, on the booth, how many rows the histogram spans). The underlying
  * recognized circuit is ALWAYS five physical qubits — this vocabulary is

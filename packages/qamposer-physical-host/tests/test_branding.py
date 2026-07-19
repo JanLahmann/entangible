@@ -17,7 +17,7 @@ _PNG = bytes.fromhex(
 
 def _app(tmp_path):
     config = HostConfig.from_env(
-        source="replay:none", backend="off", display_dist="/no/such/dist",
+        source="replay:none", backend="off",
         config_dir=str(tmp_path),
     )
     return create_app(config, pipeline=FakePipeline())

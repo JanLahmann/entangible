@@ -25,12 +25,12 @@ from .token import ensure_token, rotate_token
 def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--port", type=int, default=None, help="listen port (default 8443)")
     parser.add_argument("--no-tls", action="store_true", help="serve plain HTTP (dev)")
-    # U2: the staff QR opens the pocket app in its CAMERA role by default; the
-    # legacy display-app page is still reachable with `--path /capture`.
+    # The staff QR opens the app in its CAMERA role by default (/pocket
+    # redirects to /). Override to target any client route.
     parser.add_argument(
         "--path",
         default="/pocket?connect=1&role=camera",
-        help="target path for QR URLs (default: pocket camera role; use /capture for legacy)",
+        help="target path for QR URLs (default: the camera role)",
     )
 
 
@@ -43,7 +43,7 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="frame source: replay:<dir> | cv2:<idx> | picamera2 | push")
     run.add_argument("--host", default=None, help="bind address (default 0.0.0.0)")
     run.add_argument("--backend", default=None, help="off | url:<base-url> | spawn")
-    run.add_argument("--display-dist", default=None, help="path to built display app")
+    run.add_argument("--pocket-dist", default=None, help="path to the built app (pocket-app/dist)")
     run.add_argument("--cert-dir", default=None, help="TLS cert directory")
     run.add_argument("--config-dir", default=None,
                     help="config dir for layout.toml / branding.toml (default ~/.qamposer-physical)")
@@ -70,7 +70,7 @@ def _config_from_run_args(args: argparse.Namespace) -> HostConfig:
         port=args.port,
         source=args.source,
         backend=args.backend,
-        display_dist=args.display_dist,
+        pocket_dist=args.pocket_dist,
         cert_dir=args.cert_dir,
         config_dir=args.config_dir,
         branding_file=args.branding,
@@ -89,8 +89,11 @@ def _cmd_run(args: argparse.Namespace) -> int:
     scheme = "https" if config.tls else "http"
     display_host = primary_lan_ip()
     url = f"{scheme}://{display_host}:{config.port}/"
+    # The big-screen booth skin is the `?kiosk` surface of the one app; --open
+    # (and `make demo`) launch it already asking to connect to this host.
+    kiosk_url = f"{url}?kiosk&connect=1"
     print(f"Entangible host → {url}  (source: {config.source}, backend: {config.backend})")
-    print(f"  capture page:  {scheme}://{display_host}:{config.port}/capture")
+    print(f"  kiosk screen:  {kiosk_url}")
     print(f"  debug preview: {scheme}://{display_host}:{config.port}/debug/snapshot.jpg")
 
     kwargs: dict = {"host": config.host, "port": config.port}
@@ -100,7 +103,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         kwargs["ssl_keyfile"] = str(key_path)
 
     if args.open:
-        threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+        threading.Timer(1.5, lambda: webbrowser.open(kiosk_url)).start()
 
     uvicorn.run(app, **kwargs)
     return 0
@@ -115,7 +118,7 @@ def _cmd_qr(args: argparse.Namespace) -> int:
     path = args.path if args.path.startswith("/") else "/" + args.path
     # Embed the operator token so the scanning phone arrives already
     # authenticated for the pocket camera role — /ws/frames + operator /ws/state
-    # (both token-gated). `--path /capture` yields the legacy display-app QR.
+    # (both token-gated). `/pocket` redirects to `/`.
     token = ensure_token(config.cert_dir)
     sep = "&" if "?" in path else "?"
     path = f"{path}{sep}key={token}"

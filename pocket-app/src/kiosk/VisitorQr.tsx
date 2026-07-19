@@ -1,13 +1,13 @@
 /**
- * VisitorQr — the public "follow along + take your circuit home" QR
- * (Entangible One, phase U1b / take-it-home T2).
+ * VisitorQr — the public "follow along + take your circuit home" QR (Entangible
+ * One; ported from the former display-app booth surface, phase U3).
  *
  * Fetched from the host's UNGATED `GET /api/visitor-qr` (encodes
  * `…/pocket?connect=1`, no operator token — safe to show visitors, unlike the
- * staff `/capture` QR which stays on `/debug`). Rendered small in the booth
- * footer and a bit larger on the attract screen. It probes the endpoint first
- * and renders nothing when unavailable (e.g. running the display app under
- * `vite` with no host), so it never shows a broken image.
+ * staff camera QR which stays on `/debug`). Rendered small in the kiosk footer
+ * and a bit larger on the attract screen. It probes the endpoint first and
+ * renders nothing when unavailable (e.g. `?kiosk` opened with no host), so it
+ * never shows a broken image.
  */
 import { useEffect, useState } from 'react';
 

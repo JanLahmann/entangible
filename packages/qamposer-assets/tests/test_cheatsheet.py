@@ -29,7 +29,7 @@ def test_cheatsheet_carries_the_reference_content():
         "make demo",
         "qamposer-physical run",
         "/debug",
-        "/capture",
+        "/?kiosk",
         "CNOT",
         "TROUBLESHOOTING",
         "Show Details",  # iPhone cert tap-through

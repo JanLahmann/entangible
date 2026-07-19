@@ -11,7 +11,7 @@ from qamposer_host.main import create_app
 
 def _make_app(pipeline):
     config = HostConfig.from_env(
-        source="replay:none", backend="off", display_dist="/no/such/dist"
+        source="replay:none", backend="off"
     )
     app = create_app(config, pipeline=pipeline)
     # Deterministic source factory so select_camera never touches vision.

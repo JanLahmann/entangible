@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { isTouchEnabled } from './touch';
 
 // The copy/decision helpers (gateInspectCopy, outcomeInspectCopy, formatAngle,
-// POPOVER_MS) moved to @quantum/inspectCopy and are covered by
-// inspectCopy.test.ts; touch.ts now owns only the booth's ?touch decision.
+// POPOVER_MS) live in @quantum/inspectCopy and are covered by
+// inspectCopy.test.ts; touch.ts now owns only the kiosk's ?touch decision.
 
 describe('isTouchEnabled', () => {
   it('honours ?touch=1 / true / on regardless of pointer', () => {
