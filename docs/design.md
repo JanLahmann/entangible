@@ -364,13 +364,15 @@ deviation from the plan above: the validation fixtures use `qiskit.quantum_info`
 applying the exact documented channel schedule, which carries less alignment
 risk than matching Aer's implicit channel ordering.
 
-### Quantum Mixer — unified Qoffee-Maker/quantum-mixer successor (task #35; PLANNED)
+### Quantina — unified Qoffee-Maker/quantum-mixer successor (task #35; PLANNED)
 
-Full plan in [`docs/mixer.md`](mixer.md). Per Jan 2026-07-19: Entangible
+Full plan in [`docs/quantina.md`](quantina.md). Per Jan 2026-07-19: Entangible
 replaces the standalone [Qoffee-Maker](https://qoffee-maker.org) and
 quantum-mixer apps — "order something by programming a quantum computer"
 becomes a **mode of Entangible One** (like `golf`), not a separate stack.
-Start with mixer (display-only serving); machine control follows.
+Start with mixer (display-only serving); machine control follows. Name
+decided: **Quantina** ("quantum cantina"), mode key `quantina`. Default
+menu size 3 qubits / 8 items (built-ins), configurable up to 5 / 32.
 
 - **Menu packs** (the config package): data-only scenario configs — coffee /
   ice cream / cocktails / anything — with items, pictures (emoji fallback),
@@ -390,25 +392,29 @@ Start with mixer (display-only serving); machine control follows.
   in `subset` mode); sampled shot(s) pick the result, reveal + order card;
   noisy shots are the teaching moment ("real hardware might make you an
   espresso instead").
-- **Booth**: mode `mixer` (panels `menu`/`order`/`results`), additive
+- **Booth**: mode `quantina` (panels `menu`/`order`/`results`), additive
   protocol: `layout.menu`, operator `select_menu` + `serve`, broadcast
   `served` (viewer phones reveal in sync). Same validation/persistence/
   policy-test patterns as `select_noise`.
 - **Dispatch** (later phase, Qoffee parity): host-side `dispatch.py` adapters
   `log`/`webhook`/`homeconnect`, disarmed by default, armed from `/debug`,
   cooldowns; secrets never in the browser.
-- Phases MX0 (menu core) → MX1 (standalone mixer = quantum-mixer replaced) →
-  MX2 (booth mode) → MX3 (custom packs) → MX4 (dispatch = Qoffee replaced) →
-  MX5 (sunset old repos, upstream track).
+- Phases QN0 (menu core) → QN1 (standalone Quantina = quantum-mixer
+  replaced) → QN2 (booth mode) → QN3 (custom packs) → QN4 (dispatch = Qoffee
+  replaced) → QN5 (sunset old repos, upstream track).
+- **No real-QPU serve** (per Jan): visitors instead take the circuit to their
+  own device + IBM Quantum account via the shipped Composer-transfer QR on
+  the order card — no API keys on booth devices (consistent with the
+  standing no-in-app-credentials decision).
 - **Parity audit done (2026-07-19, both repos read):** quantum-mixer's YAML
   *usecases* (Qocktail / IceQream / QoffeeMaker) are proto-menu-packs — their
   schema shapes (`numMeasurements {min,max,default}` → visitor-bounded shots,
   `externalLinks`, Home Connect `key`+`options` per item) and the three menus
-  themselves are adopted; its schema-driven preferences UI informs the MX4
+  themselves are adopted; its schema-driven preferences UI informs the QN4
   dispatch card; its custom Angular composer and 3-simulator backend are
   superseded by qamposer/tiles and the in-browser noise model. No hidden
-  features (no sound/leaderboards). Details + remaining open questions in
-  mixer.md.
+  features (no sound/leaderboards). Details + the resolved decision list in
+  quantina.md.
 
 ### Quantum Golf — DECIDED (per Jan 2026-07-19, build today)
 

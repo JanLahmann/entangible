@@ -1,10 +1,12 @@
-# Quantum Mixer — the unified Qoffee-Maker / quantum-mixer successor (task #35)
+# Quantina — the unified Qoffee-Maker / quantum-mixer successor (task #35)
 
-> Status: PLANNED (this document is the approved-pending-review plan; no code
-> yet). Phases MX0–MX5 below. Per Jan 2026-07-19: replace qoffee-maker and
-> quantum-mixer with native Entangible functionality; **start with mixer**
-> (display-only serving — cocktails/ice cream/juice), machine control (the
-> Qoffee coffee-machine path) follows as a later phase.
+> Status: PLANNED (this document is the approved plan; no code yet). Phases
+> QN0–QN5 below. Per Jan 2026-07-19: replace qoffee-maker and quantum-mixer
+> with native Entangible functionality; **start with mixer** (display-only
+> serving — cocktails/ice cream/juice), machine control (the Qoffee
+> coffee-machine path) follows as a later phase. Name decided per Jan
+> 2026-07-19: **Quantina** ("quantum cantina" — the service counter for
+> anything), mode key `quantina`.
 
 ## Why
 
@@ -97,7 +99,7 @@ subtitle = "orange · mango · grenadine"
 image    = "sunrise.jpg"     # relative path; emoji used when absent
 emoji    = "🍹"
 
-[item.program]               # optional dispatch payload (MX4); Home Connect shape
+[item.program]               # optional dispatch payload (QN4); Home Connect shape
 key     = "ConsumerProducts.CoffeeMaker.Program.Beverage.Espresso"
 options = [{ key = "ConsumerProducts.CoffeeMaker.Option.FillQuantity", value = 50 }]
 # … one [[item]] per code
@@ -149,11 +151,11 @@ a mode, a layout field, an operator `select_*`, host validation + persistence.
   `builtinPacks.ts`,
   `MenuGrid.tsx` + `OrderCard.tsx` + `ServeReveal.tsx` (classPrefix-shared,
   themed via CSS vars).
-- **Pocket (standalone)** — a Mixer surface like Golf's: pack picker in the
+- **Pocket (standalone)** — a Quantina surface like Golf's: pack picker in the
   settings drawer + `?menu=<id>` / `?menupack=<url>` URL params; local serve
   (no host). Wire count displays ⌈log₂ N⌉ via the existing `compact` wires.
-- **Kiosk/booth** — new mode `mixer` in `layout.py` `MODE_PANELS`
-  (`mixer: ["menu", "order", "results"]`): circuit stays on stage, sidebar
+- **Kiosk/booth** — new mode `quantina` in `layout.py` `MODE_PANELS`
+  (`quantina: ["menu", "order", "results"]`): circuit stays on stage, sidebar
   shows the menu grid with live probabilities + the last order card. Attract
   mode gains a menu line ("Order your coffee with a quantum computer").
   Panel registry gains `menu` and `order` (unknown names already pass through
@@ -178,7 +180,7 @@ a mode, a layout field, an operator `select_*`, host validation + persistence.
   `menu.py` (pack directory loader/validator + REST endpoints); `ws_state.py`
   routes `serve` → `served`. All persistence TOML, same patterns.
 
-## Machine dispatch (Qoffee parity — MX4)
+## Machine dispatch (Qoffee parity — QN4)
 
 Host-side only (secrets never reach the browser): `dispatch.py` with pluggable
 adapters, configured per pack or in a host-level `dispatch.toml`:
@@ -215,7 +217,7 @@ Ranked by booth fitness:
 - **Receipt printer** (ESC/POS thermal): prints the order card — circuit,
   outcome, probabilities, Composer-transfer QR. Cheap, fast, every visitor
   leaves with a keepsake; useful for EVERY pack, drinks or not. Candidate
-  for a native adapter, possibly pulled forward of MX4's machine work.
+  for a native adapter, possibly pulled forward of QN4's machine work.
 - **Candy/gummy dispenser** (Pi + servo per bin): faster and more hygienic
   than drinks, kid-friendly; `shots` mode = k candies.
 - **Cocktail robot** (CocktailPi has a REST API; DIY pump rigs): `subset`
@@ -235,26 +237,26 @@ Ranked by booth fitness:
 
 ## Phases (each independently demoable, repo convention)
 
-1. **MX0 — menu core**: `shared/menu/` types + validator + padding + sampler +
+1. **QN0 — menu core**: `shared/menu/` types + validator + padding + sampler +
    built-in packs; unit tests (validation matrix, seeded-RNG distribution
    sanity, histogram-parity of displayed probabilities). *Demo: none (pure
    lib), tests green.*
-2. **MX1 — standalone mixer (quantum-mixer replaced)**: pocket Mixer surface,
+2. **QN1 — standalone Quantina (quantum-mixer replaced)**: pocket Quantina surface,
    pack picker + URL params, live menu probabilities, serve + reveal + order
    card, noise-aware shots. *Demo: entangible.org?menu=cocktails, build H⊗H⊗H,
    serve, get a random drink.*
-3. **MX2 — booth mixer**: `mixer` mode + panels, `select_menu`/`serve`/`served`
+3. **QN2 — booth Quantina**: `quantina` mode + panels, `select_menu`/`serve`/`served`
    protocol + host validation/persistence/replay, `/debug` pack control,
    viewer-synced reveals, attract-mode line, policy + parity tests.
-   *Demo: `make demo`, switch mode to mixer from /debug, tiles pick the drink.*
-4. **MX3 — custom packs**: host pack directory + REST, `?menupack=` remote
+   *Demo: `make demo`, switch mode to quantina from /debug, tiles pick the drink.*
+4. **QN3 — custom packs**: host pack directory + REST, `?menupack=` remote
    packs, pack-authoring docs (`docs/menu-packs.md`) with the TOML schema and
    a checklist (image sizes, code table). *Demo: drop a folder, new themed
    menu appears without rebuilding.*
-5. **MX4 — dispatch (Qoffee replaced)**: `dispatch.py` + `log`/`webhook`/
+5. **QN4 — dispatch (Qoffee replaced)**: `dispatch.py` + `log`/`webhook`/
    `homeconnect` adapters, arming UX in `/debug`, cooldowns, docs incl. Home
    Connect setup. *Demo: serve → webhook fires / simulator brews.*
-6. **MX5 — sunset the old repos** (upstream track, outside this repo):
+6. **QN5 — sunset the old repos** (upstream track, outside this repo):
    archive/deprecation notes in Qoffee-Maker and quantum-mixer READMEs
    pointing here; qoffee-maker.org redirect or banner; migrate any drink
    menus worth keeping into packs. Coordinate with Jan.
@@ -295,10 +297,10 @@ direct ancestor of this design:
   generalization; `subset` mode is new here.
 - **Per-usecase preferences with JSON-schema-driven UI** (`/preferences`,
   `/preferences/schema`; machine picker enum built from the live Home Connect
-  appliance list). → Folded into the MX4 `/debug` dispatch card.
+  appliance list). → Folded into the QN4 `/debug` dispatch card.
 - **Ordering** (`hasOrder`/`loginRequired`): OAuth login → callback → token,
   auto-select first coffee machine, `POST /order` → start program with
-  key+options, machine power-on on preference save. → MX4 `homeconnect`
+  key+options, machine power-on on preference save. → QN4 `homeconnect`
   adapter, host-side.
 - **Execution**: `CircuitExecutor` with statevector (analytical), qasm
   simulator (800 shots), and FakeMontreal mock. → Entangible already exceeds
@@ -311,21 +313,28 @@ direct ancestor of this design:
 
 **Qoffee-Maker** (`JanLahmann/Qoffee-Maker`; Dockerized Jupyter, `qoffee.ipynb`
 in App Mode, env-var config incl. `IBMQ_API_KEY`): fully subsumed by the
-quantum-mixer findings above; MX4 closes it out.
+quantum-mixer findings above; QN4 closes it out.
 
-## Open questions (for Jan, before/during MX1)
+## Decisions (Jan 2026-07-19 — former open questions, all resolved)
 
-1. **Serve authority in the booth** — plan says: the surface that simulates
-   samples, the host stamps + broadcasts. OK, or should the kiosk be the only
-   sampler?
-2. **Big-menu ambition** — cap at 32 items (5 qubits) is the board's natural
-   limit; fine? (quantum-mixer never went past 3 qubits.)
-3. **Home Connect** — is the original Qoffee developer account / machine still
-   available for MX4 testing, or should webhook be the only v1 adapter?
-4. **Naming** — mode key `mixer`, feature name "Quantum Mixer", packs =
-   "menu packs"; built-ins keep the usecase names (Qocktail, IceQream,
-   QoffeeMaker). Blessing or better ideas?
-5. **Real-backend serve** — quantum-mixer's `IBMQ_API_KEY` path hints at
-   running the shot on real hardware. Entangible's optional qiskit backend
-   could serve from a real QPU run (queue times permitting) — worth a
-   stretch line in MX4, or out of scope?
+1. **Serve authority in the booth**: as planned — the serving surface (kiosk
+   touch or `/debug`) samples where the simulation runs; the host stamps
+   `seq` and broadcasts `served` so every screen reveals the same result.
+2. **Qubit count**: **3 qubits (8 items) is the default** — built-in packs
+   are 3-qubit, and the UI is optimized for an 8-item menu. Packs may
+   configure up to 5 qubits / 32 items (the board's limit); the loader
+   accepts 2–32 items as specced.
+3. **Home Connect**: the developer account / machine is available — QN4
+   builds and tests the `homeconnect` adapter for real (simulator first).
+4. **Name**: **Quantina** ("quantum cantina"), mode key `quantina`, packs =
+   "menu packs"; built-ins keep their usecase names (QoffeeMaker, Qocktail,
+   IceQream).
+5. **No real-QPU serve** — real-backend runs are a rare case and stay out of
+   the serve path. Instead, booth visitors take the circuit to THEIR OWN
+   device and IBM Quantum account: the order card and viewer carry the
+   existing Composer-transfer QR (`composerTransfer.ts` `?initial=` prefill
+   — already shipped), so "run your drink order on real hardware" happens on
+   the visitor's phone with their own (free) account. No API keys ever
+   touch booth devices — consistent with the standing "NO in-app
+   API-key/CRN entry" decision in design.md. QN2 makes sure the served/order
+   card embeds that QR.
