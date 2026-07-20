@@ -72,6 +72,7 @@ describe('sanitize', () => {
       cameraId: null,
       boothUrl: null,
       noise: 'off',
+      menu: 'coffee',
     });
   });
 
@@ -210,6 +211,57 @@ describe('noise setting', () => {
     expect(JSON.parse(storage._map.get(STORAGE_KEY)!).noise).toBe('falcon');
     // A fresh store over the same storage reads it back.
     expect(createSettingsStore({ storage }).get().noise).toBe('falcon');
+  });
+});
+
+describe('quantina mode + menu setting', () => {
+  it('parses ?mode=quantina', () => {
+    expect(parseUrlOverrides('?mode=quantina')).toEqual({ mode: 'quantina' });
+  });
+
+  it('sanitizes mode=quantina and defaults an unknown mode to composer', () => {
+    expect(sanitize({ mode: 'quantina' }).mode).toBe('quantina');
+    expect(sanitize({ mode: 'bogus' }).mode).toBe('composer');
+  });
+
+  it('defaults menu to coffee and accepts any /^[a-z0-9-]+$/ id', () => {
+    expect(sanitize({}).menu).toBe('coffee');
+    expect(DEFAULT_SETTINGS.menu).toBe('coffee');
+    expect(sanitize({ menu: 'cocktails' }).menu).toBe('cocktails');
+    expect(sanitize({ menu: 'my-custom-1' }).menu).toBe('my-custom-1');
+    expect(sanitize({ menu: 'Bad_Id' }).menu).toBe('coffee'); // invalid chars → default
+    expect(sanitize({ menu: 42 }).menu).toBe('coffee'); // wrong type → default
+  });
+
+  it('?menu=<id> sets the menu AND implies mode=quantina', () => {
+    expect(parseUrlOverrides('?menu=cocktails')).toEqual({
+      menu: 'cocktails',
+      mode: 'quantina',
+    });
+  });
+
+  it('an explicit ?mode= is NOT flipped by ?menu= (mode wins, menu still set)', () => {
+    expect(parseUrlOverrides('?mode=golf&menu=cocktails')).toEqual({
+      mode: 'golf',
+      menu: 'cocktails',
+    });
+    expect(parseUrlOverrides('?mode=composer&menu=demo')).toEqual({
+      mode: 'composer',
+      menu: 'demo',
+    });
+  });
+
+  it('ignores an invalid ?menu= id (no menu, no implied mode)', () => {
+    expect(parseUrlOverrides('?menu=Bad_Id')).toEqual({});
+  });
+
+  it('persists the menu id through the store round-trip', () => {
+    const storage = fakeStorage();
+    const store = createSettingsStore({ storage });
+    store.update({ menu: 'icecream' });
+    expect(store.get().menu).toBe('icecream');
+    expect(JSON.parse(storage._map.get(STORAGE_KEY)!).menu).toBe('icecream');
+    expect(createSettingsStore({ storage }).get().menu).toBe('icecream');
   });
 });
 

@@ -1979,6 +1979,12 @@ body,
   .pk-drawer {
     animation-duration: 0.01ms;
   }
+  .pk-reveal {
+    animation-duration: 0.01ms;
+  }
+  .pk-menu-bar {
+    transition: none;
+  }
 }
 
 /* ===================================================================== */
@@ -2411,3 +2417,310 @@ body,
    controlled with no `onCircuitChange`, so a stray drag no-ops and reverts, and
    the next recognised frame re-asserts the circuit anyway; a genuine tap never
    drags. The toolbar/measurement chrome above stays hidden. */
+
+/* ===================================================================== */
+/* == Quantina (QN1) — menu grid, serve, order card ==================== */
+/* ===================================================================== */
+
+.pk-quantina {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+/* Serve row: the shot stepper (shots packs) + the big Serve button. */
+.pk-quantina-serve {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.pk-quantina-serve-btn {
+  flex: 1;
+  padding: 0.6rem 1rem;
+  font-size: 0.95rem;
+}
+
+.pk-quantina-shots {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.pk-quantina-shots-label {
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pk-quantina-stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.pk-quantina-step {
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  display: grid;
+  place-items: center;
+  font-size: 1.1rem;
+  color: var(--text);
+  background: var(--bg-inset);
+  border: none;
+  cursor: pointer;
+}
+
+.pk-quantina-step:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+
+.pk-quantina-shots-val {
+  min-width: 1.6rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Remote-pack load error — a quiet inline note (the fallback pack still shows). */
+.pk-quantina-error {
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--warn);
+  background: rgba(241, 194, 27, 0.08);
+  border: 1px solid rgba(241, 194, 27, 0.3);
+  border-radius: var(--radius);
+}
+
+/* ---- menu grid -------------------------------------------------------- */
+
+.pk-menu {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+}
+
+@media (min-width: 900px) {
+  .pk-menu {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.pk-menu-card {
+  --p: 0;
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    'emoji name chip'
+    'emoji sub  pct';
+  align-items: center;
+  column-gap: 0.5rem;
+  row-gap: 0.1rem;
+  padding: 0.55rem 0.6rem 0.7rem;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.pk-menu-card--house {
+  opacity: 0.6;
+}
+
+.pk-menu-card.is-peak {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.pk-menu-emoji {
+  grid-area: emoji;
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.pk-menu-name {
+  grid-area: name;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pk-menu-sub {
+  grid-area: sub;
+  font-size: 0.7rem;
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+.pk-menu-chip {
+  grid-area: chip;
+  justify-self: end;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--link);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.05rem 0.3rem;
+}
+
+.pk-menu-p {
+  grid-area: pct;
+  justify-self: end;
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Pure-CSS probability fill along the card's bottom edge, driven by `--p`. */
+.pk-menu-bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: calc(var(--p) * 100%);
+  background: var(--bars);
+  transition: width 0.25s ease;
+}
+
+.pk-menu-card.is-peak .pk-menu-bar {
+  background: var(--accent);
+}
+
+/* ---- order card + reveal --------------------------------------------- */
+
+.pk-reveal {
+  animation: pk-reveal-in 0.3s ease-out;
+}
+
+@keyframes pk-reveal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.pk-order {
+  background: var(--bg-inset);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 0.7rem 0.8rem;
+}
+
+.pk-order-head {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.45rem;
+}
+
+.pk-order-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.pk-order-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pk-order-emoji {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.pk-order-name {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pk-order-count {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--link);
+  font-variant-numeric: tabular-nums;
+}
+
+.pk-order-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.pk-order-codes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.55rem;
+}
+
+.pk-order-chip {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--link);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+}
+
+.pk-order-tag {
+  margin-top: 0.45rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+/* ---- footer: tagline + external links --------------------------------- */
+
+.pk-quantina-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pk-quantina-tagline {
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.pk-quantina-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.pk-quantina-links a {
+  font-size: 0.76rem;
+  color: var(--link);
+  text-decoration: none;
+}
+
+.pk-quantina-links a:hover {
+  text-decoration: underline;
+}

@@ -25,6 +25,16 @@
 /** How a serve turns the measured outcome(s) into an order. */
 export type ServeMode = 'single' | 'shots' | 'subset';
 
+/**
+ * Where a serve's outcomes were sampled: the in-browser ideal distribution,
+ * the noisy distribution (a noise preset was active), or `real` — a
+ * staff-entered bitstring measured on a visitor's own device (the
+ * real-hardware serve loop, docs/quantina.md decision 5). Canonical home of
+ * the union — `shared/ws/messages` and the app surfaces re-export it (the
+ * `NoisePreset` pattern).
+ */
+export type ShotSource = 'ideal' | 'noisy' | 'real';
+
 /** One key/value in a dispatch program payload (Home Connect option shape). */
 export interface ProgramOption {
   key: string;

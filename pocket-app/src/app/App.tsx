@@ -55,7 +55,8 @@ import { TouchInspector } from './TouchInspector';
 import { toggleFrozen } from './freeze';
 import { GuidePage } from './GuidePage';
 import { useRoute } from './hashNav';
-import { settingsStore, useSettings, type PanelId } from './settings';
+import { settingsStore, useSettings, type Mode, type PanelId } from './settings';
+import { QuantinaPanel, useQuantinaPack } from './QuantinaPanel';
 import { displayCircuit } from '@shared/display/displayWires';
 import { HINTS, HINT_ROTATE_MS } from '@shared/display/hints';
 import { editorFit, editorNaturalHeight, type EditorFit } from './editorFit';
@@ -431,8 +432,10 @@ export function App() {
       setCircuit(next);
       setWarnings(update.warnings);
 
-      // The booth's mode (when broadcast) overrides the local setting.
-      const effectiveMode: BoothMode = update.boothMode ?? modeRef.current;
+      // The booth's mode (when broadcast) overrides the local setting. The booth
+      // only broadcasts composer/golf today (QN2 adds quantina); a local
+      // quantina session falls through to the composer moment path below.
+      const effectiveMode: Mode = update.boothMode ?? modeRef.current;
       if (effectiveMode === 'golf') {
         const step = golfStep(golfStateRef.current, next);
         golfStateRef.current = step.state;
@@ -756,7 +759,7 @@ export function App() {
 
   // While connected the booth's broadcast mode/wires/noise override the local
   // settings; standalone they fall back to the settings store.
-  const effectiveMode: BoothMode = boothMode ?? settings.mode;
+  const effectiveMode: Mode = boothMode ?? settings.mode;
   const effectiveWires: Wires = boothWires ?? settings.wires;
   const effectiveNoise: NoisePreset = boothNoise ?? settings.noise;
 
@@ -793,6 +796,11 @@ export function App() {
     : { cls: 'is-off', label: 'camera off' };
 
   const isGolf = effectiveMode === 'golf';
+  const isQuantina = effectiveMode === 'quantina';
+  // Quantina pack resolution (settings menu id + optional `?menupack=` fetch).
+  // Called unconditionally (hook rules); App needs the pack for the histogram's
+  // qubit count and the mode pill even before the quantina sidebar mounts.
+  const quantina = useQuantinaPack();
   const hasPanel = (p: PanelId) => settings.panels.includes(p);
   // Viewer policy (design: read-only Display role): while connected to a booth
   // — or building on screen in manual mode — the camera UI is hidden entirely.
@@ -874,6 +882,30 @@ export function App() {
       <ComposerHandoff key="transfer" circuit={circuit} onToast={pushStrip} />
       {settings.debug && <DebugPanel key="debug" frame={lastFrameRef.current} fps={camera.fps} />}
     </>
+  ) : isQuantina ? (
+    // Quantina: the live menu + serve surface. Quantina is NOT golf — the noise
+    // preset stays active (noisyProbs feeds both the menu and the histogram), and
+    // the histogram is sized to the pack's qubit count.
+    <>
+      {showCamera && cameraPanel}
+      <QuantinaPanel
+        key="quantina"
+        pack={quantina.pack}
+        error={quantina.error}
+        circuit={circuit}
+        noisyProbs={noisyProbs}
+      />
+      {hasPanel('results') && (
+        <ResultsHistogram
+          key="results"
+          circuit={circuit}
+          displayQubits={quantina.pack.qubits}
+          noisy={noisyProbs}
+        />
+      )}
+      <ComposerHandoff key="transfer" circuit={circuit} onToast={pushStrip} />
+      {settings.debug && <DebugPanel key="debug" frame={lastFrameRef.current} fps={camera.fps} />}
+    </>
   ) : (
     <>
       {showCamera && cameraPanel}
@@ -939,6 +971,11 @@ export function App() {
           <small>pocket</small>
         </div>
         {isGolf && <span className="pk-pill pk-pill--mode">Quantum Golf</span>}
+        {isQuantina && (
+          <span className="pk-pill pk-pill--mode">
+            {quantina.loading ? 'Quantina' : quantina.pack.title}
+          </span>
+        )}
         <span className="pk-spacer" />
         {connected ? (
           // Viewer: booth status pill (never a camera pill — no local pipeline).

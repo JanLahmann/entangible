@@ -143,12 +143,13 @@ export interface LayoutMessage {
 }
 
 /**
- * Where a Quantina serve's sample came from (additive, QN2): the in-browser
- * ideal distribution, the noisy distribution (a noise preset was active), or
- * `real` — a staff-entered bitstring measured on a visitor's own device via
- * the real-hardware serve loop (docs/quantina.md, decision 5).
+ * Where a Quantina serve's sample came from (additive, QN2). The canonical
+ * union lives in `@shared/menu/pack` (type-only import — no runtime dependency
+ * on the menu code), re-exported here so protocol consumers keep importing it
+ * from `ws/messages` — the `NoisePreset` pattern.
  */
-export type ShotSource = 'ideal' | 'noisy' | 'real';
+import type { ShotSource } from '@shared/menu/pack';
+export type { ShotSource };
 
 /**
  * `served` — a Quantina serve, broadcast to every client (additive, QN2).

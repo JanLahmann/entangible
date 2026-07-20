@@ -13,7 +13,7 @@
  */
 import { useSyncExternalStore } from 'react';
 
-export type Mode = 'composer' | 'golf';
+export type Mode = 'composer' | 'golf' | 'quantina';
 /**
  * Input source when the app is NOT a connected booth viewer (docs/pocket.md,
  * "Input modes"). 'camera' (default) drives the on-device vision pipeline;
@@ -83,6 +83,15 @@ export interface Settings {
    * `?noise=falcon|eagle|heron|nighthawk`.
    */
   readonly noise: NoisePreset;
+  /**
+   * Active Quantina menu-pack id (docs/quantina.md). Only meaningful in
+   * `mode: 'quantina'`; names a built-in pack (`coffee` default) or, later, a
+   * host/custom pack. Persisted; URL-overridable via `?menu=<id>` — and a bare
+   * `?menu=<id>` (no `?mode=`) also implies `mode: 'quantina'` so a link like
+   * `entangible.org?menu=cocktails` lands straight in Quantina. A session-only
+   * remote pack (`?menupack=<url>`) is NOT stored here — App owns that.
+   */
+  readonly menu: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -99,7 +108,11 @@ export const DEFAULT_SETTINGS: Settings = {
   cameraId: null,
   boothUrl: null,
   noise: 'off',
+  menu: 'coffee',
 };
+
+/** Valid Quantina pack id: lowercase, digits, and hyphens (custom packs exist later). */
+const MENU_ID_RE = /^[a-z0-9-]+$/;
 
 /**
  * Panels a brand-new *phone* visitor sees before touching settings: camera +
@@ -159,7 +172,16 @@ export function parseUrlOverrides(search: string): Partial<Settings> {
   const out: MutableSettings = {};
 
   const mode = params.get('mode');
-  if (mode === 'composer' || mode === 'golf') out.mode = mode;
+  if (mode === 'composer' || mode === 'golf' || mode === 'quantina') out.mode = mode;
+
+  // `?menu=<id>` selects the Quantina pack. A bare `?menu=` (no `?mode=` at all)
+  // ALSO implies `mode: 'quantina'` — `entangible.org?menu=cocktails` must land
+  // in Quantina — but an explicit `?mode=golf&menu=x` keeps golf (no flip).
+  const menu = params.get('menu');
+  if (menu !== null && MENU_ID_RE.test(menu)) {
+    out.menu = menu;
+    if (!params.has('mode')) out.mode = 'quantina';
+  }
 
   const input = params.get('input');
   if (input === 'camera' || input === 'manual') out.input = input;
@@ -203,7 +225,10 @@ export function parseUrlOverrides(search: string): Partial<Settings> {
 /** Coerce arbitrary parsed JSON into a valid Settings, filling from defaults. */
 export function sanitize(raw: unknown): Settings {
   const r = (raw ?? {}) as Record<string, unknown>;
-  const mode: Mode = r.mode === 'golf' ? 'golf' : 'composer';
+  const mode: Mode = r.mode === 'golf' ? 'golf' : r.mode === 'quantina' ? 'quantina' : 'composer';
+  // Any /^[a-z0-9-]+$/ id is accepted (custom packs exist later); else default.
+  const menu: string =
+    typeof r.menu === 'string' && MENU_ID_RE.test(r.menu) ? r.menu : DEFAULT_SETTINGS.menu;
   const input: InputMode = r.input === 'manual' ? 'manual' : 'camera';
   const side: Side = r.side === 'left' ? 'left' : 'right';
   const panels = Array.isArray(r.panels)
@@ -234,6 +259,7 @@ export function sanitize(raw: unknown): Settings {
     cameraId,
     boothUrl,
     noise,
+    menu,
   };
 }
 

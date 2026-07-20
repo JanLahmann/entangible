@@ -310,6 +310,7 @@ export function SettingsControl({
                   options={[
                     { value: 'composer', label: 'Composer' },
                     { value: 'golf', label: 'Quantum Golf' },
+                    { value: 'quantina', label: 'Quantina' },
                   ]}
                   onChange={(mode) => settingsStore.update({ mode })}
                 />
