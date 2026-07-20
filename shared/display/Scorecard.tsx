@@ -18,11 +18,19 @@ export function Scorecard({
   circuit,
   classPrefix,
   monoKet = false,
+  onNextLevel,
 }: {
   state: GolfState;
   circuit: Circuit;
   classPrefix: string;
   monoKet?: boolean;
+  /**
+   * When set, the holed-in line renders a "Next level" button calling this
+   * instead of the clear-the-board hint. Pocket passes it in build-on-screen
+   * mode (it empties the manual board, which IS the advance trigger); camera
+   * and booth surfaces omit it — physically clearing the table is the ritual.
+   */
+  onNextLevel?: () => void;
 }) {
   const p = classPrefix;
   const level = LEVELS[state.levelIndex];
@@ -62,7 +70,14 @@ export function Scorecard({
         </div>
         {holedIn && (
           <div className={`${p}-golf-holed`}>
-            {scoreName(bestStrokes ?? ev.strokes, level.par)} — clear the board for the next level
+            {scoreName(bestStrokes ?? ev.strokes, level.par)} —{' '}
+            {onNextLevel ? (
+              <button type="button" className={`${p}-golf-next`} onClick={onNextLevel}>
+                Next level ▸
+              </button>
+            ) : (
+              'clear the board for the next level'
+            )}
           </div>
         )}
         <div className={`${p}-golf-list`} aria-label="all levels">

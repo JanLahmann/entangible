@@ -894,7 +894,15 @@ export function App() {
           )}
         </div>
       </div>
-      <Scorecard key="scorecard" state={golfState} circuit={circuit} />
+      <Scorecard
+        key="scorecard"
+        state={golfState}
+        circuit={circuit}
+        // Build-on-screen has no physical board to clear, so the scorecard gets
+        // an explicit Next-level button; it empties the manual board, which IS
+        // the golf advance trigger (camera mode keeps the physical ritual).
+        onNextLevel={manual ? () => manualSourceRef.current.clear() : undefined}
+      />
       {hasPanel('results') && (
         <ResultsHistogram key="results" circuit={circuit} displayQubits={displayed.qubits} />
       )}

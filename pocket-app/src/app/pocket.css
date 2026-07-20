@@ -1521,6 +1521,25 @@ body,
   color: var(--entangle-text);
 }
 
+/* Build-on-screen advance (no physical board to clear): an inline, thumb-sized
+   button so the next level is one obvious tap on a phone. */
+.pk-golf-next {
+  display: inline-block;
+  margin-left: 0.2rem;
+  padding: 0.35rem 0.9rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pk-golf-next:active {
+  filter: brightness(1.15);
+}
+
 .pk-golf-list {
   display: flex;
   gap: 0.35rem;

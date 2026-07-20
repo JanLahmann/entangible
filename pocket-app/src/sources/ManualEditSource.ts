@@ -110,6 +110,15 @@ export class ManualEditSource implements StateSource {
   }
 
   /**
+   * Empty the board. The build-on-screen equivalent of lifting every cube off
+   * the physical table — golf's "clear the board for the next level" needs an
+   * on-screen affordance (the Scorecard's Next-level button calls this).
+   */
+  clear(): void {
+    this.setFromEditor(emptyCircuit(this.qubits));
+  }
+
+  /**
    * Accept an edit from the editor's `onCircuitChange`. Pins the register to
    * the fixed size and emits a neutral update ONLY when the circuit actually
    * changed — the guard that keeps the controlled value flowing back into the
