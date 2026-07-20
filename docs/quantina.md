@@ -339,6 +339,16 @@ quantum-mixer findings above; QN4 closes it out.
    API-key/CRN entry" decision in design.md. QN2 makes sure the served/order
    card embeds that QR.
 
+6. **Booth serve gating (QN2; decided 2026-07-20, Fable):** `serve` (and
+   `select_menu`) require operator standing, like every control message — a
+   random viewer phone must not be able to serve. The kiosk stays a keyless
+   viewer by default, so `/debug` is the default serving surface. A kiosk
+   launched with `?key=<operator-token>` in its URL (the booth machine's
+   `start-kiosk.sh` can append it) authenticates its socket and shows a touch
+   Serve button — physical presence at the booth screen is the authorization,
+   matching the Qoffee "visitor presses the button" experience. Remote
+   viewers can never serve.
+
    *Real-hardware serve loop (per Jan 2026-07-19):* the visitor scans our
    Composer QR to transfer the circuit to their device, runs it there with
    **one shot**, and tells us the measured bitstring; staff enter it
