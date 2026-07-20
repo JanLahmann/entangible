@@ -17,6 +17,7 @@ a tiny hand-rolled TOML serializer (the schema is three flat keys).
 from __future__ import annotations
 
 import logging
+import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -37,10 +38,16 @@ VALID_WIRES = ("compact", "all")
 #: in lockstep with `NoisePreset` in shared/quantum/noise.ts + shared/ws/messages.ts.
 VALID_NOISE = ("off", "falcon", "eagle", "heron", "nighthawk")
 
+#: Quantina menu-pack id format. The host validates FORMAT only — it cannot know
+#: which packs a client bundles (see docs/protocol.md), so it accepts any
+#: lowercase [a-z0-9-] id of 1..64 chars and leaves pack existence to the client.
+VALID_MENU_RE = re.compile(r"^[a-z0-9-]{1,64}$")
+
 #: Per-mode default (preset) panel stacks, in display order (registry names).
 MODE_PANELS: dict[str, list[str]] = {
     "composer": ["results", "state", "qasm"],
     "golf": ["scorecard", "minicircuit", "results"],
+    "quantina": ["menu", "order", "results"],
     "attract": [],
 }
 
@@ -63,6 +70,9 @@ class LayoutState:
     panels: list[str] = field(default_factory=lambda: default_panels(DEFAULT_MODE))
     wires: str = DEFAULT_WIRES
     noise: str = DEFAULT_NOISE
+    #: Active Quantina menu-pack id (``None`` = pack not chosen yet). Passes
+    #: through as JSON ``null`` on the wire.
+    menu: str | None = None
 
     def to_message(self) -> dict:
         """The ``layout`` server message (camelCase wire JSON is already flat)."""
@@ -73,6 +83,7 @@ class LayoutState:
             "panels": list(self.panels),
             "wires": self.wires,
             "noise": self.noise,
+            "menu": self.menu,
         }
 
     def to_dict(self) -> dict:
@@ -82,6 +93,7 @@ class LayoutState:
             "panels": list(self.panels),
             "wires": self.wires,
             "noise": self.noise,
+            "menu": self.menu,
         }
 
 
@@ -91,13 +103,18 @@ def _toml_str(value: str) -> str:
 
 def _dump_toml(state: LayoutState) -> str:
     panels = ", ".join(_toml_str(p) for p in state.panels)
-    return (
+    out = (
         f"mode = {_toml_str(state.mode)}\n"
         f"sidebar = {_toml_str(state.sidebar)}\n"
         f"panels = [{panels}]\n"
         f"wires = {_toml_str(state.wires)}\n"
         f"noise = {_toml_str(state.noise)}\n"
     )
+    # Only emit ``menu`` when a pack is active — TOML has no ``null``, so absence
+    # is how ``None`` round-trips.
+    if state.menu is not None:
+        out += f"menu = {_toml_str(state.menu)}\n"
+    return out
 
 
 def _state_from_toml(data: dict) -> LayoutState:
@@ -106,6 +123,7 @@ def _state_from_toml(data: dict) -> LayoutState:
     panels = data.get("panels")
     wires = data.get("wires")
     noise = data.get("noise")
+    menu = data.get("menu")
     state = LayoutState()
     if isinstance(mode, str):
         state.mode = mode
@@ -117,6 +135,8 @@ def _state_from_toml(data: dict) -> LayoutState:
         state.wires = wires
     if isinstance(noise, str) and noise in VALID_NOISE:
         state.noise = noise
+    if isinstance(menu, str) and VALID_MENU_RE.match(menu):
+        state.menu = menu
     return state
 
 
@@ -201,6 +221,21 @@ class LayoutStore:
             return self._state
         if preset != self._state.noise:
             self._state.noise = preset
+            self._save()
+        return self._state
+
+    def select_menu(self, pack: str) -> LayoutState:
+        """Set the active Quantina menu-pack id (persist on change).
+
+        The host validates FORMAT only (``[a-z0-9-]{1,64}``) — it cannot know
+        which packs a client bundles (docs/protocol.md); an ill-formed id is
+        ignored (state unchanged).
+        """
+        if not VALID_MENU_RE.match(pack):
+            logger.info("ignoring select_menu with invalid pack id: %r", pack)
+            return self._state
+        if pack != self._state.menu:
+            self._state.menu = pack
             self._save()
         return self._state
 

@@ -33,10 +33,17 @@ import {
   createDefaultCircuit,
   type Circuit,
 } from '@qamposer/react';
-import { useKioskState } from './kioskSocket';
+import { getKioskSocket, kioskStanding, useKioskState } from './kioskSocket';
+import { sendServe } from './serve';
 import { friendlyWarning } from '@shared/display/warnings';
 import type { ConnectionState } from '@shared/ws/stateSocket';
-import type { CircuitMessage, NoisePreset, Wires } from '@shared/ws/messages';
+import type { CircuitMessage, NoisePreset, ShotSource, Wires } from '@shared/ws/messages';
+import { MenuGrid } from '@shared/menu/MenuGrid';
+import { OrderCard } from '@shared/menu/OrderCard';
+import { ServeReveal } from '@shared/menu/ServeReveal';
+import { builtinPack } from '@shared/menu/builtinPacks';
+import { cryptoRng } from '@shared/menu/sample';
+import { menuOutcomes, orderLines, serveFrom } from '../app/quantina';
 import { noiseSeries } from '../app/ResultsHistogram';
 import { parseUrlOverrides } from '../app/settings';
 import {
@@ -124,7 +131,13 @@ export function KioskView() {
   // Layout arrives via an additive message; tolerate its absence.
   const layout = (
     snapshot as {
-      layout?: { panels?: string[]; mode?: string; wires?: Wires; noise?: NoisePreset };
+      layout?: {
+        panels?: string[];
+        mode?: string;
+        wires?: Wires;
+        noise?: NoisePreset;
+        menu?: string | null;
+      };
     }
   ).layout;
   const panels = layout?.panels ?? DEFAULT_PANELS;
@@ -283,13 +296,62 @@ export function KioskView() {
 
   const qamposerConfig = useMemo(() => ({ maxQubits: BOARD_QUBITS }), []);
 
-  // In-browser noise model (composer only — golf stays ideal). Memoized on
-  // (circuit, preset, mode): the density-matrix sim is ~ms but must not re-run
-  // every render. `undefined` when off → the ideal-only histogram is unchanged.
+  // In-browser noise model. Disabled only in golf (`golf` stays ideal); composer
+  // AND quantina keep it active — in quantina the noisy vector feeds both the
+  // menu numbers and the paired histogram, so "real hardware might make you an
+  // espresso instead" is exactly the lesson. Memoized: the density-matrix sim is
+  // ~ms but must not re-run every render.
   const noisyProbs = useMemo(
     () => noiseSeries(liveCircuit, noisePreset, mode === 'golf'),
     [liveCircuit, noisePreset, mode],
   );
+
+  // --- quantina (mode === 'quantina') --------------------------------------
+  // Resolve the active pack from layout.menu (protocol: null/unknown → coffee),
+  // the live outcome vector (ideal, or the preset's noisy vector), and the
+  // latest host `served` broadcast (the synced order — the kiosk never reveals
+  // locally on tap). Standing decides whether the touch Serve button renders.
+  const menuId = layout?.menu ?? null;
+  const pack = useMemo(
+    () => (menuId ? builtinPack(menuId) : undefined) ?? builtinPack('coffee')!,
+    [menuId],
+  );
+  const menuVec = useMemo(
+    () => menuOutcomes(liveCircuit, pack, noisyProbs),
+    [liveCircuit, pack, noisyProbs],
+  );
+  const served = snapshot.served;
+  const servedPack = useMemo(
+    () => (served ? (builtinPack(served.packId) ?? pack) : pack),
+    [served, pack],
+  );
+  const servedLines = useMemo(
+    () =>
+      served
+        ? orderLines(servedPack, {
+            packId: served.packId,
+            outcomes: served.outcomes,
+            shotSource: served.shotSource,
+          })
+        : [],
+    [served, servedPack],
+  );
+  const standing = kioskStanding(snapshot);
+  const kioskSocket = getKioskSocket();
+  // Shot count for shots-mode packs; resets to the pack default on a pack switch.
+  const [serveShots, setServeShots] = useState<number>(pack.serve.shots?.default ?? 1);
+  useEffect(() => {
+    setServeShots(pack.serve.shots?.default ?? 1);
+  }, [pack]);
+
+  // Serve: sample where the simulation runs (the SAME menu vector), then send —
+  // the host stamps + broadcasts `served` and every screen reveals in sync. A
+  // no-op unless the socket authenticated as operator (guarded in `sendServe`).
+  const onServe = () => {
+    const shotSource: ShotSource = noisyProbs ? 'noisy' : 'ideal';
+    const result = serveFrom(menuVec, pack, serveShots, cryptoRng(), shotSource);
+    sendServe(kioskSocket, result.outcomes, result.shotSource);
+  };
 
   const panelFor = (name: string) => {
     switch (name) {
@@ -335,6 +397,55 @@ export function KioskView() {
       </div>
       <Scorecard key="scorecard" state={golfState} circuit={liveCircuit} />
       {panels.filter((name) => !GOLF_STRUCTURAL.has(name)).map(panelFor)}
+    </>
+  );
+
+  // --- quantina sidebar (mode === 'quantina') ------------------------------
+  // Host quantina panels are ['menu', 'order', 'results']. The menu grid, the
+  // synced order card + real-hardware line, and (operator only) the touch Serve
+  // button are rendered structurally; the results histogram is sized to the
+  // pack's qubit count so a peaked column and its highlighted card agree.
+  const quantinaSidebar = (
+    <>
+      <div key="menu" className="bo-menu-panel">
+        <MenuGrid pack={pack} outcomes={menuVec} classPrefix="bo" />
+      </div>
+      {standing === 'operator' && (
+        <div key="serve" className="bo-serve">
+          {pack.serve.shots && pack.serve.shots.max > pack.serve.shots.min && (
+            <ServeStepper
+              value={serveShots}
+              min={pack.serve.shots.min}
+              max={pack.serve.shots.max}
+              onChange={setServeShots}
+            />
+          )}
+          <button type="button" className="bo-serve-btn" onClick={onServe}>
+            Serve
+          </button>
+        </div>
+      )}
+      <div key="order" className="bo-order-panel">
+        {served && (
+          <ServeReveal seq={served.seq} classPrefix="bo">
+            <OrderCard
+              pack={servedPack}
+              result={{ outcomes: served.outcomes, shotSource: served.shotSource }}
+              lines={servedLines}
+              classPrefix="bo"
+            />
+          </ServeReveal>
+        )}
+        <div className="bo-order-real">
+          Want it from real hardware? Scan the circuit QR, run it with ONE shot on
+          your own device, and tell the staff your bitstring.
+        </div>
+      </div>
+      {panels.includes('results') && (
+        <div key="results">
+          <Histogram circuit={liveCircuit} displayQubits={pack.qubits} noisy={noisyProbs} />
+        </div>
+      )}
     </>
   );
 
@@ -392,9 +503,14 @@ export function KioskView() {
               <MessageStrip message={strip} />
             </section>
             <aside className="bo-side">
-              {mode === 'golf' ? golfSidebar : panels.map(panelFor)}
+              {mode === 'golf'
+                ? golfSidebar
+                : mode === 'quantina'
+                  ? quantinaSidebar
+                  : panels.map(panelFor)}
               {/* Take-home: scan the live table circuit onto your own phone.
-                  Quiet, and distinct from the footer "follow along" visitor QR. */}
+                  Quiet, and distinct from the footer "follow along" visitor QR.
+                  In quantina it doubles as the real-hardware serve QR. */}
               <ComposerQrCard circuit={liveCircuit} qasm={circuit?.qasm} />
             </aside>
           </main>
@@ -417,6 +533,46 @@ export function KioskView() {
       <Celebrations celebration={celebration} />
       {attract && <AttractMode branding={branding} />}
       <TouchInspector circuit={liveCircuit} enabled={touch} />
+    </div>
+  );
+}
+
+/** Shot-count stepper for a `shots`-mode pack — a big-touch −/＋ on the kiosk. */
+function ServeStepper({
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  onChange: (n: number) => void;
+}) {
+  return (
+    <div className="bo-serve-shots" role="group" aria-label="Number of shots">
+      <span className="bo-serve-shots-label">Scoops</span>
+      <button
+        type="button"
+        className="bo-serve-step"
+        aria-label="Fewer"
+        disabled={value <= min}
+        onClick={() => onChange(Math.max(min, value - 1))}
+      >
+        −
+      </button>
+      <span className="bo-serve-shots-val" aria-live="polite">
+        {value}
+      </span>
+      <button
+        type="button"
+        className="bo-serve-step"
+        aria-label="More"
+        disabled={value >= max}
+        onClick={() => onChange(Math.min(max, value + 1))}
+      >
+        ＋
+      </button>
     </div>
   );
 }

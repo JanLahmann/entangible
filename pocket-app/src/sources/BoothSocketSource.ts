@@ -10,8 +10,9 @@
  *
  * Mapping (see @shared/ws/messages): the latest `circuit` message → circuit +
  * qasm; `detection.warnings` → the shared `friendlyWarning` envelope; the
- * `layout` message → boothMode (`golf` | else composer) + boothWires +
- * boothNoise; the socket's connection state → a coarse phase for the status pill.
+ * `layout` message → boothMode (`golf`/`quantina` | else composer) + boothWires +
+ * boothNoise + boothMenu (QN2); the latest `served` broadcast → boothServed (the
+ * viewer's synced reveal); the socket's connection state → a coarse phase.
  */
 import type { Circuit } from '@qamposer/react';
 import {
@@ -62,7 +63,9 @@ export function snapshotToUpdate(
   const boothMode: BoothMode | undefined = layout
     ? layout.mode === 'golf'
       ? 'golf'
-      : 'composer'
+      : layout.mode === 'quantina'
+        ? 'quantina'
+        : 'composer'
     : undefined;
   return {
     source: 'booth',
@@ -72,6 +75,10 @@ export function snapshotToUpdate(
     boothMode,
     boothWires: layout?.wires,
     boothNoise: layout?.noise,
+    // QN2: surface the active pack id (present ⟺ a layout arrived) and the
+    // latest served broadcast so a viewer phone reveals the booth's order.
+    boothMenu: layout ? layout.menu : undefined,
+    boothServed: snap.served,
     connection: connectionPhase(snap.connectionState),
   };
 }

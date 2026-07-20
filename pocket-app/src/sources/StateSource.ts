@@ -19,13 +19,14 @@
 import type { Circuit } from '@qamposer/react';
 import type { Wires } from '@shared/display/wires';
 import type { NoisePreset } from '@quantum/noise';
+import type { ServedMessage } from '@shared/ws/messages';
 import type { WarningInput } from '@shared/display/warnings';
 
 /** Which kind of source produced an update. */
 export type SourceKind = 'local' | 'booth' | 'manual';
 
 /** Booth display mode the pocket shell understands (attract collapses to composer). */
-export type BoothMode = 'composer' | 'golf';
+export type BoothMode = 'composer' | 'golf' | 'quantina';
 
 /** Coarse connection phase surfaced to the UI (booth sources only). */
 export type ConnectionPhase = 'connecting' | 'open' | 'closed';
@@ -48,6 +49,17 @@ export interface StateUpdate {
   readonly boothWires?: Wires;
   /** Host-driven noise preset; when present it overrides the local setting. */
   readonly boothNoise?: NoisePreset;
+  /**
+   * Host-driven Quantina menu-pack id (booth only, QN2): the active
+   * `layout.menu`, or `null` when none is chosen (clients fall back to
+   * `coffee`). Present ⟺ a `layout` message has arrived.
+   */
+  readonly boothMenu?: string | null;
+  /**
+   * Latest booth `served` broadcast (booth only, QN2). Drives the viewer's
+   * synced Quantina reveal, keyed on `served.seq`; absent until the first serve.
+   */
+  readonly boothServed?: ServedMessage;
   /** Connection phase (booth only). */
   readonly connection?: ConnectionPhase;
 }

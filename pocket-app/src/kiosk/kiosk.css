@@ -335,7 +335,28 @@
   font-size: 4.4vh; /* 48px @1080p */
   text-align: center;
   max-width: 90%;
-  animation: ent-attract-breathe 6s ease-in-out infinite;
+  display: grid; /* overlap the rotating lines in one cell (no reserved gap) */
+}
+.ent-attract__cta-line {
+  grid-area: 1 / 1; /* stack every line in the same grid cell */
+  animation: ent-attract-cta 12s ease-in-out infinite;
+}
+.ent-attract__cta-line--1 {
+  animation-delay: 6s; /* second half of the 12s loop */
+}
+@keyframes ent-attract-cta {
+  0%,
+  4% {
+    opacity: 0;
+  }
+  10%,
+  42% {
+    opacity: 1;
+  }
+  48%,
+  100% {
+    opacity: 0;
+  }
 }
 .ent-attract__site {
   font-size: 1.9vh; /* ~20px @1080p */
@@ -1145,4 +1166,297 @@
 .bo-golf-chip-best {
   font-family: ui-monospace, SFMono-Regular, monospace;
   font-size: 0.76rem;
+}
+
+/* ===================================================================== */
+/* == Quantina (mode === 'quantina') — bo- menu / serve / order ======== */
+/* == Mirrors the pocket pk- design language at kiosk scale (bigger      */
+/* == type, the --p probability fill, is-peak accent, --house dimming).  */
+/* ===================================================================== */
+
+.bo-menu-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Menu grid — one card per item, big-screen scale. */
+.bo-menu {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.7vh;
+}
+
+.bo-menu-card {
+  --p: 0;
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    'emoji name chip'
+    'emoji sub  pct';
+  align-items: center;
+  column-gap: 0.8vh;
+  row-gap: 0.15vh;
+  padding: 0.9vh 1vh 1.1vh;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.bo-menu-card--house {
+  opacity: 0.55;
+}
+
+.bo-menu-card.is-peak {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.bo-menu-emoji {
+  grid-area: emoji;
+  font-size: 3vh;
+  line-height: 1;
+}
+
+.bo-menu-name {
+  grid-area: name;
+  font-size: 1.9vh;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.bo-menu-sub {
+  grid-area: sub;
+  font-size: 1.5vh;
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+.bo-menu-chip {
+  grid-area: chip;
+  justify-self: end;
+  font-family: var(--ent-mono);
+  font-size: 1.5vh;
+  color: var(--entangle-text);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1vh 0.5vh;
+}
+
+.bo-menu-p {
+  grid-area: pct;
+  justify-self: end;
+  font-size: 1.6vh;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Pure-CSS probability fill along the card's bottom edge, driven by `--p`. */
+.bo-menu-bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 4px;
+  width: calc(var(--p) * 100%);
+  background: var(--bars);
+  transition: width 0.25s ease;
+}
+
+.bo-menu-card.is-peak .bo-menu-bar {
+  background: var(--accent);
+}
+
+/* Serve row — the big touch target + shot stepper (operator kiosks only). */
+.bo-serve {
+  display: flex;
+  align-items: center;
+  gap: 1vh;
+}
+
+.bo-serve-btn {
+  flex: 1;
+  padding: 1.4vh 1vh;
+  font-size: 2.2vh;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.bo-serve-btn:active {
+  transform: scale(0.98);
+}
+
+.bo-serve-shots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7vh;
+}
+
+.bo-serve-shots-label {
+  font-size: 1.4vh;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.bo-serve-step {
+  width: 4.4vh;
+  height: 4.4vh;
+  min-width: 4.4vh;
+  display: grid;
+  place-items: center;
+  font-size: 2.4vh;
+  color: var(--text);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.bo-serve-step:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+
+.bo-serve-shots-val {
+  min-width: 2.4vh;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 2vh;
+  color: var(--text);
+}
+
+/* Order panel — the synced reveal + the real-hardware serve line. */
+.bo-order-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1vh;
+}
+
+.bo-reveal {
+  animation: bo-reveal-in 0.32s ease-out;
+}
+
+@keyframes bo-reveal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.bo-order {
+  background: var(--bg-inset);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 1.1vh 1.2vh;
+}
+
+.bo-order-head {
+  font-size: 1.4vh;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.7vh;
+}
+
+.bo-order-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5vh;
+}
+
+.bo-order-line {
+  display: flex;
+  align-items: center;
+  gap: 0.7vh;
+}
+
+.bo-order-emoji {
+  font-size: 2.6vh;
+  line-height: 1;
+}
+
+.bo-order-name {
+  font-size: 2vh;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.bo-order-count {
+  font-size: 1.6vh;
+  font-weight: 600;
+  color: var(--entangle-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.bo-order-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.6vh;
+  font-size: 2vh;
+  color: var(--muted);
+}
+
+.bo-order-codes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5vh;
+  margin-top: 0.9vh;
+}
+
+.bo-order-chip {
+  font-family: var(--ent-mono);
+  font-size: 1.5vh;
+  color: var(--entangle-text);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.15vh 0.5vh;
+}
+
+.bo-order-tag {
+  margin-top: 0.7vh;
+  font-size: 1.5vh;
+  color: var(--muted);
+}
+
+/* The one-shot real-hardware prompt under the order card (decision 5). */
+.bo-order-real {
+  font-size: 1.6vh;
+  line-height: 1.4;
+  color: var(--muted);
+  padding: 0.9vh 1vh;
+  background: var(--bg-inset);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bo-reveal {
+    animation-duration: 0.01ms;
+  }
+  .bo-menu-bar {
+    transition: none;
+  }
+  .ent-attract__cta-line {
+    animation: none;
+    grid-area: auto; /* un-stack: both prompts flow, no overlap */
+    opacity: 1;
+  }
 }

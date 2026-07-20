@@ -24,6 +24,7 @@ import { friendlyWarning } from '@shared/display/warnings';
 import type { WarningInput } from '@shared/display/warnings';
 import type { Wires } from '@shared/display/wires';
 import type { NoisePreset } from '@quantum/noise';
+import type { ServedMessage } from '@shared/ws/messages';
 import { LocalPipelineSource } from '../sources/LocalPipelineSource';
 import { BoothSocketSource } from '../sources/BoothSocketSource';
 import { CameraRoleSource } from '../sources/CameraRoleSource';
@@ -359,6 +360,10 @@ export function App() {
   const [boothMode, setBoothMode] = useState<BoothMode | null>(null);
   const [boothWires, setBoothWires] = useState<Wires | null>(null);
   const [boothNoise, setBoothNoise] = useState<NoisePreset | null>(null);
+  // Booth-driven Quantina pack id + the latest booth serve (QN2). Both null
+  // while standalone; when connected they drive the synced menu + reveal.
+  const [boothMenu, setBoothMenu] = useState<string | null>(null);
+  const [boothServed, setBoothServed] = useState<ServedMessage | null>(null);
   // Served by a booth host? (its own origin answers /api/info) — enables the
   // "Connect to booth" affordance. Cheap probe on startup; failures ignored.
   const [servedByHost, setServedByHost] = useState(false);
@@ -423,6 +428,8 @@ export function App() {
         setBoothMode(update.boothMode ?? null);
         setBoothWires(update.boothWires ?? null);
         setBoothNoise(update.boothNoise ?? null);
+        setBoothMenu(update.boothMenu ?? null);
+        if (update.boothServed) setBoothServed(update.boothServed);
       }
 
       if (update.circuit === appliedCircuitRef.current) return;
@@ -616,6 +623,8 @@ export function App() {
     setBoothMode(null);
     setBoothWires(null);
     setBoothNoise(null);
+    setBoothMenu(null);
+    setBoothServed(null);
     appliedCircuitRef.current = null;
     const source: StateSource = manual ? manualSourceRef.current : localSourceRef.current;
     const unsub = source.subscribe(applyUpdate);
@@ -799,8 +808,20 @@ export function App() {
   const isQuantina = effectiveMode === 'quantina';
   // Quantina pack resolution (settings menu id + optional `?menupack=` fetch).
   // Called unconditionally (hook rules); App needs the pack for the histogram's
-  // qubit count and the mode pill even before the quantina sidebar mounts.
-  const quantina = useQuantinaPack();
+  // qubit count and the mode pill even before the quantina sidebar mounts. When
+  // connected the booth's active pack (`boothMenu`) overrides the local setting
+  // (`boothMenu ?? settings.menu`, resolved inside the QN1 hook).
+  const quantina = useQuantinaPack(boothMenu);
+  // Booth-synced serve (viewer): show the host's `served` result, keyed on its
+  // seq so the reveal re-animates; a connected viewer can't serve locally.
+  const quantinaExternal =
+    connected && boothServed
+      ? {
+          packId: boothServed.packId,
+          outcomes: boothServed.outcomes,
+          shotSource: boothServed.shotSource,
+        }
+      : null;
   const hasPanel = (p: PanelId) => settings.panels.includes(p);
   // Viewer policy (design: read-only Display role): while connected to a booth
   // — or building on screen in manual mode — the camera UI is hidden entirely.
@@ -894,6 +915,9 @@ export function App() {
         error={quantina.error}
         circuit={circuit}
         noisyProbs={noisyProbs}
+        externalResult={quantinaExternal}
+        externalSeq={boothServed?.seq ?? 0}
+        canServe={!connected}
       />
       {hasPanel('results') && (
         <ResultsHistogram

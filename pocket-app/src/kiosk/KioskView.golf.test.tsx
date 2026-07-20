@@ -8,6 +8,8 @@ import type { StateSnapshot } from '@shared/ws/stateSocket';
 let snapshot: StateSnapshot;
 vi.mock('./kioskSocket', () => ({
   useKioskState: () => snapshot,
+  getKioskSocket: () => ({ getSnapshot: () => snapshot, send: () => true }),
+  kioskStanding: (s: StateSnapshot) => (s.operator === true ? 'operator' : 'viewer'),
 }));
 
 import { KioskView } from './KioskView';

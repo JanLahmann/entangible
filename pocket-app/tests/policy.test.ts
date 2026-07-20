@@ -2,16 +2,19 @@
  * Viewer-policy guard (Entangible One — docs/design.md).
  *
  * The Display role's default policy is READ-ONLY: viewer/kiosk surfaces receive
- * circuit/detection/layout but NEVER send a `select_*` control message. The two
- * sanctioned exceptions are the staff CAMERA role (`select_camera {kind:'push'}`
- * from `CameraRoleSource`) and the operator `/debug` Layout card
- * (`select_mode` / `select_layout` from `DebugView`).
+ * circuit/detection/layout but NEVER send a `select_*` (or `serve`) control
+ * message. The three sanctioned senders (docs/quantina.md decision 6) are:
+ *  - the staff CAMERA role — `select_camera {kind:'push'}` from `CameraRoleSource`;
+ *  - the operator `/debug` cards — `select_mode`/`select_layout`/`select_noise`/
+ *    `select_menu`/`serve` from `DebugView` (the only operator SPA surface);
+ *  - the PROVISIONED kiosk's touch Serve — `serve` from `kiosk/serve.ts`, whose
+ *    `sendServe` is guarded on operator standing (a keyless kiosk is a no-op).
  *
- * This test statically scans the pocket source tree for `select_*` SEND sites
- * (a `type: 'select_…'` object literal) and asserts they live ONLY in those two
- * modules. If a future change adds a `select_*` send anywhere else — most
- * dangerously the kiosk viewer — this fails loudly. It complements the
- * behavioral BoothSocketSource viewer-policy test.
+ * This test statically scans the pocket source tree for control SEND sites
+ * (a `type: 'select_…'` or `type: 'serve'` object literal) and asserts they
+ * live ONLY in those modules. If a future change adds a control send anywhere
+ * else — most dangerously the kiosk viewer — this fails loudly. It complements
+ * the behavioral BoothSocketSource viewer-policy test.
  */
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -21,15 +24,16 @@ import { dirname, join, relative } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const srcDir = join(here, '..', 'src');
 
-/** The ONLY modules allowed to send a `select_*` control message. */
+/** The ONLY modules allowed to send a `select_*` / `serve` control message. */
 const ALLOWED = new Set([
   'sources/CameraRoleSource.ts', // staff CAMERA role → select_camera {kind:'push'}
-  'debug/DebugView.tsx', // operator /debug Layout card → select_mode / select_layout
+  'debug/DebugView.tsx', // operator /debug cards → select_* + serve
+  'kiosk/serve.ts', // provisioned kiosk touch Serve → serve (operator-gated)
 ]);
 
-// Matches a `select_*` message SEND (an object literal `type: 'select_…'`),
-// not a comment or a type/name mention.
-const SEND_RE = /type:\s*['"]select_/;
+// Matches a control-message SEND (an object literal `type: 'select_…'` or
+// `type: 'serve'`), not a comment or a type/name mention.
+const SEND_RE = /type:\s*['"](?:select_|serve['"])/;
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -41,8 +45,8 @@ function walk(dir: string): string[] {
   return out;
 }
 
-describe('viewer policy: select_* stays out of viewer surfaces', () => {
-  it('only the camera-role and /debug modules send select_* controls', () => {
+describe('viewer policy: control sends stay out of viewer surfaces', () => {
+  it('only the camera-role, /debug and kiosk-serve modules send controls', () => {
     const offenders: string[] = [];
     const senders: string[] = [];
     for (const file of walk(srcDir)) {

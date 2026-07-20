@@ -24,6 +24,7 @@ import type {
   DetectionMessage,
   HelloAck,
   LayoutMessage,
+  ServedMessage,
   ServerMessage,
   StatusMessage,
 } from './messages';
@@ -43,6 +44,12 @@ export interface StateSnapshot {
   readonly status?: StatusMessage;
   /** Latest `layout` message (panel/mode state; booth-v2, additive). */
   readonly layout?: LayoutMessage;
+  /**
+   * Latest `served` message (a Quantina serve; QN2, additive). The host stamps
+   * `seq`/`packId` and broadcasts it to every client so kiosk and viewer screens
+   * reveal the same order in sync; the latest is replayed to late joiners.
+   */
+  readonly served?: ServedMessage;
   readonly connectionState: ConnectionState;
   /** Last accepted circuit `seq`, or null before any circuit arrives. */
   readonly lastSeq: number | null;
@@ -275,6 +282,9 @@ export class StateSocket {
         break;
       case 'layout':
         this.patch({ layout: msg });
+        break;
+      case 'served':
+        this.patch({ served: msg });
         break;
       case 'hello_ack':
         this.patch({ operator: (msg as HelloAck).role === 'operator' });

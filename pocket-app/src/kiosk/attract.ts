@@ -15,6 +15,17 @@
 /** Idle window before attract mode engages. */
 export const ATTRACT_IDLE_MS = 90_000;
 
+/**
+ * The rotating call-to-action lines shown on the attract screen. The Quantina
+ * line ("Order your coffee with a quantum computer", QN2) joins the original
+ * build prompt; `AttractMode` cross-fades between them (CSS, reduced-motion
+ * shows them stacked). First is the general prompt so a cold booth reads right.
+ */
+export const ATTRACT_TAGLINES = [
+  'Build a quantum circuit with your hands — place a tile on the table',
+  'Order your coffee with a quantum computer',
+] as const;
+
 export interface AttractInput {
   /** The live circuit currently has no gates. */
   readonly boardEmpty: boolean;

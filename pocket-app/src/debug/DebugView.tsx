@@ -21,7 +21,11 @@ import {
   storeOperatorKey,
   withKey,
 } from '@shared/ws/operatorKey';
-import type { DisplayMode, NoisePreset, SidebarSide, Wires } from '@shared/ws/messages';
+import type { DisplayMode, NoisePreset, ShotSource, SidebarSide, Wires } from '@shared/ws/messages';
+import { BUILTIN_PACKS, builtinPack } from '@shared/menu/builtinPacks';
+import { cryptoRng } from '@shared/menu/sample';
+import { menuOutcomes, serveFrom } from '../app/quantina';
+import { noiseSeries } from '../app/ResultsHistogram';
 import { markerLabel } from './markerLabels';
 import './debug.css';
 
@@ -277,6 +281,174 @@ function LayoutCard() {
   );
 }
 
+/** The five bundled menu-pack ids, offered by the /debug pack picker. */
+const MENU_PACK_IDS = BUILTIN_PACKS.map((p) => p.id);
+
+/**
+ * "Quantina" card (operator surface): the staff serving controls for
+ * `quantina` mode (docs/quantina.md). It (a) picks the active menu pack
+ * (`select_menu`), (b) serves from the live circuit + the booth noise preset —
+ * the SAME `menuOutcomes` math the menu shows, sampled here with `cryptoRng` —
+ * (`serve` with shotSource ideal/noisy), and (c) enters a visitor's
+ * real-hardware bitstring (`serve` shotSource 'real'; decision 5). The host
+ * stamps + broadcasts `served` to every screen. Serve is disabled outside
+ * quantina mode (nothing to reveal) and when no pack is active.
+ */
+function QuantinaCard() {
+  const { layout, circuit } = useDebugState();
+  const socket = getDebugSocket();
+
+  const menuId = layout?.menu ?? null;
+  const isQuantina = layout?.mode === 'quantina';
+  const noise: NoisePreset = layout?.noise ?? 'off';
+  // Active pack: protocol null/unknown → coffee (the same fallback clients use).
+  const pack = (menuId ? builtinPack(menuId) : undefined) ?? builtinPack('coffee')!;
+  const shotsBounds = pack.serve.shots;
+
+  const [count, setCount] = useState<number>(shotsBounds?.default ?? 1);
+  useEffect(() => {
+    setCount(pack.serve.shots?.default ?? 1);
+  }, [pack]);
+
+  // Real-hardware entry: exactly `pack.qubits` chars of 0/1 (live-validated).
+  const [realBits, setRealBits] = useState('');
+  const realValid = realBits.length === pack.qubits && /^[01]+$/.test(realBits);
+
+  const canServe = isQuantina && !!circuit?.circuit;
+
+  const setPack = (id: string) => socket.sendMessage({ type: 'select_menu', pack: id });
+
+  const doServe = () => {
+    const live = circuit?.circuit;
+    if (!live) return;
+    // Sample where the simulation runs: the noisy vector when a preset is on
+    // (else ideal), marginalized onto the pack — byte-identical to the menu.
+    const noisyProbs = noiseSeries(live, noise, false);
+    const outcomes = menuOutcomes(live, pack, noisyProbs);
+    const shotSource: ShotSource = noisyProbs ? 'noisy' : 'ideal';
+    const result = serveFrom(outcomes, pack, count, cryptoRng(), shotSource);
+    socket.sendMessage({ type: 'serve', outcomes: result.outcomes, shotSource });
+  };
+
+  const doRealServe = () => {
+    if (!realValid) return;
+    socket.sendMessage({ type: 'serve', outcomes: [realBits], shotSource: 'real' });
+    setRealBits('');
+  };
+
+  const pillStyle = (active: boolean): CSSProperties => ({
+    padding: '0.3rem 0.8rem',
+    borderRadius: 999,
+    border: '1px solid var(--ent-border, #333)',
+    background: active ? 'var(--ent-accent, #0f62fe)' : 'transparent',
+    color: active ? '#fff' : 'var(--ent-text, #e6e6ea)',
+    cursor: 'pointer',
+    fontSize: '0.85rem',
+  });
+
+  const inputStyle: CSSProperties = {
+    fontFamily: 'var(--ent-mono)',
+    padding: '0.3rem 0.5rem',
+    borderRadius: 6,
+    border: '1px solid var(--ent-border, #333)',
+    background: 'transparent',
+    color: 'var(--ent-text, #e6e6ea)',
+  };
+
+  return (
+    <section className="debug__section">
+      <h2>quantina</h2>
+      {!isQuantina && (
+        <div className="debug__muted" style={{ marginBottom: '0.75rem' }}>
+          switch mode to <strong>quantina</strong> (Layout card) to serve.
+        </div>
+      )}
+
+      <div style={{ marginBottom: '0.9rem' }}>
+        <div style={{ color: 'var(--ent-text-dim)', fontSize: '0.8rem', marginBottom: '0.35rem' }}>
+          menu pack{menuId ? '' : ' (none → coffee)'}
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {MENU_PACK_IDS.map((id) => (
+            <button
+              key={id}
+              type="button"
+              style={pillStyle(menuId === id)}
+              onClick={() => setPack(id)}
+            >
+              {id}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: '0.9rem' }}>
+        <div style={{ color: 'var(--ent-text-dim)', fontSize: '0.8rem', marginBottom: '0.35rem' }}>
+          serve · {pack.title} · {pack.serve.mode}
+          {noise !== 'off' ? ` · noisy (${noise})` : ' · ideal'}
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {shotsBounds && shotsBounds.max > shotsBounds.min && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem' }}>
+              shots
+              <input
+                type="number"
+                min={shotsBounds.min}
+                max={shotsBounds.max}
+                value={count}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (Number.isFinite(n)) {
+                    setCount(Math.min(shotsBounds.max, Math.max(shotsBounds.min, Math.round(n))));
+                  }
+                }}
+                style={{ ...inputStyle, width: '4rem' }}
+              />
+            </label>
+          )}
+          <button
+            type="button"
+            style={{ ...pillStyle(false), opacity: canServe ? 1 : 0.5, cursor: canServe ? 'pointer' : 'default' }}
+            disabled={!canServe}
+            onClick={doServe}
+          >
+            Serve
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <div style={{ color: 'var(--ent-text-dim)', fontSize: '0.8rem', marginBottom: '0.35rem' }}>
+          real hardware ({pack.qubits} bits)
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={realBits}
+            placeholder={'0'.repeat(pack.qubits)}
+            onChange={(e) => setRealBits(e.target.value.replace(/[^01]/g, '').slice(0, pack.qubits))}
+            aria-label="real hardware bitstring"
+            style={{ ...inputStyle, width: '8rem' }}
+          />
+          <button
+            type="button"
+            style={{ ...pillStyle(false), opacity: realValid ? 1 : 0.5, cursor: realValid ? 'pointer' : 'default' }}
+            disabled={!realValid}
+            onClick={doRealServe}
+          >
+            Enter real result
+          </button>
+        </div>
+        <div className="debug__muted" style={{ fontSize: '0.75rem', marginTop: '0.35rem' }}>
+          The visitor runs the circuit on their own device with ONE shot, then
+          tells you the measured bitstring.
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /**
  * Operator-key prompt shown on a keyless `/debug` visit. The staff QR opens
  * `/debug?key=…` (auto-stored, no prompt); typing the token here stores it and
@@ -435,6 +607,8 @@ export function DebugView() {
         </section>
 
         <LayoutCard />
+
+        <QuantinaCard />
 
         {/* Volatile, per-frame lists live at the bottom (min-height reserved)
             so their constant resizing never shifts the stable cards above. */}

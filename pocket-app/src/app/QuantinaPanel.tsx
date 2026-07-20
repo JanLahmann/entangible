@@ -47,9 +47,13 @@ export interface QuantinaPackState {
  * session-only `?menupack=<url>` (read once, never persisted) overrides it once
  * it validates. Failures fall back to the settings pack and expose an error.
  */
-export function useQuantinaPack(): QuantinaPackState {
+export function useQuantinaPack(overrideMenuId?: string | null): QuantinaPackState {
   const settings = useSettings();
-  const settingsPack = useMemo(() => resolvePack(settings.menu), [settings.menu]);
+  // The base pack id: a caller-supplied override (the booth's active `menu`
+  // while connected) wins over the local setting; null/undefined → the setting.
+  // Keeps this QN1 hook the single owner of pack resolution (+ `?menupack=`).
+  const menuId = overrideMenuId ?? settings.menu;
+  const settingsPack = useMemo(() => resolvePack(menuId), [menuId]);
   const menupackUrl = useMemo(
     () =>
       typeof window !== 'undefined'
@@ -139,6 +143,9 @@ export function QuantinaPanel({
   error = null,
   circuit,
   noisyProbs,
+  externalResult = null,
+  externalSeq = 0,
+  canServe = true,
 }: {
   pack: MenuPack;
   /** Remote-pack load error, if any (from `useQuantinaPack`). */
@@ -146,11 +153,29 @@ export function QuantinaPanel({
   circuit: Circuit;
   /** The App-memoized noisy vector — present ⟺ a noise preset is active. */
   noisyProbs?: readonly number[];
+  /**
+   * An externally-supplied serve result to reveal (QN2 viewer sync): the booth's
+   * `served` broadcast, resolved through the same `orderLines` path. When set it
+   * takes precedence over any local serve. `null` → local serves only.
+   */
+  externalResult?: ServeResult | null;
+  /** Reveal key for `externalResult` — bump it (served.seq) to re-animate. */
+  externalSeq?: number;
+  /**
+   * Whether this surface may serve locally (default true). A connected viewer
+   * passes `false` to hide the Serve button + shot stepper (read-only policy).
+   */
+  canServe?: boolean;
 }) {
   const shotsBounds = pack.serve.shots;
   const [shots, setShots] = useState(shotsBounds?.default ?? 1);
   const [result, setResult] = useState<ServeResult | null>(null);
   const [seq, setSeq] = useState(0);
+
+  // An external (booth-synced) result wins over any local serve; its own seq
+  // drives the reveal so a new broadcast re-animates even for the same item.
+  const shownResult = externalResult ?? result;
+  const shownSeq = externalResult ? externalSeq : seq;
 
   // A pack switch invalidates the shot count and any prior order.
   useEffect(() => {
@@ -172,7 +197,10 @@ export function QuantinaPanel({
     setSeq((s) => s + 1);
   };
 
-  const lines = useMemo(() => (result ? orderLines(pack, result) : []), [pack, result]);
+  const lines = useMemo(
+    () => (shownResult ? orderLines(pack, shownResult) : []),
+    [pack, shownResult],
+  );
 
   // Packs restyle their OWN menu, not the whole app: apply the accent only here.
   const accentStyle: CSSProperties | undefined = pack.theme?.accent
@@ -187,23 +215,27 @@ export function QuantinaPanel({
         </p>
       )}
 
-      <div className="pk-quantina-serve">
-        {shotsBounds && shotsBounds.max > shotsBounds.min && (
-          <ShotsStepper
-            value={shots}
-            min={shotsBounds.min}
-            max={shotsBounds.max}
-            onChange={setShots}
-          />
-        )}
-        <button type="button" className="pk-btn pk-quantina-serve-btn" onClick={serve}>
-          Serve
-        </button>
-      </div>
+      {/* Serve controls are hidden for a read-only viewer (canServe=false): the
+          booth is the single serving authority; the viewer only reveals. */}
+      {canServe && (
+        <div className="pk-quantina-serve">
+          {shotsBounds && shotsBounds.max > shotsBounds.min && (
+            <ShotsStepper
+              value={shots}
+              min={shotsBounds.min}
+              max={shotsBounds.max}
+              onChange={setShots}
+            />
+          )}
+          <button type="button" className="pk-btn pk-quantina-serve-btn" onClick={serve}>
+            Serve
+          </button>
+        </div>
+      )}
 
-      {result && (
-        <ServeReveal seq={seq} classPrefix="pk">
-          <OrderCard pack={pack} result={result} lines={lines} classPrefix="pk" />
+      {shownResult && (
+        <ServeReveal seq={shownSeq} classPrefix="pk">
+          <OrderCard pack={pack} result={shownResult} lines={lines} classPrefix="pk" />
         </ServeReveal>
       )}
 

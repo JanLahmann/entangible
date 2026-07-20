@@ -92,9 +92,11 @@ class Hub:
         self._clients: dict[Any, dict[str, Any]] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
         self._seq = 0
+        self._serve_seq = 0
         self._latest_circuit: dict | None = None
         self._latest_detection: dict | None = None
         self._latest_layout: dict | None = None
+        self._latest_served: dict | None = None
         self._last_detection_sent = 0.0
         self._camera: dict = {"kind": "none", "name": "", "connected": False}
         self._backend: dict = {"enabled": False, "healthy": False}
@@ -134,9 +136,11 @@ class Hub:
 
     async def connect(self, client: WSClient, role: str = "display",
                       label: str | None = None) -> None:
-        """Register a client, replay latest circuit+detection+status to it.
+        """Register a client, replay latest state to it.
 
-        Also broadcasts the new client count to everyone else (a status change).
+        Replay order matches docs/protocol.md: circuit, detection, status,
+        layout, then the latest ``served`` (when one exists). Also broadcasts
+        the new client count to everyone else (a status change).
         """
         self._clients[client] = {"role": role, "label": label, "operator": False}
         if self._latest_circuit is not None:
@@ -146,6 +150,8 @@ class Hub:
         await self._send(client, self._status_message())
         if self._latest_layout is not None:
             await self._send(client, self._latest_layout)
+        if self._latest_served is not None:
+            await self._send(client, self._latest_served)
         await self._broadcast(self._status_message(), exclude=client)
 
     async def disconnect(self, client: WSClient) -> None:
@@ -211,6 +217,27 @@ class Hub:
         """Store the latest layout and broadcast it to all clients."""
         self._latest_layout = dict(message)
         await self._broadcast(self._latest_layout)
+
+    async def publish_served(
+        self, *, pack_id: str, outcomes: list[str], shot_source: str
+    ) -> None:
+        """Stamp + broadcast a Quantina ``served`` message to every client.
+
+        The host is the authority: it assigns the monotonic serve ``seq`` (per
+        host process, independent of the circuit ``seq``) and the active
+        ``packId``, then fans the serve out so every screen reveals the same
+        result in sync. The latest ``served`` is replayed to late joiners.
+        """
+        self._serve_seq += 1
+        message = {
+            "type": "served",
+            "seq": self._serve_seq,
+            "packId": pack_id,
+            "outcomes": list(outcomes),
+            "shotSource": shot_source,
+        }
+        self._latest_served = message
+        await self._broadcast(message)
 
     # -- thread bridge -----------------------------------------------------
 

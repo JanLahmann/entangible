@@ -10,9 +10,10 @@ the client -> server messages:
   compare). The server replies to every ``hello`` with
   ``{type:'hello_ack', role:'viewer'|'operator'}`` on that socket so the client
   learns its standing.
-* ``select_camera`` / ``select_mode`` / ``select_layout`` — control messages,
-  honored **only** for operator connections. From a viewer they are silently
-  ignored (logged at debug level, no error sent back).
+* ``select_camera`` / ``select_mode`` / ``select_layout`` / ``select_noise`` /
+  ``select_menu`` / ``serve`` — control messages, honored **only** for operator
+  connections. From a viewer they are silently ignored (logged at debug level,
+  no error sent back). A valid ``serve`` broadcasts a ``served`` message.
 
 Viewers stay zero-friction: a plain ``hello`` (or none at all) connects and
 receives circuit/detection/status exactly as before. Unknown or malformed
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -32,6 +34,11 @@ from .token import token_matches
 logger = logging.getLogger("qamposer_host.ws_state")
 
 router = APIRouter()
+
+#: A serve outcome: 1..5 bits, only 0/1 (the board's 5 rows cap the qubit count).
+_BITSTRING_RE = re.compile(r"^[01]{1,5}$")
+#: Where a served sample came from (default ``ideal`` when omitted).
+_SHOT_SOURCES = ("ideal", "noisy", "real")
 
 
 @router.websocket("/ws/state")
@@ -63,7 +70,10 @@ async def _handle_message(websocket: WebSocket, raw: str) -> None:
     mtype = msg.get("type")
     if mtype == "hello":
         await _handle_hello(websocket, msg)
-    elif mtype in ("select_camera", "select_mode", "select_layout", "select_noise"):
+    elif mtype in (
+        "select_camera", "select_mode", "select_layout", "select_noise",
+        "select_menu", "serve",
+    ):
         # Control messages are operator-only. A viewer's attempt is silently
         # ignored (per design): no error is returned, just a debug log.
         if not websocket.app.state.hub.is_operator(websocket):
@@ -75,6 +85,10 @@ async def _handle_message(websocket: WebSocket, raw: str) -> None:
             await _handle_select_mode(websocket, msg)
         elif mtype == "select_noise":
             await _handle_select_noise(websocket, msg)
+        elif mtype == "select_menu":
+            await _handle_select_menu(websocket, msg)
+        elif mtype == "serve":
+            await _handle_serve(websocket, msg)
         else:
             await _handle_select_layout(websocket, msg)
     else:
@@ -147,6 +161,49 @@ async def _handle_select_noise(websocket: WebSocket, msg: dict) -> None:
     store = websocket.app.state.layout_store
     store.select_noise(preset)
     await websocket.app.state.hub.publish_layout(store.message())
+
+
+async def _handle_select_menu(websocket: WebSocket, msg: dict) -> None:
+    pack = msg.get("pack")
+    if not isinstance(pack, str):
+        logger.info("ignoring select_menu without a string pack: %r", msg)
+        return
+    store = websocket.app.state.layout_store
+    store.select_menu(pack)
+    await websocket.app.state.hub.publish_layout(store.message())
+
+
+async def _handle_serve(websocket: WebSocket, msg: dict) -> None:
+    """Validate a Quantina serve and, on success, broadcast ``served``.
+
+    Gating + validation follow docs/protocol.md exactly: a serve is ignored when
+    no pack is active, when ``outcomes`` is not a list of 1..20 bitstrings (each
+    1-5 chars of only 0/1), or when ``shotSource`` (optional, default ``ideal``)
+    is not one of ideal|noisy|real.
+    """
+    store = websocket.app.state.layout_store
+    pack_id = store.state.menu
+    if pack_id is None:
+        logger.info("ignoring serve with no active menu pack")
+        return
+
+    outcomes = msg.get("outcomes")
+    if (
+        not isinstance(outcomes, list)
+        or not 1 <= len(outcomes) <= 20
+        or not all(isinstance(o, str) and _BITSTRING_RE.match(o) for o in outcomes)
+    ):
+        logger.info("ignoring serve with invalid outcomes: %r", outcomes)
+        return
+
+    shot_source = msg.get("shotSource", "ideal")
+    if shot_source not in _SHOT_SOURCES:
+        logger.info("ignoring serve with invalid shotSource: %r", shot_source)
+        return
+
+    await websocket.app.state.hub.publish_served(
+        pack_id=pack_id, outcomes=list(outcomes), shot_source=shot_source
+    )
 
 
 async def _handle_select_layout(websocket: WebSocket, msg: dict) -> None:

@@ -11,6 +11,7 @@
  * exit (React removes it synchronously on the next paint).
  */
 import { VisitorQr } from './VisitorQr';
+import { ATTRACT_TAGLINES } from './attract';
 
 const MINI_CONFETTI = ['#fa4d56', '#002d9c', '#9f1853', '#33b1ff'];
 
@@ -65,8 +66,15 @@ export function AttractMode({ branding }: { branding?: AttractBranding | null })
           </div>
         </div>
 
+        {/* Rotating call to action: the build prompt cross-fades with the
+            Quantina "order your coffee" line (QN2). Both stay in the DOM; CSS
+            animates opacity and reduced-motion shows them stacked. */}
         <div className="ent-attract__cta">
-          Build a quantum circuit with your hands — place a tile on the table
+          {ATTRACT_TAGLINES.map((line, i) => (
+            <span key={i} className={`ent-attract__cta-line ent-attract__cta-line--${i}`}>
+              {line}
+            </span>
+          ))}
         </div>
 
         {/* visitor QR — follow along on your phone + take the circuit home */}

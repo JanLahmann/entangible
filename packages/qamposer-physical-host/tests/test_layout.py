@@ -6,6 +6,7 @@ from conftest import FakePipeline, authenticate_operator
 from fastapi.testclient import TestClient
 
 from qamposer_host.config import HostConfig
+import pytest
 from qamposer_host.layout import DEFAULT_MODE, MODE_PANELS, LayoutStore
 from qamposer_host.main import create_app
 
@@ -21,6 +22,7 @@ def test_defaults_are_composer_preset():
     assert state.panels == ["results", "state", "qasm"]
     assert state.wires == "compact"
     assert state.noise == "off"
+    assert state.menu is None
     assert store.message() == {
         "type": "layout",
         "mode": "composer",
@@ -28,6 +30,7 @@ def test_defaults_are_composer_preset():
         "panels": ["results", "state", "qasm"],
         "wires": "compact",
         "noise": "off",
+        "menu": None,
     }
 
 
@@ -160,6 +163,7 @@ def test_api_layout_default_shape(tmp_path):
             "panels": ["results", "state", "qasm"],
             "wires": "compact",
             "noise": "off",
+            "menu": None,
         }
 
 
@@ -309,3 +313,119 @@ def test_ws_select_noise_invalid_value_ignored(tmp_path):
             assert layout["type"] == "layout"
             assert layout["noise"] == "off"
         assert client.get("/api/layout").json()["noise"] == "off"
+
+
+# --- quantina (menu-pack mode + select_menu) -------------------------------
+
+
+def test_quantina_mode_panels_preset():
+    assert MODE_PANELS["quantina"] == ["menu", "order", "results"]
+
+
+def test_select_mode_quantina_sets_panels():
+    store = LayoutStore(None)
+    store.select_mode("quantina")
+    assert store.state.mode == "quantina"
+    assert store.state.panels == ["menu", "order", "results"]
+
+
+def test_menu_defaults_none_and_in_message_and_dict():
+    store = LayoutStore(None)
+    assert store.state.menu is None
+    assert store.message()["menu"] is None
+    assert store.state.to_dict()["menu"] is None
+
+
+def test_select_menu_sets_pack_and_keeps_omitted():
+    store = LayoutStore(None)
+    store.select_menu("cocktails")  # mode/sidebar/panels/wires/noise untouched
+    assert store.state.menu == "cocktails"
+    assert store.state.mode == "composer"
+    assert store.state.noise == "off"
+    assert store.state.panels == ["results", "state", "qasm"]
+    assert store.message()["menu"] == "cocktails"
+    assert store.state.to_dict()["menu"] == "cocktails"
+
+
+@pytest.mark.parametrize(
+    "pack",
+    ["Cocktails", "COCKTAILS", "", "a" * 65, "with space", "under_score", "café"],
+)
+def test_select_menu_invalid_format_ignored(pack):
+    store = LayoutStore(None)
+    store.select_menu(pack)
+    assert store.state.menu is None
+
+
+def test_select_menu_boundary_ids_accepted():
+    store = LayoutStore(None)
+    store.select_menu("a")  # 1 char
+    assert store.state.menu == "a"
+    long_id = "a" * 64  # 64 chars — the upper bound
+    store.select_menu(long_id)
+    assert store.state.menu == long_id
+
+
+def test_menu_persist_roundtrip(tmp_path):
+    path = tmp_path / "layout.toml"
+    store = LayoutStore(path)
+    store.select_menu("icecream")
+    reloaded = LayoutStore(path)
+    assert reloaded.state.menu == "icecream"
+
+
+def test_menu_absent_from_toml_when_none(tmp_path):
+    path = tmp_path / "layout.toml"
+    store = LayoutStore(path)
+    store.select_mode("quantina")  # persists, but no menu chosen yet
+    assert path.is_file()
+    assert "menu =" not in path.read_text()  # no top-level menu key emitted
+    reloaded = LayoutStore(path)
+    assert reloaded.state.menu is None
+
+
+def test_toml_ignores_malformed_menu(tmp_path):
+    path = tmp_path / "layout.toml"
+    path.write_text('mode = "quantina"\nmenu = "Bad Id!"\n')
+    store = LayoutStore(path)
+    assert store.state.mode == "quantina"
+    assert store.state.menu is None  # invalid format → left None
+
+
+def test_select_mode_keeps_menu():
+    store = LayoutStore(None)
+    store.select_menu("coffee")
+    store.select_mode("golf")  # switching mode must not clear the menu pack
+    assert store.state.menu == "coffee"
+
+
+def test_ws_select_menu_broadcasts_and_persists(tmp_path):
+    app = _app(tmp_path)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/state") as ws:
+            ws.receive_json()  # status
+            ws.receive_json()  # seeded layout
+            authenticate_operator(ws, app)
+            ws.send_json({"type": "select_menu", "pack": "cocktails"})
+            layout = ws.receive_json()
+            assert layout["type"] == "layout"
+            assert layout["menu"] == "cocktails"
+            assert layout["panels"] == ["results", "state", "qasm"]  # unchanged
+        assert client.get("/api/layout").json()["menu"] == "cocktails"
+
+
+def test_ws_select_menu_ignored_for_viewers(tmp_path):
+    app = _app(tmp_path)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/state") as ws:
+            ws.receive_json()  # status
+            ws.receive_json()  # seeded layout
+            # No operator hello → select_menu is silently ignored (no broadcast).
+            ws.send_json({"type": "select_menu", "pack": "cocktails"})
+            ws.send_text("not json {")  # still alive, still no response
+            authenticate_operator(ws, app)
+            ws.send_json({"type": "select_menu", "pack": "cocktails"})
+            layout = ws.receive_json()
+            assert layout["type"] == "layout"
+            assert layout["menu"] == "cocktails"
+        assert client.get("/api/layout").json()["menu"] == "cocktails"
