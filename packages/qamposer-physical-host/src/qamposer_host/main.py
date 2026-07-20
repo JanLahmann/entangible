@@ -19,7 +19,7 @@ import logging
 import httpx
 from fastapi import FastAPI
 
-from . import branding, layout, preview, proxy, static, ws_frames, ws_state
+from . import branding, layout, menu, preview, proxy, static, ws_frames, ws_state
 from .branding import load_branding
 from .config import HostConfig, build_frame_source, camera_from_spec, ensure_push_source
 from .hub import Hub
@@ -77,6 +77,7 @@ def create_app(
     app.include_router(proxy.router)
     app.include_router(layout.router)
     app.include_router(branding.router)
+    app.include_router(menu.router)
     app.include_router(static.router)
 
     return app

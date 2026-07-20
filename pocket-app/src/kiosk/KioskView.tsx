@@ -44,6 +44,7 @@ import { ServeReveal } from '@shared/menu/ServeReveal';
 import { builtinPack } from '@shared/menu/builtinPacks';
 import { cryptoRng } from '@shared/menu/sample';
 import { menuOutcomes, orderLines, serveFrom } from '../app/quantina';
+import { useResolvedPack } from '../app/packSource';
 import { noiseSeries } from '../app/ResultsHistogram';
 import { parseUrlOverrides } from '../app/settings';
 import {
@@ -311,11 +312,11 @@ export function KioskView() {
   // the live outcome vector (ideal, or the preset's noisy vector), and the
   // latest host `served` broadcast (the synced order — the kiosk never reveals
   // locally on tap). Standing decides whether the touch Serve button renders.
+  // Resolve layout.menu (protocol: null/unknown → coffee): a built-in resolves
+  // synchronously; a custom host-served id is fetched same-origin (the kiosk is
+  // always host-served), with coffee shown until it lands or fails (QN3).
   const menuId = layout?.menu ?? null;
-  const pack = useMemo(
-    () => (menuId ? builtinPack(menuId) : undefined) ?? builtinPack('coffee')!,
-    [menuId],
-  );
+  const { pack } = useResolvedPack(menuId);
   const menuVec = useMemo(
     () => menuOutcomes(liveCircuit, pack, noisyProbs),
     [liveCircuit, pack, noisyProbs],

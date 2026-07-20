@@ -10,11 +10,12 @@
  *
  * Pack resolution lives in `useQuantinaPack` (exported so App can read the pack
  * for the histogram's qubit count and the mode pill). It resolves the settings
- * menu id to a built-in pack (unknown id → `coffee` + a warn) and, when
- * `?menupack=<url>` is present, fetches + validates a remote wire-JSON pack —
- * asynchronously, never blocking the UI: the settings pack shows until it lands,
- * and a fetch/validation failure surfaces a small inline note and keeps the
- * fallback.
+ * (or booth) menu id via `useResolvedPack`: a built-in resolves synchronously, a
+ * custom host-served id is fetched from `/api/menu/pack/{id}` (QN3; `coffee`
+ * meanwhile / on failure), and, when `?menupack=<url>` is present, a remote
+ * wire-JSON pack is fetched + validated on top — asynchronously, never blocking
+ * the UI: the fallback pack shows until it lands, and a `?menupack=`
+ * fetch/validation failure surfaces a small inline note and keeps the fallback.
  */
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import type { Circuit } from '@qamposer/react';
@@ -24,10 +25,10 @@ import { ServeReveal } from '@shared/menu/ServeReveal';
 import { validatePack, type MenuPack } from '@shared/menu/pack';
 import { cryptoRng } from '@shared/menu/sample';
 import { useSettings } from './settings';
+import { useResolvedPack } from './packSource';
 import {
   menuOutcomes,
   orderLines,
-  resolvePack,
   serveFrom,
   type ServeResult,
   type ShotSource,
@@ -53,7 +54,9 @@ export function useQuantinaPack(overrideMenuId?: string | null): QuantinaPackSta
   // while connected) wins over the local setting; null/undefined → the setting.
   // Keeps this QN1 hook the single owner of pack resolution (+ `?menupack=`).
   const menuId = overrideMenuId ?? settings.menu;
-  const settingsPack = useMemo(() => resolvePack(menuId), [menuId]);
+  // The base pack: built-in (sync) or a host-served custom pack (async, coffee
+  // meanwhile). Same-origin — a host-served pocket app answers its own origin.
+  const { pack: settingsPack, loading: packLoading } = useResolvedPack(menuId);
   const menupackUrl = useMemo(
     () =>
       typeof window !== 'undefined'
@@ -93,7 +96,7 @@ export function useQuantinaPack(overrideMenuId?: string | null): QuantinaPackSta
     };
   }, [menupackUrl]);
 
-  return { pack: remotePack ?? settingsPack, loading, error };
+  return { pack: remotePack ?? settingsPack, loading: loading || packLoading, error };
 }
 
 /** Shot-count stepper for `shots` packs — bounded by the pack's serve bounds. */

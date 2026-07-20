@@ -67,6 +67,23 @@ describe('/debug Quantina card', () => {
     expect(msg.outcomes[0]).toHaveLength(3); // coffee = 3 qubits
   });
 
+  it('appends custom host packs to the picker and select_menu-s them', async () => {
+    // /api/menu/packs advertises one custom pack; other endpoints stay empty.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        url === '/api/menu/packs'
+          ? Promise.resolve({ ok: true, json: () => Promise.resolve({ packs: [{ id: 'bistro', title: 'Le Bistro' }] }) })
+          : Promise.resolve({ ok: false, json: () => Promise.resolve(null) }),
+      ),
+    );
+    render(<DebugView />);
+    // The custom pill renders with a ·host suffix once the fetch lands.
+    const pill = await screen.findByRole('button', { name: 'bistro·host' });
+    fireEvent.click(pill);
+    expect(sendMessage).toHaveBeenCalledWith({ type: 'select_menu', pack: 'bistro' });
+  });
+
   it('real-hardware entry validates the bit width and sends shotSource real', () => {
     render(<DebugView />);
     const input = screen.getByLabelText('real hardware bitstring') as HTMLInputElement;

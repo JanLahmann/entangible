@@ -22,9 +22,10 @@ import {
   withKey,
 } from '@shared/ws/operatorKey';
 import type { DisplayMode, NoisePreset, ShotSource, SidebarSide, Wires } from '@shared/ws/messages';
-import { BUILTIN_PACKS, builtinPack } from '@shared/menu/builtinPacks';
+import { BUILTIN_PACKS } from '@shared/menu/builtinPacks';
 import { cryptoRng } from '@shared/menu/sample';
 import { menuOutcomes, serveFrom } from '../app/quantina';
+import { useResolvedPack } from '../app/packSource';
 import { noiseSeries } from '../app/ResultsHistogram';
 import { markerLabel } from './markerLabels';
 import './debug.css';
@@ -281,8 +282,8 @@ function LayoutCard() {
   );
 }
 
-/** The five bundled menu-pack ids, offered by the /debug pack picker. */
-const MENU_PACK_IDS = BUILTIN_PACKS.map((p) => p.id);
+/** The bundled menu-pack ids, always offered by the /debug pack picker. */
+const BUILTIN_PACK_IDS = BUILTIN_PACKS.map((p) => p.id);
 
 /**
  * "Quantina" card (operator surface): the staff serving controls for
@@ -301,9 +302,31 @@ function QuantinaCard() {
   const menuId = layout?.menu ?? null;
   const isQuantina = layout?.mode === 'quantina';
   const noise: NoisePreset = layout?.noise ?? 'off';
-  // Active pack: protocol null/unknown → coffee (the same fallback clients use).
-  const pack = (menuId ? builtinPack(menuId) : undefined) ?? builtinPack('coffee')!;
+  // Active pack: built-in, or a custom host-served pack (fetched same-origin);
+  // protocol null/unknown → coffee (the same fallback clients use). Resolving the
+  // real pack keeps the serve card's qubit count + shot bounds correct for a
+  // custom pack, not just coffee.
+  const { pack } = useResolvedPack(menuId);
   const shotsBounds = pack.serve.shots;
+
+  // Custom host-served pack ids (built-ins live in the bundle) — fetched once and
+  // appended to the picker so staff can activate a dropped-in pack from /debug.
+  const [hostPackIds, setHostPackIds] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/menu/packs')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { packs?: { id: string }[] } | null) => {
+        if (cancelled || !data || !Array.isArray(data.packs)) return;
+        setHostPackIds(
+          data.packs.map((p) => p.id).filter((id) => !BUILTIN_PACK_IDS.includes(id)),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [count, setCount] = useState<number>(shotsBounds?.default ?? 1);
   useEffect(() => {
@@ -369,7 +392,7 @@ function QuantinaCard() {
           menu pack{menuId ? '' : ' (none → coffee)'}
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {MENU_PACK_IDS.map((id) => (
+          {BUILTIN_PACK_IDS.map((id) => (
             <button
               key={id}
               type="button"
@@ -377,6 +400,18 @@ function QuantinaCard() {
               onClick={() => setPack(id)}
             >
               {id}
+            </button>
+          ))}
+          {/* Custom host packs — dashed outline + a ·host suffix to distinguish
+              them from the bundled built-ins. */}
+          {hostPackIds.map((id) => (
+            <button
+              key={id}
+              type="button"
+              style={{ ...pillStyle(menuId === id), borderStyle: 'dashed' }}
+              onClick={() => setPack(id)}
+            >
+              {id}·host
             </button>
           ))}
         </div>
