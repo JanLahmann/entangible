@@ -1,7 +1,10 @@
 # Quantina — the unified Qoffee-Maker / quantum-mixer successor (task #35)
 
-> Status: PLANNED (this document is the approved plan; no code yet). Phases
-> QN0–QN5 below. Per Jan 2026-07-19: replace qoffee-maker and quantum-mixer
+> Status: IMPLEMENTED 2026-07-20 — QN0 (b6a7771), QN1 (1a8562d + drawer
+> picker 794c697), QN2 (62f508f; wire contract bc09193/31cb9e1), QN3
+> (d8d8c88), QN4 (930cce7). QN5 remains: ready-to-paste banners in
+> docs/upstream-sunset-drafts.md await Jan's sign-off (public repos).
+> Phases QN0–QN5 below. Per Jan 2026-07-19: replace qoffee-maker and quantum-mixer
 > with native Entangible functionality; **start with mixer** (display-only
 > serving — cocktails/ice cream/juice), machine control (the Qoffee
 > coffee-machine path) follows as a later phase. Name decided per Jan
