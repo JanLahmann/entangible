@@ -630,6 +630,13 @@
   padding: 1.3vh;
 }
 
+/* Camera panel (operator-only): the MJPEG preview fills the well width. */
+.bo-camera-img {
+  display: block;
+  width: 100%;
+  border-radius: 6px;
+}
+
 /* ---- RESULTS: column bars + vertical bit-stack labels, zero states
         hidden (top bit = q0; q-guide column at the left) ---------------- */
 

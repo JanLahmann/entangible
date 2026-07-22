@@ -170,8 +170,13 @@ not send the `select_*` control messages.
 
 Broadcast on change; latest replayed to new clients after `status`. Panel
 registry (booth-v2): `results`, `state`, `qasm`, `qsphere` (post-upstream),
-`scorecard` + `minicircuit` (golf), `menu` + `order` (quantina), `branding`.
-Unknown names are ignored by clients (forward-compatible). `mode` gained
+`scorecard` + `minicircuit` (golf), `menu` + `order` (quantina), `branding`,
+`camera` (operator-key-gated live camera; kiosks only — see below). Unknown
+names are ignored by clients (forward-compatible). `camera` is valid in every
+mode but in no mode's preset, so `select_mode`'s panel reset never enables it —
+staff opt in per session from `/debug`. It renders ONLY on a kiosk holding the
+operator key (it shows the `/debug/stream` MJPEG); viewer phones never surface
+it (the connected app hides all camera UI). `mode` gained
 `quantina` with QN2; clients on older bundles ignore it (unknown mode → their
 default rendering). In quantina mode a `menu` of `null` means "pack not chosen
 yet" — clients fall back to the built-in `coffee` pack.

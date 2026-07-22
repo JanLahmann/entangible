@@ -119,6 +119,10 @@ const PANEL_REGISTRY = [
   'scorecard',
   'minicircuit',
   'branding',
+  // Operator-key-gated live camera sidebar (task #49): valid in every mode, in
+  // no mode's preset — staff opt in here per session. Renders only on kiosks
+  // that hold the operator key; viewer phones never surface it.
+  'camera',
 ];
 
 /**

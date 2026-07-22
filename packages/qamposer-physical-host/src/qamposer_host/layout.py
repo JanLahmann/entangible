@@ -44,12 +44,23 @@ VALID_NOISE = ("off", "falcon", "eagle", "heron", "nighthawk")
 VALID_MENU_RE = re.compile(r"^[a-z0-9-]{1,64}$")
 
 #: Per-mode default (preset) panel stacks, in display order (registry names).
+#: This is ONLY the preset — panel names are never validated (they pass through
+#: ``apply_layout`` untouched, forward-compatible), so a name absent here is
+#: still a legal panel; it just isn't turned on by ``select_mode``'s reset.
 MODE_PANELS: dict[str, list[str]] = {
     "composer": ["results", "state", "qasm"],
     "golf": ["scorecard", "minicircuit", "results"],
     "quantina": ["menu", "order", "results"],
     "attract": [],
 }
+
+#: Panels valid in EVERY mode but part of NO mode's preset — staff opt into them
+#: per session from ``/debug``, so ``select_mode``'s panel reset never enables
+#: them. ``camera`` is the operator-key-gated live camera sidebar (task #49):
+#: because panels are free-form pass-through, "valid everywhere" already holds;
+#: naming it here keeps the registry explicit and pins the "preset nowhere"
+#: invariant (see tests).
+PRESETLESS_PANELS: tuple[str, ...] = ("camera",)
 
 #: The modes ``select_mode`` accepts. Unknown modes are ignored (never fatal).
 VALID_MODES = tuple(MODE_PANELS)

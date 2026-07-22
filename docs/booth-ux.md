@@ -199,6 +199,15 @@ for one-off kiosk setups; per-mode presets (composer/golf/attract ship with
 sensible defaults). The booth screen animates panel changes (200 ms slide,
 reduced-motion aware) so reconfiguration during an event looks intentional.
 
+**Staff `camera` panel** — a `camera` panel adds the live booth camera (the
+same operator-key-gated `/debug/stream` MJPEG the `/debug` page shows) as a
+sidebar well, so staff can eyeball marker detection from the big screen without
+switching to `/debug`. It is valid in every mode but in no mode's preset — staff
+enable it per session from the `/debug` Layout card. It renders ONLY on a kiosk
+launched with the operator key (`start-kiosk.sh` appends `?key=…`); a keyless
+kiosk or a visitor phone shows nothing at all (no placeholder), so the stream's
+existence never leaks to visitors.
+
 **Display modes** — the booth is a mode host: `composer` (default), `golf`
 (Bloch/Q-sphere golf, when built — stage becomes the sphere, sidebar becomes
 the scorecard: hole, par, strokes = gates, best-of-day), `attract`. Switching:

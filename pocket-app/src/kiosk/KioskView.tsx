@@ -35,6 +35,7 @@ import {
 } from '@qamposer/react';
 import { getKioskSocket, kioskStanding, useKioskState } from './kioskSocket';
 import { sendServe } from './serve';
+import { withKey } from '@shared/ws/operatorKey';
 import { friendlyWarning } from '@shared/display/warnings';
 import type { ConnectionState } from '@shared/ws/stateSocket';
 import type { CircuitMessage, NoisePreset, ShotSource, SidebarSide, Wires } from '@shared/ws/messages';
@@ -454,6 +455,22 @@ export function KioskView() {
     </>
   );
 
+  // Camera panel (task #49): the host's operator-key-gated MJPEG preview, shown
+  // as a sidebar well. Rendered structurally (every mode) but ONLY on a kiosk
+  // that holds operator standing — a keyless kiosk / visitor phone never reaches
+  // 'operator', so before hello_ack and without the key this is nothing at all
+  // (no placeholder that would leak the stream's existence). The <img> reuses the
+  // same key the socket holds via the shared `withKey`.
+  const cameraPanel =
+    standing === 'operator' && panels.includes('camera') ? (
+      <div key="camera" className="bo-camera">
+        <div className="bo-label">Camera</div>
+        <div className="bo-well">
+          <img className="bo-camera-img" src={withKey('/debug/stream')} alt="Live booth camera" />
+        </div>
+      </div>
+    ) : null;
+
   // A tap anywhere counts as activity and exits attract instantly (spec: touch
   // also breaks attract). Only wired when touch is enabled.
   const onRootPointerDown = touch
@@ -517,6 +534,9 @@ export function KioskView() {
                 : mode === 'quantina'
                   ? quantinaSidebar
                   : panels.map(panelFor)}
+              {/* Operator-only live camera; structural so it shows in every mode
+                  (panelFor leaves 'camera' as its null default, so no dup). */}
+              {cameraPanel}
               {/* Take-home: scan the live table circuit onto your own phone.
                   Quiet, and distinct from the footer "follow along" visitor QR.
                   In quantina it doubles as the real-hardware serve QR. */}

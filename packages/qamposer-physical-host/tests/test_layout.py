@@ -7,7 +7,12 @@ from fastapi.testclient import TestClient
 
 from qamposer_host.config import HostConfig
 import pytest
-from qamposer_host.layout import DEFAULT_MODE, MODE_PANELS, LayoutStore
+from qamposer_host.layout import (
+    DEFAULT_MODE,
+    MODE_PANELS,
+    PRESETLESS_PANELS,
+    LayoutStore,
+)
 from qamposer_host.main import create_app
 
 
@@ -86,6 +91,46 @@ def test_persistence_roundtrip(tmp_path):
     assert reloaded.state.mode == "golf"
     assert reloaded.state.sidebar == "left"
     assert reloaded.state.panels == ["scorecard", "custom"]
+
+
+# --- camera panel (presetless, valid in every mode; task #49) --------------
+
+
+def test_camera_is_in_no_mode_preset():
+    # The operator-key-gated camera panel is opt-in per session — select_mode's
+    # panel reset must never enable it, so it appears in no mode's preset.
+    for preset in MODE_PANELS.values():
+        for panel in PRESETLESS_PANELS:
+            assert panel not in preset
+    assert "camera" in PRESETLESS_PANELS
+
+
+def test_select_mode_never_yields_camera():
+    store = LayoutStore(None)
+    for mode in MODE_PANELS:
+        store.select_mode(mode)
+        assert "camera" not in store.state.panels
+
+
+def test_apply_layout_accepts_camera_in_every_mode():
+    # Panels are free-form pass-through, so 'camera' is a legal panel in every
+    # mode — select_layout keeps it regardless of the current mode, and the
+    # mode's preset constant is never mutated by the opt-in.
+    presets_before = {m: list(p) for m, p in MODE_PANELS.items()}
+    for mode in MODE_PANELS:
+        store = LayoutStore(None)
+        store.select_mode(mode)
+        store.apply_layout(panels=[*store.state.panels, "camera"])
+        assert store.state.panels[-1] == "camera"
+    assert {m: list(p) for m, p in MODE_PANELS.items()} == presets_before
+
+
+def test_camera_panel_persist_roundtrip(tmp_path):
+    path = tmp_path / "layout.toml"
+    store = LayoutStore(path)
+    store.apply_layout(panels=["results", "camera"])
+    reloaded = LayoutStore(path)
+    assert reloaded.state.panels == ["results", "camera"]
 
 
 # --- WS + REST integration -------------------------------------------------

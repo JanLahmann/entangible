@@ -60,6 +60,37 @@ describe('KioskView sidebar side', () => {
   });
 });
 
+describe('KioskView camera panel (task #49)', () => {
+  it('renders the operator-key-gated camera well when a keyed kiosk has the panel', () => {
+    snapshot = { ...snap({ mode: 'composer', sidebar: 'right', panels: ['camera'] }), operator: true };
+    const { container } = render(<KioskView />);
+    const cam = container.querySelector('.bo-camera');
+    expect(cam).not.toBeNull();
+    const img = cam?.querySelector('img');
+    expect(img?.getAttribute('src')).toContain('/debug/stream');
+  });
+
+  it('renders the camera in any mode (e.g. quantina) for a keyed kiosk', () => {
+    snapshot = { ...snap({ mode: 'quantina', sidebar: 'right', panels: ['menu', 'camera'] }), operator: true };
+    const { container } = render(<KioskView />);
+    expect(container.querySelector('.bo-camera')).not.toBeNull();
+  });
+
+  it('renders nothing on a keyless kiosk even when panels include camera', () => {
+    // No operator standing (keyless viewer): the stream must not surface at all,
+    // and there is no placeholder that would leak its existence.
+    snapshot = snap({ mode: 'composer', sidebar: 'right', panels: ['camera'] });
+    const { container } = render(<KioskView />);
+    expect(container.querySelector('.bo-camera')).toBeNull();
+  });
+
+  it('renders nothing for an operator kiosk when the panel is not enabled', () => {
+    snapshot = { ...snap({ mode: 'composer', sidebar: 'right', panels: ['results'] }), operator: true };
+    const { container } = render(<KioskView />);
+    expect(container.querySelector('.bo-camera')).toBeNull();
+  });
+});
+
 describe('KioskView attract mode', () => {
   it('shows the attract overlay immediately when the host mode is "attract"', () => {
     snapshot = snap({ mode: 'attract', sidebar: 'right', panels: [] });

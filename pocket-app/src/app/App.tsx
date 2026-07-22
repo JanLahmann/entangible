@@ -143,6 +143,22 @@ export function boothOrLocalPanels(
 }
 
 /**
+ * Camera-UI visibility (viewer policy, design: read-only Display role). The
+ * on-device camera is hidden entirely whenever the pipeline is not the active
+ * source — `cameraHidden` (a connected booth viewer OR manual mode). So a booth
+ * `panels` list containing `camera` NEVER surfaces camera UI while connected:
+ * the operator-key-gated camera panel is a KIOSK affordance (task #49), not a
+ * visitor-phone one. Pure + exported so the seam is unit-testable.
+ */
+export function showCameraUi(
+  cameraHidden: boolean,
+  hasCameraPanel: boolean,
+  cameraActive: boolean,
+): boolean {
+  return !cameraHidden && (hasCameraPanel || cameraActive);
+}
+
+/**
  * Vertical auto-fit for the recognized-circuit editor. Measures the stage's
  * available height (ResizeObserver on the editor container) and derives a scale
  * from the editor's natural height (D wires x row height + chrome) so all
@@ -847,7 +863,7 @@ export function App() {
   const hasPanel = (p: PanelId) => effectivePanels.includes(p);
   // Viewer policy (design: read-only Display role): while connected to a booth
   // — or building on screen in manual mode — the camera UI is hidden entirely.
-  const showCamera = !cameraHidden && (hasPanel('camera') || camera.status !== 'idle');
+  const showCamera = showCameraUi(cameraHidden, hasPanel('camera'), camera.status !== 'idle');
   const boothPill = connectionPill(conn ?? 'connecting');
   // Camera-role offer gating (design: "connected to a host, camera role
   // selected"): only when a host is known AND an operator key is present.
