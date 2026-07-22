@@ -1142,6 +1142,32 @@ export function App() {
   );
 }
 
+/** iPhone fallback: Safari there has no element Fullscreen API (the ⛶ button
+ *  feature-detects away), so the camera gets a plain CSS expand toggle that
+ *  swaps the docked 22vh strip for the desktop 4/3 geometry. */
+function CamExpandButton({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+  const { supported } = useFullscreen();
+  if (supported) return null;
+  const label = expanded ? 'Shrink camera' : 'Expand camera';
+  return (
+    <button type="button" className="pk-fs pk-fs--cam" onClick={onToggle} aria-label={label} title={label}>
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+        {expanded ? (
+          <path
+            fill="currentColor"
+            d="M9 9V4H7v3H4v2h5Zm6 0h5V7h-3V4h-2v5ZM9 15H4v2h3v3h2v-5Zm6 0v5h2v-3h3v-2h-5Z"
+          />
+        ) : (
+          <path
+            fill="currentColor"
+            d="M4 9V4h5v2H6v3H4Zm11-5h5v5h-2V6h-3V4ZM6 15v3h3v2H4v-5h2Zm12 0h2v5h-5v-2h3v-3Z"
+          />
+        )}
+      </svg>
+    </button>
+  );
+}
+
 function CameraPanel({
   camera,
   overlayRef,
@@ -1193,6 +1219,8 @@ function CameraPanel({
   const lastTapRef = useRef(0);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
+
+  const [camExpanded, setCamExpanded] = useState(false);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -1250,7 +1278,7 @@ function CameraPanel({
       <div className="pk-label">Camera</div>
       {status === 'running' ? (
         <div
-          className={`pk-cam ${frozen ? 'is-frozen' : ''}`}
+          className={`pk-cam ${frozen ? 'is-frozen' : ''} ${camExpanded ? 'is-expanded' : ''}`}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -1260,6 +1288,7 @@ function CameraPanel({
           <video ref={videoRef} playsInline muted style={{ transform: `scale(${previewScale})` }} />
           <canvas ref={overlayRef} className="pk-overlay" />
           <FullscreenButton variant="cam" />
+          <CamExpandButton expanded={camExpanded} onToggle={() => setCamExpanded((v) => !v)} />
           <span className="pk-cam-fps">{streaming ? Math.round(stream!.fps) : fps} fps</span>
           <FreezePill frozen={frozen} onToggle={onToggleFreeze} />
           {canFrameMat && matLocked && <MatBadge onUnlock={onUnlockMat} />}

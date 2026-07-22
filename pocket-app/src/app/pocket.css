@@ -2335,6 +2335,13 @@ body,
     border-right: none;
   }
 
+  /* iPhone expand toggle (no element Fullscreen API there): back to the
+     desktop 4/3 geometry — same cover-crop mechanics, just a taller box. */
+  .pk-cam.is-expanded {
+    aspect-ratio: 4 / 3;
+    max-height: 50vh;
+  }
+
   /* Message strip: a docked full-width row at the TOP of the stage (between the
      camera and the wires), never an overlay — so it can never hide a wire.
      Single line, ellipsis on overflow. */
