@@ -846,6 +846,17 @@ export function App() {
     [circuit, effectiveNoise, isGolf],
   );
 
+  // iPhone camera expand (#47): freeze the stage at its pre-expansion height so
+  // the growing camera pushes content below the fold (pk-main scrolls) instead
+  // of shrinking the circuit. Measured in the click handler, before re-layout.
+  const stageRef = useRef<HTMLElement | null>(null);
+  const [camExpanded, setCamExpanded] = useState(false);
+  const [stageMinH, setStageMinH] = useState<number | undefined>(undefined);
+  const toggleCamExpanded = () => {
+    setStageMinH(camExpanded ? undefined : stageRef.current?.getBoundingClientRect().height);
+    setCamExpanded(!camExpanded);
+  };
+
   const cameraPanel = (
     <CameraPanel
       key="camera"
@@ -856,6 +867,8 @@ export function App() {
       frozen={frozen}
       onToggleFreeze={toggleFreeze}
       onBuildOnScreen={() => settingsStore.update({ input: 'manual' })}
+      expanded={camExpanded}
+      onToggleExpand={toggleCamExpanded}
     />
   );
 
@@ -1087,7 +1100,11 @@ export function App() {
             {/* `pk-stage--manual` scopes the phone-only editor min-height + no-shrink
                 sizing so the on-screen gate palette can't collapse the editor; camera
                 and booth stages keep the base `.pk-stage` sizing untouched. */}
-            <section className={stageClassName(manual)}>
+            <section
+              className={stageClassName(manual)}
+              ref={stageRef}
+              style={stageMinH !== undefined ? { minHeight: stageMinH } : undefined}
+            >
               {/* Manual mode: the library's own gate palette — the visible
                   build-on-screen affordance (drag a gate onto a wire). */}
               {manual && (
@@ -1180,6 +1197,8 @@ function CameraPanel({
   matLocked = false,
   onUnlockMat,
   onBuildOnScreen,
+  expanded,
+  onToggleExpand,
 }: {
   camera: ReturnType<typeof useCamera>;
   overlayRef: React.RefObject<HTMLCanvasElement>;
@@ -1193,6 +1212,13 @@ function CameraPanel({
    * role (streaming), where building on screen makes no sense.
    */
   onBuildOnScreen?: () => void;
+  /**
+   * iPhone expand toggle, App-controlled in the main layout so the stage can
+   * freeze its pre-expansion height (the camera then pushes content below the
+   * fold instead of shrinking the circuit). Omitted → panel-local state.
+   */
+  expanded?: boolean;
+  onToggleExpand?: () => void;
   /**
    * CAMERA role: when set, the panel is streaming to a host — the fps chip
    * reflects the stream (not the local pipeline) and the hint reads "Streaming
@@ -1220,7 +1246,11 @@ function CameraPanel({
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
 
-  const [camExpanded, setCamExpanded] = useState(false);
+  // Expanded state is App-owned in the main layout (so the stage can freeze its
+  // height); the camera-role instance passes no props and keeps local state.
+  const [ownExpanded, setOwnExpanded] = useState(false);
+  const camExpanded = expanded ?? ownExpanded;
+  const toggleExpand = onToggleExpand ?? (() => setOwnExpanded((v) => !v));
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -1288,7 +1318,7 @@ function CameraPanel({
           <video ref={videoRef} playsInline muted style={{ transform: `scale(${previewScale})` }} />
           <canvas ref={overlayRef} className="pk-overlay" />
           <FullscreenButton variant="cam" />
-          <CamExpandButton expanded={camExpanded} onToggle={() => setCamExpanded((v) => !v)} />
+          <CamExpandButton expanded={camExpanded} onToggle={toggleExpand} />
           <span className="pk-cam-fps">{streaming ? Math.round(stream!.fps) : fps} fps</span>
           <FreezePill frozen={frozen} onToggle={onToggleFreeze} />
           {canFrameMat && matLocked && <MatBadge onUnlock={onUnlockMat} />}
