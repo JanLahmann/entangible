@@ -16,11 +16,15 @@ import pytest
 from build123d import Mesher
 from qamposer_assets.config import load_config
 
+from qamposer_hardware.build import build_double_tile, build_tile
+from qamposer_hardware.face import double_color_name
 from qamposer_hardware.export import (
     _double_piece,
     _export_batches,
     _single_piece,
     _write_batch_3mf,
+    export_double_tile_3mf,
+    export_tile_3mf,
     single_plate_groups,
 )
 from qamposer_hardware.pack import (
@@ -270,3 +274,102 @@ def test_export_batches_splits_and_names(config, tmp_path):
         assert info.path.exists()
         assert info.object_count == 3 * len(info.slugs)
         assert info.cols == 1 and info.rows == 2
+
+
+# --------------------------------------------------------------------------- #
+# Shared base-material palette: one group per 3MF, canonical slot order
+# --------------------------------------------------------------------------- #
+
+
+def _palette(path) -> list[tuple[str, str]]:
+    """Read a 3MF's *one* shared base-material group → ``[(name, '#rrggbb'), ...]``.
+
+    lib3mf assigns property ids 1, 2, 3… in add order, so this list is the
+    filament-slot order PrusaSlicer sees. Asserts every coloured object points at
+    the same group (the whole point of the fix): a single group id, or the test
+    fails here rather than silently reading one of several groups.
+    """
+    mesher = Mesher()
+    mesher.read(str(path))
+    group_ids = set()
+    for mesh in mesher.meshes:
+        gid, _pid, has = mesh.GetObjectLevelProperty()
+        if has:
+            group_ids.add(gid)
+    assert len(group_ids) == 1, f"expected one shared material group, got {group_ids}"
+    group = mesher.model.GetBaseMaterialGroupByID(group_ids.pop())
+    out = []
+    for pid in group.GetAllPropertyIDs():
+        r, g, b, _a = mesher.wrapper.ColorToFloatRGBA(group.GetDisplayColor(pid))
+        hexc = "#%02x%02x%02x" % (round(r * 255), round(g * 255), round(b * 255))
+        out.append((group.GetName(pid), hexc))
+    return out
+
+
+def _assert_canonical(palette, accent_hexes):
+    """White at slot 1, black at slot 2, then ``accent_hexes`` in order; ≤5 total."""
+    assert len(palette) <= 5
+    assert palette[0] == ("white", "#ffffff")
+    assert palette[1] == ("black", "#000000")
+    assert [h for _n, h in palette[2:]] == accent_hexes
+
+
+def test_single_tile_3mf_shared_palette(config, tmp_path):
+    """A per-piece single 3MF: white, black, then its one accent — one group."""
+    parts = build_tile(10, config, variant="tile", height=6.0, params=HardwareParams())
+    path = export_tile_3mf(parts, tmp_path)
+    _assert_canonical(_palette(path), ["#fa4d56"])  # H = red
+
+
+def test_double_tile_3mf_shared_palette(config, tmp_path):
+    """A per-piece cross-family double 3MF: white, black, then both accents in order."""
+    parts = build_double_tile(10, 11, config, variant="tile", height=8.0, params=HardwareParams())
+    path = export_double_tile_3mf(parts, tmp_path)
+    _assert_canonical(_palette(path), ["#fa4d56", "#002d9c"])  # H=red, X=darkblue
+
+
+def test_batch_3mf_shared_palette_in_plate_order(single_pieces, tmp_path):
+    """A batch 3MF: one shared group, accents in the caller's plate order."""
+    positions = pack_positions(len(single_pieces), BED, FOOTPRINT, SPACING)
+    path = tmp_path / "plate1-batch1.3mf"
+    _write_batch_3mf(single_pieces, positions, path, accents=["#fa4d56", "#002d9c"])
+    _assert_canonical(_palette(path), ["#fa4d56", "#002d9c"])
+
+
+def test_batch_palette_carries_full_plate_and_keeps_slots(config, tmp_path):
+    """Every batch of a plate shares the plate's full palette — the slot fix.
+
+    A 3-accent plate (red, blue, magenta) split across a 2-capacity bed: batch 1
+    uses red+blue, batch 2 uses only magenta. Both 3MFs must still list all three
+    accents in the same slots, so magenta is slot 5 in *both* — the drift the fix
+    removes.
+    """
+    tiny = Bed(60.0, 140.0)  # 1 col x 2 rows = 2 pieces/bed
+    accents = ["#fa4d56", "#002d9c", "#9f1853"]
+    infos = _export_batches(
+        lambda mid: _single_piece(mid, config, "tile", 6.0, HardwareParams()),
+        [[10, 11, 12]],  # H(red), X(blue), Y(magenta) → 2 batches
+        tiny,
+        SPACING,
+        tmp_path,
+        plate_accents=[accents],
+    )
+    assert [i.path.name for i in infos] == ["plate1-batch1.3mf", "plate1-batch2.3mf"]
+    for info in infos:
+        _assert_canonical(_palette(info.path), accents)
+
+
+def test_double_batch_palette_distinguishes_blues(config, double_pieces, tmp_path):
+    """A double batch names the two blues apart (darkblue) via double_color_name."""
+    positions = pack_positions(len(double_pieces), BED, FOOTPRINT, SPACING)
+    path = tmp_path / "plate1-batch1.3mf"
+    _write_batch_3mf(
+        list(double_pieces),
+        positions,
+        path,
+        accents=["#002d9c", "#fa4d56"],
+        name_accent=double_color_name,
+    )
+    palette = _palette(path)
+    _assert_canonical(palette, ["#002d9c", "#fa4d56"])
+    assert palette[2][0] == "darkblue"

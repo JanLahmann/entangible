@@ -90,20 +90,46 @@ def double_slug(spec_a: GateSpec, spec_b: GateSpec) -> str:
     return f"{_face_slug(spec_a)}+{_face_slug(spec_b)}"
 
 
-def _apply_object_color(mesher: Mesher, hex_color: str, name: str) -> None:
-    """Attach a base-material colour to the last mesh object added to ``mesher``.
+class _MaterialPalette:
+    """The one shared base-material group of a 3MF, in canonical slot order.
 
-    Uses the lib3mf model directly (the ``Mesher.model``/``.wrapper``/``.meshes``
-    handles build123d already exposes) so the colour lands on the real mesh
-    object rather than the throwaway copy ``add_shape`` colours internally.
+    PrusaSlicer maps a 3MF's base materials to filament slots in the order they
+    appear, so this order *is* the slot order: white (slot 1), black (slot 2),
+    then the plate's accents in plates.md table order. Deduped by hex — a colour
+    never claims two slots — and named by colour, not by part, so a logical
+    colour lands on the same slot on every plate. lib3mf assigns property ids
+    1, 2, 3… in add order, so white=1 and black=2 by construction.
     """
-    mesh_obj = mesher.meshes[-1]
-    r, g, b = _hex_rgb01(hex_color)
-    group = mesher.model.AddBaseMaterialGroup()
-    color = mesher.wrapper.FloatRGBAToColor(r, g, b, 1.0)
-    material_id = group.AddMaterial(Name=name, DisplayColor=color)
-    mesh_obj.SetObjectLevelProperty(group.GetResourceID(), material_id)
-    mesh_obj.SetName(name)
+
+    def __init__(self, mesher: Mesher, accents: list[str], name_accent) -> None:
+        self._mesher = mesher
+        self._group = mesher.model.AddBaseMaterialGroup()
+        self._resource_id = self._group.GetResourceID()
+        self._pid_by_hex: dict[str, int] = {}
+        self._add(WHITE_HEX, "white")
+        self._add(BLACK_HEX, "black")
+        for hexc in accents:
+            self._add(hexc, name_accent(hexc))
+
+    def _add(self, hex_color: str, name: str) -> None:
+        key = hex_color.lower()
+        if key in self._pid_by_hex:
+            return
+        r, g, b = _hex_rgb01(hex_color)
+        color = self._mesher.wrapper.FloatRGBAToColor(r, g, b, 1.0)
+        self._pid_by_hex[key] = self._group.AddMaterial(Name=name, DisplayColor=color)
+
+    def apply(self, hex_color: str, name: str) -> None:
+        """Point the last mesh object added to ``mesher`` at this palette's colour.
+
+        Works on the lib3mf model directly (the ``Mesher.model``/``.wrapper``/
+        ``.meshes`` handles build123d exposes) so the colour lands on the real
+        mesh object rather than the throwaway copy ``add_shape`` colours
+        internally.
+        """
+        mesh_obj = self._mesher.meshes[-1]
+        mesh_obj.SetObjectLevelProperty(self._resource_id, self._pid_by_hex[hex_color.lower()])
+        mesh_obj.SetName(name)
 
 
 def _hex_rgb01(hex_color: str) -> tuple[float, float, float]:
@@ -141,13 +167,14 @@ def export_tile_3mf(parts: TileParts, out_dir: Path) -> Path | None:
     path = out_dir / f"{slug}.3mf"
     mesher = Mesher()
     try:
+        # One shared palette: white, black, then this tile's single accent. Its
+        # apply() sets the base-material colour directly on each mesh object,
+        # because build123d 0.11.1 drops a Solid's `.color` inside add_shape (it
+        # re-iterates the Solid into a fresh, colour-less copy).
+        palette = _MaterialPalette(mesher, [parts.layout.accent_hex], accent_color_name)
         for role, color_name, solid in parts.named_parts():
             mesher.add_shape(solid)
-            # build123d 0.11.1 drops a Solid's `.color` inside add_shape (it
-            # re-iterates the Solid into a fresh, colour-less copy), so set the
-            # base-material colour directly on the mesh object it just created.
-            _apply_object_color(
-                mesher,
+            palette.apply(
                 _part_color_hex(role, parts.layout),
                 f"{slug}-{role}-{color_name}",
             )
@@ -180,9 +207,12 @@ def export_double_tile_3mf(parts: DoubleTileParts, out_dir: Path) -> Path | None
     path = out_dir / f"{slug}.3mf"
     mesher = Mesher()
     try:
+        # White, black, then this piece's accents (1 same-family, 2 cross-family)
+        # in named_parts order; double_color_name tells the two blues apart.
+        palette = _MaterialPalette(mesher, [h for h, _ in parts.accents], double_color_name)
         for role, color_name, hexc, solid in parts.named_parts():
             mesher.add_shape(solid)
-            _apply_object_color(mesher, hexc, f"{slug}-{role}-{color_name}")
+            palette.apply(hexc, f"{slug}-{role}-{color_name}")
         mesher.write(str(path))
     except (RuntimeError, ValueError):
         if path.exists():
@@ -496,27 +526,53 @@ def _double_piece(
     return _Piece(slug, cp)
 
 
+def _batch_accents(pieces: list[_Piece]) -> list[str]:
+    """Accent hexes a batch uses, deduped in piece/part encounter order.
+
+    Fallback when a caller does not pass its plate's accent order; the real
+    exporters pass ``single_plate_groups``/``double_plate_groups`` order so the
+    batch 3MFs and plates.md share one ordering source.
+    """
+    order: list[str] = []
+    seen: set[str] = set()
+    for piece in pieces:
+        for part in piece.parts:
+            key = part.hex.lower()
+            if key in (WHITE_HEX, BLACK_HEX) or key in seen:
+                continue
+            seen.add(key)
+            order.append(part.hex)
+    return order
+
+
 def _write_batch_3mf(
     pieces: list[_Piece],
     positions: list[tuple[float, float]],
     path: Path,
+    *,
+    accents: list[str] | None = None,
+    name_accent=accent_color_name,
     footprint: float = FOOTPRINT,
 ) -> int:
     """Write one batch: every piece's coloured parts translated onto the bed.
 
     Each piece is built with its footprint in the first quadrant (centre at
     ``footprint/2``); it is translated so that centre lands on its bed position.
-    Per-part colours are preserved exactly as in the per-piece 3MFs. Returns the
-    number of coloured objects written.
+    Every part points at the batch's one shared palette — white, black, then the
+    plate's ``accents`` (in plates.md order) so a colour keeps its slot across
+    every batch of the plate. Returns the number of coloured objects written.
     """
     mesher = Mesher()
+    palette = _MaterialPalette(
+        mesher, accents if accents is not None else _batch_accents(pieces), name_accent
+    )
     n_obj = 0
     for piece, (cx, cy) in zip(pieces, positions):
         dx = cx - footprint / 2.0
         dy = cy - footprint / 2.0
         for part in piece.parts:
             mesher.add_shape(Pos(dx, dy, 0.0) * part.solid)
-            _apply_object_color(mesher, part.hex, part.name)
+            palette.apply(part.hex, part.name)
             n_obj += 1
     mesher.write(str(path))
     return n_obj
@@ -534,12 +590,22 @@ def _export_batches(
     bed: Bed,
     spacing: float,
     out_dir: Path,
+    *,
+    plate_accents: list[list[str]] | None = None,
+    name_accent=accent_color_name,
 ) -> list[BatchInfo]:
-    """Shared driver: build each filament plate's pieces, pack, write batch 3MFs."""
+    """Shared driver: build each filament plate's pieces, pack, write batch 3MFs.
+
+    ``plate_accents[i]`` is plate ``i``'s accent order (from the same
+    plate-grouping source plates.md uses); every batch of that plate reuses it so
+    a colour keeps its slot across the plate's batches. Defaults to per-batch
+    encounter order when omitted.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     cols, rows = _cols_rows(bed, spacing)
     infos: list[BatchInfo] = []
     for pi, members in enumerate(plate_pieces, start=1):
+        accents = plate_accents[pi - 1] if plate_accents is not None else None
         pieces = [build_pieces(m) for m in members]
         batches = plan_batches(len(pieces), bed, FOOTPRINT, spacing)
         idx = 0
@@ -548,7 +614,9 @@ def _export_batches(
             batch = pieces[idx : idx + take]
             idx += take
             path = out_dir / f"plate{pi}-batch{bi}.3mf"
-            n_obj = _write_batch_3mf(batch, positions, path)
+            n_obj = _write_batch_3mf(
+                batch, positions, path, accents=accents, name_accent=name_accent
+            )
             infos.append(
                 BatchInfo(
                     plate=pi,
@@ -583,6 +651,8 @@ def export_single_batches(
         bed,
         spacing,
         out_dir,
+        plate_accents=[g["accents"] for g in groups],
+        name_accent=accent_color_name,
     )
 
 
@@ -606,6 +676,8 @@ def export_double_batches(
         bed,
         spacing,
         out_dir,
+        plate_accents=[g["families"] for g in groups],
+        name_accent=double_color_name,
     )
 
 
