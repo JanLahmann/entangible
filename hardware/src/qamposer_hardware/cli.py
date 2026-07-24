@@ -22,14 +22,17 @@ from .build import build_double_tile, build_tile
 from .export import (
     double_slug,
     export_double_batches,
+    export_double_mono_stls,
     export_double_tile_3mf,
     export_double_tile_stls,
+    export_mono_stls,
     export_single_batches,
     export_tile_3mf,
     export_tile_stls,
     tile_slug,
     write_batch_plates_md,
     write_double_plates_md,
+    write_mono_md,
     write_plates_md,
 )
 from .pack import parse_bed
@@ -139,6 +142,7 @@ def _generate(
     out_root: Path,
     *,
     magnets: bool,
+    mono: bool,
 ) -> int:
     params = HardwareParams()
     total_files = 0
@@ -149,7 +153,8 @@ def _generate(
         height = variant_height(variant)
         vdir = out_root / variant
         vdir.mkdir(parents=True, exist_ok=True)
-        print(f"[{variant}] height={height:g} mm -> {vdir}")
+        print(f"[{variant}] height={height:g} mm -> {vdir}"
+              + ("  (+mono)" if mono else ""))
         for mid in ids:
             spec = MARKER_TABLE[mid]
             t0 = time.time()
@@ -159,8 +164,9 @@ def _generate(
             )
             stls = export_tile_stls(parts, vdir)
             tmf = export_tile_3mf(parts, vdir)
+            mono_stls = export_mono_stls(parts, vdir, params) if mono else []
             dt = time.time() - t0
-            files = list(stls) + ([tmf] if tmf else [])
+            files = list(stls) + ([tmf] if tmf else []) + list(mono_stls)
             nbytes = sum(p.stat().st_size for p in files)
             total_files += len(files)
             total_bytes += nbytes
@@ -170,6 +176,9 @@ def _generate(
             )
         write_plates_md(config, vdir)
         total_files += 1
+        if mono:
+            write_mono_md(vdir, faces="single", height=height, params=params)
+            total_files += 1
 
     dt = time.time() - grand_t0
     print(
@@ -184,6 +193,8 @@ def _generate_double(
     variants: list[str],
     kit: list[tuple[int, int | None, int]],
     out_root: Path,
+    *,
+    mono: bool,
 ) -> int:
     params = HardwareParams()
     total_files = 0
@@ -198,6 +209,7 @@ def _generate_double(
         print(
             f"[{variant}-double] height={height:g} mm  "
             f"{len(kit)} designs / {n_pieces} pieces -> {vdir}"
+            + ("  (+mono)" if mono else "")
         )
         for a, b, qty in kit:
             mb = a if b is None else b
@@ -208,8 +220,9 @@ def _generate_double(
             )
             stls = export_double_tile_stls(parts, vdir)
             tmf = export_double_tile_3mf(parts, vdir)
+            mono_stls = export_double_mono_stls(parts, vdir, params) if mono else []
             dt = time.time() - t0
-            files = list(stls) + ([tmf] if tmf else [])
+            files = list(stls) + ([tmf] if tmf else []) + list(mono_stls)
             nbytes = sum(p.stat().st_size for p in files)
             total_files += len(files)
             total_bytes += nbytes
@@ -219,6 +232,9 @@ def _generate_double(
             )
         write_double_plates_md(config, kit, vdir)
         total_files += 1
+        if mono:
+            write_mono_md(vdir, faces="double", height=height, params=params)
+            total_files += 1
 
     dt = time.time() - grand_t0
     print(
@@ -310,6 +326,11 @@ def main(argv: list[str] | None = None) -> int:
         help="add two magnet pockets to the underside (default: off)",
     )
     gen.add_argument(
+        "--mono", action="store_true",
+        help="also emit single-colour STLs (recessed paint-wells + raised "
+             "filament-swap) for printers without an MMU (default: off)",
+    )
+    gen.add_argument(
         "--out", default=str(_DEFAULT_OUT), type=Path,
         help=f"output root (default: {_DEFAULT_OUT})",
     )
@@ -344,10 +365,10 @@ def main(argv: list[str] | None = None) -> int:
         variants = _resolve_variants(args.variant)
         if args.faces == "double":
             kit = _resolve_double_kit(args.gates)
-            return _generate_double(config, variants, kit, args.out)
+            return _generate_double(config, variants, kit, args.out, mono=args.mono)
         ids = _resolve_gates(args.gates)
         return _generate(
-            config, variants, ids, args.out, magnets=args.magnets
+            config, variants, ids, args.out, magnets=args.magnets, mono=args.mono
         )
     if args.command == "plates":
         config = load_config()

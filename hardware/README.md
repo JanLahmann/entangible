@@ -42,7 +42,9 @@ uv run qamposer-hardware generate --variant cube --gates H --magnets
 ```
 
 Options: `--variant tile|cube|all`, `--gates H,X,RX,CNOT,...|<marker-id>,...|all`,
-`--magnets`, `--out DIR` (default `out/hardware`, git-ignored).
+`--magnets`, `--mono` (single-colour STLs for non-MMU printers — see
+[No MMU?](#no-mmu-single-colour-routes)), `--out DIR` (default `out/hardware`,
+git-ignored).
 
 Output per variant lands in `out/hardware/<variant>/`:
 
@@ -117,6 +119,56 @@ positions (colours identical to the per-piece 3MFs, so it opens colour-correct i
 PrusaSlicer). `plates.md` gains a **Print jobs** section listing every batch file,
 its pieces, and a tiny ASCII bed sketch. Cubes pack the same 3 × 3 but are a tall,
 long print.
+
+## No MMU? Single-colour routes
+
+The default output is multi-colour (MMU). Without one, there are three routes to
+a working tile — pick by effort vs. finish:
+
+### (a) Paper faces on blank cubes (zero effort)
+
+Print blank white bodies (any single filament) and glue the **paper faces from
+the PDF kit** (or a label-sheet sticker) onto the top face. The paper marker is
+already print-perfect, so detection is unaffected. Fastest path to a full kit on
+any printer.
+
+### (b) Recessed + acrylic pens (default single-colour form)
+
+`generate --mono` adds, per piece, a **`<slug>-mono-recessed.stl`**: one merged
+solid where every colour region is a **0.5 mm-deep pocket** with vertical walls —
+a paint well. Print in white, then fill the wells with **acrylic paint pens**;
+the raised white rim masks the edge for a clean line.
+
+- Only the **marker** actually needs painting — pure **black** — for the detector
+  to read it. Symbols are **optional**: the gate identity is already in the glyph
+  shape, so an unpainted symbol still reads by eye.
+- Pocket depth is capped at **≤ 0.6 mm** on purpose: a ~6 mm ArUco module at a
+  36 mm marker would otherwise cast an oblique-camera shadow deep enough to hurt
+  detection. `plates.md`'s colour table says which colour belongs in each well.
+
+### (c) Raised + filament swap (two-colour, any printer)
+
+`--mono` also adds **`<slug>-mono-raised.stl`**: the inverse — all art stands a
+uniform **0.6 mm** proud of the body face. Add a single **filament-swap / M600
+colour change** at that Z in your slicer and the body prints in colour 1, all art
+in colour 2 — two-tone on a single-material printer. Load white as colour 1 and a
+**dark** filament as colour 2 so the marker keeps its black-on-white contrast.
+
+For a **double-faced** piece both faces carry art, so the raised form prints
+**dark → light → dark** with **two** swaps: the bottom-face art prints first (dark),
+swap to the body colour for the white core, then swap back to dark for the top-face
+art. The exact swap Z heights are written to **`mono.md`** in the output folder
+(alongside `plates.md`) for every `--mono` run.
+
+```bash
+uv run qamposer-hardware generate --variant tile --gates all --mono
+uv run qamposer-hardware generate --faces double --variant tile --gates all --mono
+```
+
+`--mono` emits the two extra STLs **alongside** the usual colour parts + 3MF, and
+writes `mono.md` (the recessed recipe + raised swap-Z heights). The mono STLs
+carry **no colour** — geometry only — which is exactly what a single-material
+printer wants.
 
 ## Double-faced pieces
 

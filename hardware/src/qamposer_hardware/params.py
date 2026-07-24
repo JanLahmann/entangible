@@ -85,6 +85,12 @@ class HardwareParams:
     marker_bleed: float = 0.02  # per-side growth of black modules (µm-scale) so
     # diagonally-adjacent modules overlap into a manifold solid instead of a
     # non-manifold edge/point contact — invisible at print resolution.
+    mono_pocket_depth: float = 0.5  # single-colour "recessed" variant: depth of the
+    # paint-well pocket cut where each colour region sits. Kept ≤ 0.6 mm so an
+    # oblique camera's pocket shadow can't eat into a ~6 mm ArUco module.
+    mono_raise_height: float = 0.6  # single-colour "raised" variant: uniform height
+    # the art stands proud of the body face, so one filament swap at that Z prints
+    # two-tone on any single-material printer.
 
 
 def variant_height(variant: str, *, faces: str = "single") -> float:

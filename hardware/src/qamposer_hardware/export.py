@@ -18,7 +18,11 @@ from qamposer_vision.markers import MARKER_TABLE, GateSpec, pretty_angle
 from .build import (
     DoubleTileParts,
     TileParts,
+    build_double_mono_raised,
+    build_double_mono_recessed,
     build_double_tile,
+    build_mono_raised,
+    build_mono_recessed,
     build_tile,
 )
 from .face import accent_color_name, double_color_name
@@ -32,6 +36,9 @@ __all__ = [
     "export_tile_3mf",
     "export_double_tile_stls",
     "export_double_tile_3mf",
+    "export_mono_stls",
+    "export_double_mono_stls",
+    "write_mono_md",
     "write_plates_md",
     "double_plate_assignment",
     "write_double_plates_md",
@@ -218,6 +225,115 @@ def export_double_tile_3mf(parts: DoubleTileParts, out_dir: Path) -> Path | None
         if path.exists():
             path.unlink()
         return None
+    return path
+
+
+# --------------------------------------------------------------------------- #
+# Single-colour ("mono") STL variants — no MMU / no colour needed
+# --------------------------------------------------------------------------- #
+
+
+def export_mono_stls(
+    parts: TileParts, out_dir: Path, params: HardwareParams | None = None
+) -> list[Path]:
+    """Write the two single-colour variants of a single-faced tile.
+
+    ``<slug>-mono-recessed.stl`` (paint-well pockets, the default form) and
+    ``<slug>-mono-raised.stl`` (art raised for a single filament swap). Geometry
+    only — STL carries no colour, which is the whole point of the mono form.
+    """
+    params = params or HardwareParams()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    slug = tile_slug(parts.layout.spec)
+    recessed = out_dir / f"{slug}-mono-recessed.stl"
+    raised = out_dir / f"{slug}-mono-raised.stl"
+    export_stl(build_mono_recessed(parts, params), str(recessed))
+    export_stl(build_mono_raised(parts, params), str(raised))
+    return [recessed, raised]
+
+
+def export_double_mono_stls(
+    parts: DoubleTileParts, out_dir: Path, params: HardwareParams | None = None
+) -> list[Path]:
+    """Write the two single-colour variants of a double-faced piece.
+
+    Recessed cuts wells into *both* faces; raised stands art proud of both faces
+    (a two-swap, dark→light→dark print).
+    """
+    params = params or HardwareParams()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    slug = double_slug(parts.layout_a.spec, parts.layout_b.spec)
+    recessed = out_dir / f"{slug}-mono-recessed.stl"
+    raised = out_dir / f"{slug}-mono-raised.stl"
+    export_stl(build_double_mono_recessed(parts, params), str(recessed))
+    export_stl(build_double_mono_raised(parts, params), str(raised))
+    return [recessed, raised]
+
+
+def write_mono_md(
+    out_dir: Path,
+    *,
+    faces: str,
+    height: float,
+    params: HardwareParams | None = None,
+) -> Path:
+    """Emit ``mono.md``: the single-colour recipe + filament-swap Z heights.
+
+    ``height`` is the coloured piece height for this variant (the raised form is
+    taller by the raise amount — one raise for a single tile, two for a double).
+    """
+    params = params or HardwareParams()
+    depth = params.mono_pocket_depth
+    r = params.mono_raise_height
+    lines: list[str] = [
+        "# Single-colour (mono) variants — printers without an MMU",
+        "",
+        "Two extra STLs per piece let a single-material printer make a usable "
+        "tile. They carry **no colour** (STL is geometry only); which colour goes "
+        "where is in `plates.md`'s table.",
+        "",
+        "## Recessed (default — acrylic-pen paint wells)",
+        "",
+        f"Every colour region is a **{depth:g} mm** deep pocket with vertical "
+        "walls; the surrounding face is the raised rim that masks the paint edge. "
+        "Print in white, then fill the wells with acrylic paint pens. Only the "
+        "**marker** must be painted (black) for detection — symbols are optional, "
+        f"the gate identity is already in the glyph. Pocket depth is kept ≤ 0.6 mm "
+        "so an oblique camera's pocket shadow can't degrade marker detection.",
+        "",
+        "## Raised (filament-swap two-tone)",
+        "",
+        f"All art stands **{r:g} mm** proud of the face, so a single filament "
+        "swap (M600 / colour change) prints the body in colour 1 and the art in "
+        "colour 2 — no MMU needed. Load white, add a colour-change at the Z below.",
+        "",
+        "| Swap | Z height (mm) | From → To |",
+        "| ---- | ------------- | --------- |",
+    ]
+    if faces == "double":
+        # bottom art [0, r] · white core [r, r+h] · top art [r+h, 2r+h]
+        lines.append(f"| start | 0.000 | print in **colour 2** (bottom-face art) |")
+        lines.append(f"| 1 | {r:.3f} | colour 2 → **colour 1** (white core) |")
+        lines.append(f"| 2 | {r + height:.3f} | colour 1 → **colour 2** (top-face art) |")
+        total = 2.0 * r + height
+        lines += [
+            "",
+            f"A double-faced raised piece is **{total:.3f} mm** tall (body "
+            f"{height:g} mm + {r:g} mm art on each face) and prints "
+            "**dark → light → dark** with the two swaps above.",
+        ]
+    else:
+        lines.append(f"| start | 0.000 | print in **colour 1** (body) |")
+        lines.append(f"| 1 | {height:.3f} | colour 1 → **colour 2** (raised art) |")
+        total = r + height
+        lines += [
+            "",
+            f"A single-faced raised piece is **{total:.3f} mm** tall (body "
+            f"{height:g} mm + {r:g} mm raised art) with one swap at the top face.",
+        ]
+    lines.append("")
+    path = out_dir / "mono.md"
+    path.write_text("\n".join(lines), encoding="utf-8")
     return path
 
 

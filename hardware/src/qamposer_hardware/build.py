@@ -50,6 +50,10 @@ __all__ = [
     "build_tile",
     "build_double_tile",
     "footprint_area",
+    "build_mono_recessed",
+    "build_mono_raised",
+    "build_double_mono_recessed",
+    "build_double_mono_raised",
 ]
 
 #: Font used for the band caption. IBM Plex Sans (the print font) if the host
@@ -470,3 +474,124 @@ def build_double_tile(
         marker=marker,
         accents=accents,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Single-colour ("mono") variants for filament printers without an MMU
+# --------------------------------------------------------------------------- #
+#
+# The colour parts of a tile (marker + accent) already carry the exact art
+# footprint as vertical prisms occupying the top ``face_depth`` mm (and, on a
+# double piece, also the bottom ``face_depth`` mm). The mono builders reuse
+# those solids verbatim — never re-deriving the artwork — and only reshape the
+# Z profile:
+#
+#   * **recessed** — the default form: sink each colour footprint into the body
+#     as a shallow paint-well pocket (``mono_pocket_depth`` deep, vertical
+#     walls). One merged solid; paint the wells with acrylic pens.
+#   * **raised** — the filament-swap form: stand each colour footprint proud of
+#     the face by a uniform ``mono_raise_height`` so one M600 colour change at
+#     that Z prints two-tone. A double piece raises both faces, so it prints
+#     dark → light → dark with two swaps.
+
+
+def _z_slab(size: float, z0: float, thickness: float) -> Solid:
+    """A generous XY box spanning ``z ∈ [z0, z0+thickness]`` (for Z-band clipping).
+
+    Wider than the tile footprint so intersecting a colour prism with it yields
+    exactly that prism's XY footprint over the requested Z band.
+    """
+    return Pos(size / 2.0, size / 2.0, z0) * Box(
+        3.0 * size, 3.0 * size, thickness, align=(Align.CENTER, Align.CENTER, Align.MIN)
+    )
+
+
+def _mono_colored(parts) -> Solid:
+    """Union of every colour footprint of a piece (marker + all accents)."""
+    if isinstance(parts, DoubleTileParts):
+        solid = parts.marker
+        for _hex, acc in parts.accents:
+            solid = solid + acc
+        return solid
+    return parts.marker + parts.accent
+
+
+def _mono_whole(parts) -> Solid:
+    """The body with its colour footprints fused flush — one plain footprint prism.
+
+    ``body`` already carries the hollow/chamfer/magnet features; adding the
+    colour prisms back fills the top (and bottom, for a double) colour layer so
+    the result is the tile's full outer volume with a flat, single-colour face.
+    """
+    return parts.body + _mono_colored(parts)
+
+
+def build_mono_recessed(parts: TileParts, params: HardwareParams | None = None) -> Solid:
+    """Single merged solid: the tile body with each colour region cut in as a pocket.
+
+    Every colour footprint becomes a ``mono_pocket_depth``-deep, vertical-walled
+    well below the top face; the surrounding white face is the raised rim that
+    masks the paint edge. Reuses :class:`TileParts` solids — no artwork is
+    re-derived.
+    """
+    params = params or HardwareParams()
+    size = parts.layout.size
+    h = parts.height
+    depth = params.mono_pocket_depth
+    whole = _mono_whole(parts)
+    pocket = _mono_colored(parts) & _z_slab(size, h - depth, depth)
+    return whole - pocket
+
+
+def build_mono_raised(parts: TileParts, params: HardwareParams | None = None) -> Solid:
+    """Single merged solid: the tile body with each colour region raised proud of it.
+
+    The art stands a uniform ``mono_raise_height`` above the top face, so one
+    filament swap at ``Z = height`` prints the body in colour 1 and all art in
+    colour 2.
+    """
+    params = params or HardwareParams()
+    size = parts.layout.size
+    h = parts.height
+    r = params.mono_raise_height
+    whole = _mono_whole(parts)
+    footprint = _mono_colored(parts) & _z_slab(size, h - r, r)  # z ∈ [h-r, h]
+    raised = Pos(0.0, 0.0, r) * footprint  # z ∈ [h, h+r]
+    return whole + raised
+
+
+def build_double_mono_recessed(
+    parts: DoubleTileParts, params: HardwareParams | None = None
+) -> Solid:
+    """Double-faced recessed piece: colour wells cut into **both** faces."""
+    params = params or HardwareParams()
+    size = parts.layout_a.size
+    h = parts.height
+    depth = params.mono_pocket_depth
+    colored = _mono_colored(parts)
+    whole = _mono_whole(parts)
+    top_pocket = colored & _z_slab(size, h - depth, depth)  # z ∈ [h-d, h]
+    bottom_pocket = colored & _z_slab(size, 0.0, depth)  # z ∈ [0, d]
+    return whole - top_pocket - bottom_pocket
+
+
+def build_double_mono_raised(
+    parts: DoubleTileParts, params: HardwareParams | None = None
+) -> Solid:
+    """Double-faced raised piece: art raised on both faces (bottom art, then top).
+
+    The white core sits in ``z ∈ [r, r+h]``; face-B art is the bottom ``r`` mm
+    (``z ∈ [0, r]``) and face-A art the top ``r`` mm (``z ∈ [r+h, 2r+h]``). Print
+    bottom-up this is dark → light → dark: swap to the body colour at ``Z = r``
+    and back to the art colour at ``Z = r + height`` (two M600s).
+    """
+    params = params or HardwareParams()
+    size = parts.layout_a.size
+    h = parts.height
+    r = params.mono_raise_height
+    colored = _mono_colored(parts)
+    core = Pos(0.0, 0.0, r) * _mono_whole(parts)  # z ∈ [r, r+h]
+    top_fp = colored & _z_slab(size, h - r, r)  # z ∈ [h-r, h]
+    top_art = Pos(0.0, 0.0, 2.0 * r) * top_fp  # z ∈ [r+h, 2r+h]
+    bottom_art = colored & _z_slab(size, 0.0, r)  # z ∈ [0, r]
+    return core + top_art + bottom_art
