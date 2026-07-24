@@ -1366,6 +1366,80 @@ body,
   position: relative;
 }
 
+/* ---- state-evolution scrubber (#53) ---------------------------------- */
+.pk-evo {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.pk-evo-scrubber {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.pk-evo-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  line-height: 1;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-inset);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.pk-evo-nav:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--entangle);
+}
+
+.pk-evo-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.pk-evo-dots {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.pk-evo-dot {
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.pk-evo-dot--active {
+  background: var(--entangle);
+  border-color: var(--entangle);
+}
+
+.pk-evo-label {
+  min-width: 6.5rem;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pk-evo-dot {
+    transition: none;
+  }
+}
+
 /* rewind-arrow reset-orientation button (top-right of the view panel) */
 .pk-qs-reset {
   position: absolute;

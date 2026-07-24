@@ -1003,6 +1003,80 @@
   position: relative;
 }
 
+/* ---- state-evolution scrubber (#53) ---------------------------------- */
+.bo-evo {
+  display: grid;
+  gap: 0.5vh;
+}
+
+.bo-evo-scrubber {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8vh;
+  font-size: 1.3vh;
+  color: var(--muted);
+}
+
+.bo-evo-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.6vh;
+  height: 2.6vh;
+  padding: 0;
+  line-height: 1;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-inset);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.bo-evo-nav:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--entangle);
+}
+
+.bo-evo-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.bo-evo-dots {
+  display: flex;
+  align-items: center;
+  gap: 0.5vh;
+}
+
+.bo-evo-dot {
+  width: 1.1vh;
+  height: 1.1vh;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.bo-evo-dot--active {
+  background: var(--entangle);
+  border-color: var(--entangle);
+}
+
+.bo-evo-label {
+  min-width: 11vh;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bo-evo-dot {
+    transition: none;
+  }
+}
+
 /* rewind-arrow reset-orientation button (top-right of the view panel) */
 .bo-qs-reset {
   position: absolute;

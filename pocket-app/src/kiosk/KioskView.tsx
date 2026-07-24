@@ -66,8 +66,7 @@ import { Scorecard } from './Scorecard';
 import { isTouchEnabled } from './touch';
 import { displayCircuit } from '@shared/display/displayWires';
 import { HINTS, HINT_ROTATE_MS } from '@shared/display/hints';
-import { QSphereView } from '@quantum/QSphereView';
-import { BlochView } from '@quantum/BlochView';
+import { EvolvingState } from '@shared/display/EvolvingState';
 import { golfStep, initialGolfState, LEVELS, type GolfState } from '@quantum/golf';
 import { QasmPanel as SharedQasmPanel } from '@shared/display/QasmPanel';
 import { StatePanel } from '@shared/display/StatePanel';
@@ -394,11 +393,12 @@ export function KioskView() {
       <div key="golfview">
         <div className="bo-label">{currentLevel.view === 'bloch' ? 'Bloch sphere' : 'Q-sphere'}</div>
         <div className="bo-well">
-          {currentLevel.view === 'bloch' ? (
-            <BlochView circuit={liveCircuit} classPrefix="bo" />
-          ) : (
-            <QSphereView circuit={liveCircuit} targets={golfTargets} classPrefix="bo" />
-          )}
+          <EvolvingState
+            circuit={liveCircuit}
+            view={currentLevel.view}
+            targets={golfTargets}
+            classPrefix="bo"
+          />
         </div>
       </div>
       <Scorecard key="scorecard" state={golfState} circuit={liveCircuit} />

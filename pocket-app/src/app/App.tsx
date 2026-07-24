@@ -47,8 +47,7 @@ import { ResultsHistogram, noiseSeries } from './ResultsHistogram';
 import { QasmPanel } from './QasmPanel';
 import { StatePanel } from '@shared/display/StatePanel';
 import { ComposerHandoff } from './ComposerHandoff';
-import { QSphereView } from '@quantum/QSphereView';
-import { BlochView } from '@quantum/BlochView';
+import { EvolvingState } from '@shared/display/EvolvingState';
 import { Scorecard } from './Scorecard';
 import { DebugPanel } from './DebugPanel';
 import { SettingsControl } from './SettingsDrawer';
@@ -938,11 +937,12 @@ export function App() {
       <div key="golfview">
         <div className="pk-label">{currentLevel.view === 'bloch' ? 'Bloch sphere' : 'Q-sphere'}</div>
         <div className="pk-well">
-          {currentLevel.view === 'bloch' ? (
-            <BlochView circuit={circuit} classPrefix="pk" />
-          ) : (
-            <QSphereView circuit={circuit} targets={golfTargets} classPrefix="pk" />
-          )}
+          <EvolvingState
+            circuit={circuit}
+            view={currentLevel.view}
+            targets={golfTargets}
+            classPrefix="pk"
+          />
         </div>
       </div>
       <Scorecard

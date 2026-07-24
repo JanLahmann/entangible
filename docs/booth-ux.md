@@ -174,6 +174,34 @@ Compare against canonical states up to global phase, fidelity ≥ 0.99.
   a subtle glow scales with fidelity as the ball nears the flag; fidelity
   ≥ 0.99 → hole-in celebration.
 
+### State-evolution stepping (#53, shipped)
+
+The first slice of that animation vision: the golf Q-sphere (levels 2–5) and
+Bloch sphere (level 1) now show the state **stepping through the circuit**, not
+just the final state.
+
+- **Engine.** `@quantum/evolution` (`evolutionSteps`) returns one statevector
+  snapshot per circuit COLUMN — the initial `|0…0⟩`, then the cumulative state
+  after each occupied column. It reuses the existing `statevector()` on a
+  by-column prefix (no gate math is re-implemented), so the last snapshot is
+  exactly the live state the views already showed.
+- **Component.** `@shared/display/EvolvingState` wraps the existing
+  `QSphereView` / `BlochView` (unchanged) and drives them purely through their
+  `statevector` prop. Between consecutive snapshots it interpolates:
+  Q-sphere nodes tween by **probability** (radius) and **phase** (hue, shorter
+  arc; nodes appearing from zero grow in at their final colour); the Bloch
+  vector **slerps** along the shorter arc with its length lerped. Both are exact
+  at each resting step, so the displayed state stays convention-correct.
+- **Controls.** Auto-play on every circuit change replays start → final (the
+  view still "shows the current state" at rest). A small scrubber — prev/next +
+  one dot per column, and a `start` / `after column N` label — replays or
+  inspects any column. Unobtrusive under the golf view; hidden for an empty
+  board.
+- **Motion.** ~500 ms eased (cubic in-out) transitions per column via `rAF` on
+  the fed statevector (no per-frame simulation). `prefers-reduced-motion` skips
+  all tweening — steps jump instantly and the scrubber still works.
+- Shared by both skins via the `classPrefix` pattern (`pk-evo-*` / `bo-evo-*`).
+
 ## Scaling, modes, branding, help (v2 additions, 2026-07-18)
 
 **RESULTS at high qubit counts** — the sidebar histogram is **vertical**
