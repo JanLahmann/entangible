@@ -167,6 +167,19 @@ Compare against canonical states up to global phase, fidelity ≥ 0.99.
 - **Golf-mode layout**: sidebar widens (22% → ~30%). Below the scorecard, a
   **mini recognized-circuit panel** (compact wires + gates) — visitors must
   always see what the camera read, in every mode.
+- **The course (#50)**: 18 holes in four rounds, played 1→18 — **Easy** (E1–E5:
+  superposition / Bell / GHZ-3/4/5, the original 5 levels), **Medium** (M1–M5:
+  bit-flip variants — "same entanglement, different face"), **Difficult**
+  (D1–D5: relative-phase targets, minus / i-GHZ …, whose Q-sphere node colour
+  betrays the phase fidelity catches), and **Extra** (X1/X3/X5: a T-phase magic
+  state, the CH-only **Cascade** unequal superposition, and a golden GHZ). Each
+  round names its "clubs" (a cumulative gate-set hint) on the scorecard; the
+  board can't enforce them, so they are pedagogy, not a lock. Course par is 65.
+  The scorecard shows round + hole ("Difficult · hole 13/18"), the target ket,
+  par, live fidelity, per-hole best, and a running total-vs-par; clearing the
+  board after hole 18 shows the final score, and a re-clear restarts. Best
+  strokes persist per hole on the pocket app (in memory on the booth); the old
+  5-level best migrates once into E1–E5.
 - **Golf-mode animation** (builds on the layer-evolution idea in design.md):
   the target node carries the flag and *pulses* (2 s cycle); on every stable
   circuit change the ball replays from |0…0⟩ **gate-layer by gate-layer**

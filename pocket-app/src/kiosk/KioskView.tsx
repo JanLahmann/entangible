@@ -67,7 +67,7 @@ import { isTouchEnabled } from './touch';
 import { displayCircuit } from '@shared/display/displayWires';
 import { HINTS, HINT_ROTATE_MS } from '@shared/display/hints';
 import { EvolvingState } from '@shared/display/EvolvingState';
-import { golfStep, initialGolfState, LEVELS, type GolfState } from '@quantum/golf';
+import { golfStep, initialGolfState, HOLES, holeHighlight, type GolfState } from '@quantum/golf';
 import { QasmPanel as SharedQasmPanel } from '@shared/display/QasmPanel';
 import { StatePanel } from '@shared/display/StatePanel';
 import './kiosk.css';
@@ -243,8 +243,8 @@ export function KioskView() {
       setGolfState(step.state);
       if (step.justHoledIn && step.scoreName) {
         setCelebration({
-          kind: step.level.qubits >= 3 ? 'ghz' : 'bell',
-          k: step.level.qubits,
+          kind: step.hole.qubits >= 3 ? 'ghz' : 'bell',
+          k: step.hole.qubits,
           banner: `${step.scoreName}!`,
           token: ++tokenRef.current,
         });
@@ -382,11 +382,8 @@ export function KioskView() {
   // so they show regardless of the preset; the remaining recognised panels
   // (e.g. 'results') follow the list. 'scorecard'/'minicircuit'/'qsphere'/
   // 'bloch' names are absorbed here to avoid duplication.
-  const currentLevel = LEVELS[golfState.levelIndex];
-  const golfTargets = useMemo(
-    () => new Set<number>([0, (1 << currentLevel.qubits) - 1]),
-    [currentLevel.qubits],
-  );
+  const currentLevel = HOLES[golfState.levelIndex];
+  const golfTargets = useMemo(() => holeHighlight(currentLevel), [currentLevel]);
   const GOLF_STRUCTURAL = new Set(['scorecard', 'minicircuit', 'qsphere', 'bloch']);
   const golfSidebar = (
     <>

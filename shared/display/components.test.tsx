@@ -231,14 +231,15 @@ describe('MessageStrip (shared)', () => {
 });
 
 describe('Scorecard (shared)', () => {
-  it('renders bo-/pk- class names for the level-1 scorecard', () => {
+  it('renders bo-/pk- class names for the hole-1 scorecard with all 18 chips', () => {
     for (const p of ['bo', 'pk'] as const) {
       const { container } = render(
         <Scorecard state={initialGolfState()} circuit={bell} classPrefix={p} />,
       );
       expect(container.querySelector(`.${p}-golf`)).not.toBeNull();
       expect(container.querySelector(`.${p}-golf-ket`)).not.toBeNull();
-      expect(container.querySelectorAll(`.${p}-golf-chip`).length).toBe(5);
+      // The full 18-hole course strip (E1..E5, M1..M5, D1..D5, X1/X3/X5).
+      expect(container.querySelectorAll(`.${p}-golf-chip`).length).toBe(18);
       cleanup();
     }
   });

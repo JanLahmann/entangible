@@ -65,7 +65,8 @@ import {
   initialGolfState,
   loadBest,
   saveBest,
-  LEVELS,
+  HOLES,
+  holeHighlight,
   type GolfState,
 } from '@quantum/golf';
 import {
@@ -483,8 +484,8 @@ export function App() {
         if (step.justHoledIn && step.scoreName) {
           saveBest(storage, step.state.best);
           setCelebration({
-            kind: step.level.qubits >= 3 ? 'ghz' : 'bell',
-            k: step.level.qubits,
+            kind: step.hole.qubits >= 3 ? 'ghz' : 'bell',
+            k: step.hole.qubits,
             banner: `${step.scoreName}!`,
             token: ++tokenRef.current,
           });
@@ -869,11 +870,8 @@ export function App() {
   const hostKnown = servedByHost || settings.boothUrl != null;
   const cameraRoleAvailable = cameraRoleOffered({ hostKnown, hasKey: operatorKeyPresent });
   const streamPill = cameraStreamPill(streamStatus);
-  const currentLevel = LEVELS[golfState.levelIndex];
-  const golfTargets = useMemo(
-    () => new Set<number>([0, (1 << currentLevel.qubits) - 1]),
-    [currentLevel.qubits],
-  );
+  const currentLevel = HOLES[golfState.levelIndex];
+  const golfTargets = useMemo(() => holeHighlight(currentLevel), [currentLevel]);
 
   // In-browser noise model (composer only — golf stays ideal). Memoized on
   // (circuit, preset, mode): the density-matrix sim is ~ms but must not re-run
@@ -950,9 +948,22 @@ export function App() {
         state={golfState}
         circuit={circuit}
         // Build-on-screen has no physical board to clear, so the scorecard gets
-        // an explicit Next-level button; it empties the manual board, which IS
-        // the golf advance trigger (camera mode keeps the physical ritual).
-        onNextLevel={manual ? () => manualSourceRef.current.clear() : undefined}
+        // an explicit Next-hole button; it empties the manual board, which IS
+        // the golf advance trigger (camera mode keeps the physical ritual). On
+        // the finished course the board is already empty, so restarting resets
+        // the golf state directly (a re-clear wouldn't change the circuit).
+        onNextLevel={
+          manual
+            ? () => {
+                if (golfStateRef.current.complete) {
+                  const fresh = initialGolfState(golfStateRef.current.best);
+                  golfStateRef.current = fresh;
+                  setGolfState(fresh);
+                }
+                manualSourceRef.current.clear();
+              }
+            : undefined
+        }
       />
       {hasPanel('results') && (
         <ResultsHistogram key="results" circuit={circuit} displayQubits={displayed.qubits} />

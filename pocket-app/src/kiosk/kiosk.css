@@ -1223,6 +1223,17 @@
   color: var(--ok);
 }
 
+.bo-golf-total {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--entangle-text);
+}
+
+.bo-golf-total small {
+  font-weight: 400;
+  color: var(--muted);
+}
+
 .bo-golf-holed {
   margin-top: 0.55rem;
   font-size: 0.82rem;
@@ -1230,10 +1241,34 @@
   color: var(--entangle-text);
 }
 
-.bo-golf-list {
+/* Full 18-hole strip, one row per round (E/M/D/X). */
+.bo-golf-course {
   display: flex;
+  flex-direction: column;
   gap: 0.35rem;
   margin-top: 0.65rem;
+}
+
+.bo-golf-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+
+.bo-golf-round {
+  flex: 0 0 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.bo-golf-list {
+  display: flex;
+  gap: 0.3rem;
+  flex: 1;
 }
 
 .bo-golf-chip {
@@ -1242,11 +1277,11 @@
   flex-direction: column;
   align-items: center;
   gap: 0.1rem;
-  padding: 0.35rem 0;
+  padding: 0.3rem 0;
   border-radius: 6px;
   background: var(--bg-inset);
   border: 1px solid var(--border);
-  font-size: 0.78rem;
+  font-size: 0.68rem;
   color: var(--muted);
 }
 

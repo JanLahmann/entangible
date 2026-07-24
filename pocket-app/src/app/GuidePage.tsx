@@ -200,8 +200,9 @@ export function GuidePage() {
           </p>
           <p className="pk-guide-muted">
             No printer <i>and</i> no camera? Choose <b>Build on screen</b> (Settings → Input, or the
-            button on the start screen) to place gates directly in the editor — play Quantum Golf and
-            transfer to the Composer, all with no hardware at all.
+            button on the start screen) to place gates directly in the editor — play the 18-hole
+            Quantum Golf course (superposition to CH-only Cascade) and transfer to the Composer, all
+            with no hardware at all.
           </p>
         </section>
 

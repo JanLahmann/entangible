@@ -46,9 +46,9 @@ describe('KioskView golf mode', () => {
     snapshot = golfSnapshot(bell);
     const { container } = render(<KioskView />);
 
-    // Scorecard header names the level and its qubit count.
-    expect(screen.getByText(/Scorecard · level 1\/5/)).toBeTruthy();
-    expect(screen.getByText(/Level 1 — Superposition/)).toBeTruthy();
+    // Scorecard header names the round + hole number; the hole names itself.
+    expect(screen.getByText(/Scorecard · Easy · hole 1\/18/)).toBeTruthy();
+    expect(screen.getByText(/E1 — Superposition/)).toBeTruthy();
 
     // Level 1 plays the Bloch view (its structural panel is present).
     expect(container.querySelector('.bo-bloch')).not.toBeNull();
