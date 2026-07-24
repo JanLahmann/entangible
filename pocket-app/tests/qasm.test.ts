@@ -12,7 +12,20 @@ const FIXTURES = resolve(here, '../../tests/fixtures/circuits');
 // The pocket app emits QASM locally (no server). These goldens are produced by
 // the Python pipeline (qamposer_vision/qasm.py); the local emitter must match
 // them byte-for-byte.
-const CASES = ['empty', 'single_h', 'bell', 'ghz3', 'all_families', 's_and_t', 'warn_lone_control'];
+const CASES = [
+  'empty',
+  'single_h',
+  'bell',
+  'ghz3',
+  'all_families',
+  's_and_t',
+  'warn_lone_control',
+  // Controlled gates via the ● modifier (task #51): native cy/cz/ch/ccx + cu1.
+  'cx_plain',
+  'ch',
+  'ccx',
+  'controlled_family',
+];
 
 describe('qasmForCircuit goldens', () => {
   for (const name of CASES) {

@@ -50,6 +50,30 @@ const SCENARIOS: Record<string, Array<[number, number, number]>> = {
     [45, 0, 1],
     [45, 1, 1],
   ],
+  // Controlled gates via the ● modifier (task #51).
+  cx_plain: [
+    [14, 0, 0],
+    [11, 1, 0],
+  ],
+  ch: [
+    [14, 0, 0],
+    [10, 1, 0],
+  ],
+  ccx: [
+    [14, 0, 0],
+    [14, 1, 0],
+    [11, 2, 0],
+  ],
+  controlled_family: [
+    [14, 0, 0],
+    [12, 1, 0],
+    [14, 0, 1],
+    [13, 1, 1],
+    [14, 0, 2],
+    [40, 1, 2],
+    [14, 0, 3],
+    [41, 1, 3],
+  ],
 };
 
 // The `dials` fixture: dial tiles at mixed rotations (markerId, row, col,
@@ -142,5 +166,106 @@ describe('buildCircuit golden fixtures (byte-identical to the Python builder)', 
     expect(result.warnings).toHaveLength(1);
     expect(result.warnings[0].kind).toBe('lone_swap');
     expect(result.warnings[0].marker_ids).toEqual([45]);
+  });
+});
+
+describe('controlled gates via the ● modifier (task #51)', () => {
+  const build = (tiles: Array<[number, number, number]>) =>
+    buildCircuit(
+      tiles.map(([markerId, row, col]) => ({ markerId, row, col })),
+      QUBITS,
+    );
+
+  it('● + X (no ⊕) is a native CX, control = ●’s row', () => {
+    const r = build([
+      [14, 0, 0],
+      [11, 1, 0],
+    ]);
+    expect(r.warnings).toEqual([]);
+    expect(r.circuit.gates).toEqual([
+      { id: 'cnot-0-0', type: 'CNOT', control: 0, target: 1, position: 0 },
+    ]);
+  });
+
+  it('● + {Y,Z,H,S,T} emit CY/CZ/CH/CS/CT with control+target', () => {
+    for (const [marker, ctype] of [
+      [12, 'CY'],
+      [13, 'CZ'],
+      [10, 'CH'],
+      [40, 'CS'],
+      [41, 'CT'],
+    ] as const) {
+      const r = build([
+        [14, 2, 0],
+        [marker, 4, 0],
+      ]);
+      expect(r.warnings).toEqual([]);
+      expect(r.circuit.gates).toEqual([
+        { id: `${ctype.toLowerCase()}-2-0`, type: ctype, control: 2, target: 4, position: 0 },
+      ]);
+    }
+  });
+
+  it('two ● + X is CCX with sorted controls', () => {
+    const r = build([
+      [14, 4, 0],
+      [14, 1, 0],
+      [11, 2, 0],
+    ]);
+    expect(r.warnings).toEqual([]);
+    expect(r.circuit.gates).toEqual([
+      { id: 'ccx-1-4-0', type: 'CCX', control: 1, control2: 4, target: 2, position: 0 },
+    ]);
+  });
+
+  it('excludes-with-warning: ● + 2 gates, 2 controls + non-X, 3 controls, ●+⊕+gate, ●+rotation', () => {
+    const cases: Array<Array<[number, number, number]>> = [
+      [
+        [14, 0, 0],
+        [10, 1, 0],
+        [11, 2, 0],
+      ], // ● + 2 gate tiles
+      [
+        [14, 0, 0],
+        [14, 1, 0],
+        [10, 2, 0],
+      ], // 2 controls + non-X (H)
+      [
+        [14, 0, 0],
+        [14, 1, 0],
+        [14, 2, 0],
+        [11, 3, 0],
+      ], // 3 controls
+      [
+        [14, 0, 0],
+        [15, 1, 0],
+        [10, 2, 0],
+      ], // ● + ⊕ + gate
+      [
+        [14, 0, 0],
+        [21, 1, 0],
+      ], // ● + RX(π/2): no controlled rotations in v1
+    ];
+    for (const tiles of cases) {
+      const r = build(tiles);
+      expect(r.circuit.gates).toEqual([]);
+      expect(r.warnings).toHaveLength(1);
+      expect(r.warnings[0].kind).toBe('control_ambiguous');
+    }
+  });
+
+  it('legacy ●● + ⊕ pairing (no gate tile) is unchanged — one CX + one lone control', () => {
+    const r = build([
+      [14, 0, 0],
+      [14, 4, 0],
+      [15, 1, 0],
+    ]);
+    const cnots = r.circuit.gates.filter((g) => g.type === 'CNOT');
+    expect(cnots).toEqual([
+      { id: 'cnot-0-0', type: 'CNOT', control: 0, target: 1, position: 0 },
+    ]);
+    const lone = r.warnings.filter((w) => w.kind === 'lone_control');
+    expect(lone).toHaveLength(1);
+    expect(lone[0].row).toBe(4);
   });
 });
