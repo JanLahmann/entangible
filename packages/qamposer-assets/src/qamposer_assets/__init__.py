@@ -10,6 +10,12 @@ from __future__ import annotations
 
 from .board import board_svg, board_tiled_svgs
 from .config import AssetsConfig, load_config
+from .laser import (
+    laser_bed_grid,
+    laser_sheet_svgs,
+    laser_tile_body,
+    laser_tile_svg,
+)
 from .marker_svg import marker_bit_matrix, marker_group
 from .sheets import kit_sheet_svgs, kit_tile_ids, sample_sheet_svgs, tile_sheet_svgs
 from .tile_face import gate_marker_ids, tile_svg
@@ -27,4 +33,8 @@ __all__ = [
     "sample_sheet_svgs",
     "board_svg",
     "board_tiled_svgs",
+    "laser_tile_body",
+    "laser_tile_svg",
+    "laser_sheet_svgs",
+    "laser_bed_grid",
 ]
