@@ -327,6 +327,7 @@ export function SettingsControl({
                     { value: 'composer', label: 'Composer' },
                     { value: 'golf', label: 'Quantum Golf' },
                     { value: 'quantina', label: 'Quantina' },
+                    { value: 'runner', label: 'Quantum Runner' },
                   ]}
                   onChange={(mode) => settingsStore.update({ mode })}
                 />

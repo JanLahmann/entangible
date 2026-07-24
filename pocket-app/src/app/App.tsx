@@ -57,6 +57,7 @@ import { GuidePage } from './GuidePage';
 import { useRoute } from './hashNav';
 import { settingsStore, useSettings, type Mode, type PanelId } from './settings';
 import { QuantinaPanel, useQuantinaPack } from './QuantinaPanel';
+import { RunnerGame } from './RunnerGame';
 import { displayCircuit } from '@shared/display/displayWires';
 import { HINTS, HINT_ROTATE_MS } from '@shared/display/hints';
 import { editorFit, editorNaturalHeight, type EditorFit } from './editorFit';
@@ -844,6 +845,11 @@ export function App() {
 
   const isGolf = effectiveMode === 'golf';
   const isQuantina = effectiveMode === 'quantina';
+  // Quantum Runner (task #52): a self-contained game that takes over the whole
+  // stage (no circuit editor / camera pipeline). The booth never broadcasts
+  // `runner` in v1, so this is a local-settings surface; a connected viewer
+  // falls through to the composer path.
+  const isRunner = effectiveMode === 'runner' && !connected;
   // Quantina pack resolution (settings menu id + optional `?menupack=` fetch).
   // Called unconditionally (hook rules); App needs the pack for the histogram's
   // qubit count and the mode pill even before the quantina sidebar mounts. When
@@ -1070,6 +1076,7 @@ export function App() {
             {quantina.loading ? 'Quantina' : quantina.pack.title}
           </span>
         )}
+        {isRunner && <span className="pk-pill pk-pill--mode">Quantum Runner</span>}
         <span className="pk-spacer" />
         {connected ? (
           // Viewer: booth status pill (never a camera pill — no local pipeline).
@@ -1125,6 +1132,15 @@ export function App() {
         )}
       </header>
 
+      {isRunner ? (
+        // Quantum Runner takes over the whole stage — no circuit editor, no
+        // camera pipeline; it is a self-contained game driven by the pure engine.
+        <ThemeProvider defaultTheme="dark">
+          <main className="pk-main pk-main--runner">
+            <RunnerGame />
+          </main>
+        </ThemeProvider>
+      ) : (
       <ThemeProvider defaultTheme="dark">
         {/* CONTROLLED editor. In manual mode `onCircuitChange` is wired so native
             on-screen editing drives the ManualEditSource; in camera/booth mode it
@@ -1176,6 +1192,7 @@ export function App() {
           </main>
         </QamposerProvider>
       </ThemeProvider>
+      )}
 
       <footer className={`pk-footer ${warnings.length > 0 ? 'has-warnings' : ''}`}>
         {warnings.length > 0 ? (

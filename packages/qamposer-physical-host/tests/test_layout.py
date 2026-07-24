@@ -49,6 +49,19 @@ def test_select_mode_resets_panels_to_preset():
     assert store.state.panels == []
 
 
+def test_runner_mode_panels_preset_is_empty():
+    # Quantum Runner (task #52) is a pocket-only game surface — no sidebar panels.
+    assert "runner" in MODE_PANELS
+    assert MODE_PANELS["runner"] == []
+
+
+def test_select_mode_runner_sets_empty_panels():
+    store = LayoutStore(None)
+    store.select_mode("runner")
+    assert store.state.mode == "runner"
+    assert store.state.panels == []
+
+
 def test_select_mode_unknown_is_ignored():
     store = LayoutStore(None)
     before = store.state.to_dict()

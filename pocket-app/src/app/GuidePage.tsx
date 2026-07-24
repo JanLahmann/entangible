@@ -177,6 +177,24 @@ export function GuidePage() {
           </p>
         </section>
 
+        {/* 2c. Quantum Runner */}
+        <section className="pk-guide-sec">
+          <Label>Quantum Runner — dodge the measurement</Label>
+          <p>
+            Switch <b>Settings → Mode → Quantum Runner</b> for a Flappy-style game where the
+            runner exists in every basis state at once — each lane's ghost is as solid as its
+            probability. Tap the gate buttons to reshape the live state as coins and obstacles
+            scroll in. Coins bank the <i>expected</i> value (never measured, so a superposition
+            banks fractions); a red obstacle triggers a real projective measurement — collapse
+            into it and you lose a life. On level 2, an obstacle straddling <b>|01⟩</b> and{' '}
+            <b>|10⟩</b> can't touch the Φ⁺ Bell state (H₀ then CX) — build it and sail through.
+          </p>
+          <p className="pk-guide-muted">
+            Based on Quantum Runner by the QAMPoser project. No hardware needed — it plays entirely
+            on screen.
+          </p>
+        </section>
+
         {/* 3. Test without a printer */}
         <section className="pk-guide-sec">
           <Label>Test without a printer</Label>

@@ -19,6 +19,7 @@ import {
   type SelectMenu,
   type Serve,
   type ServedMessage,
+  type DisplayMode,
 } from './messages';
 
 // This suite runs under the pocket app (SC1 rule: shared tests run once there);
@@ -247,6 +248,15 @@ describe('protocol.md ⇄ messages.ts parity', () => {
     for (const t of ALL_MESSAGE_TYPES) {
       expect(docTypes.has(t), `type "${t}" is not documented`).toBe(true);
     }
+  });
+
+  it('runner is an accepted DisplayMode (additive, task #52)', () => {
+    // The Quantum Runner game adds a display mode string; a select_mode carrying
+    // it must type-check exactly like the other modes.
+    const modes: DisplayMode[] = ['composer', 'golf', 'quantina', 'runner', 'attract'];
+    expect(modes).toContain('runner');
+    const msg: SelectMode = { type: 'select_mode', mode: 'runner' };
+    expect(msg.mode).toBe('runner');
   });
 
   it('server + client type lists partition the union with no overlap', () => {

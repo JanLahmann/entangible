@@ -13,7 +13,7 @@
  */
 import { useSyncExternalStore } from 'react';
 
-export type Mode = 'composer' | 'golf' | 'quantina';
+export type Mode = 'composer' | 'golf' | 'quantina' | 'runner';
 /**
  * Input source when the app is NOT a connected booth viewer (docs/pocket.md,
  * "Input modes"). 'camera' (default) drives the on-device vision pipeline;
@@ -172,7 +172,8 @@ export function parseUrlOverrides(search: string): Partial<Settings> {
   const out: MutableSettings = {};
 
   const mode = params.get('mode');
-  if (mode === 'composer' || mode === 'golf' || mode === 'quantina') out.mode = mode;
+  if (mode === 'composer' || mode === 'golf' || mode === 'quantina' || mode === 'runner')
+    out.mode = mode;
 
   // `?menu=<id>` selects the Quantina pack. A bare `?menu=` (no `?mode=` at all)
   // ALSO implies `mode: 'quantina'` — `entangible.org?menu=cocktails` must land
@@ -225,7 +226,14 @@ export function parseUrlOverrides(search: string): Partial<Settings> {
 /** Coerce arbitrary parsed JSON into a valid Settings, filling from defaults. */
 export function sanitize(raw: unknown): Settings {
   const r = (raw ?? {}) as Record<string, unknown>;
-  const mode: Mode = r.mode === 'golf' ? 'golf' : r.mode === 'quantina' ? 'quantina' : 'composer';
+  const mode: Mode =
+    r.mode === 'golf'
+      ? 'golf'
+      : r.mode === 'quantina'
+        ? 'quantina'
+        : r.mode === 'runner'
+          ? 'runner'
+          : 'composer';
   // Any /^[a-z0-9-]+$/ id is accepted (custom packs exist later); else default.
   const menu: string =
     typeof r.menu === 'string' && MENU_ID_RE.test(r.menu) ? r.menu : DEFAULT_SETTINGS.menu;

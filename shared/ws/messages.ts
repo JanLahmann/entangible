@@ -90,8 +90,9 @@ export interface StatusMessage {
   clients: number;
 }
 
-/** Booth display mode (booth-v2; `quantina` added with QN2). */
-export type DisplayMode = 'composer' | 'golf' | 'quantina' | 'attract';
+/** Booth display mode (booth-v2; `quantina` added with QN2, `runner` with the
+ * Quantum Runner game — task #52). */
+export type DisplayMode = 'composer' | 'golf' | 'quantina' | 'runner' | 'attract';
 
 /** Which side the sidebar docks on (booth-v2). */
 export type SidebarSide = 'right' | 'left';

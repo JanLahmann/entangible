@@ -1,0 +1,291 @@
+/*
+ * Quantum Runner styles (task #52). Pocket-namespaced (`pk-runner*`), reusing
+ * the shared token palette (shared/tokens.css). Phone-first: the field stacks
+ * lanes vertically and the gate buttons live in a thumb row at the bottom.
+ * All motion is gated on `prefers-reduced-motion` (the JS suppresses the flash
+ * class; this stylesheet also zeroes transitions/animations under the query).
+ */
+
+/* The runner takes the whole main region (overrides the two-column grid). */
+.pk-main--runner {
+  display: block;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.75rem;
+}
+
+.pk-runner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: 0.6rem;
+  position: relative;
+}
+
+/* --- HUD (score / lives / level) ---------------------------------------- */
+.pk-runner-hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.pk-runner-stat {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.pk-runner-stat-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.pk-runner-score {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.pk-runner-lives {
+  display: flex;
+  gap: 0.15rem;
+  font-size: 1.2rem;
+}
+
+.pk-runner-heart {
+  color: var(--danger);
+}
+
+.pk-runner-levelpick {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.pk-runner-lvl {
+  border: 1px solid var(--border);
+  background: var(--bg-inset);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.pk-runner-lvl.is-active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* --- Field -------------------------------------------------------------- */
+.pk-runner-field {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 12rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background:
+    radial-gradient(120% 80% at 10% 50%, color-mix(in srgb, var(--accent) 8%, transparent), transparent),
+    var(--bg-inset);
+  overflow: hidden;
+}
+
+.pk-runner-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: color-mix(in srgb, var(--entangle) 70%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--entangle) 60%, transparent);
+  z-index: 2;
+}
+
+.pk-runner-lane {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: calc(100% / var(--lanes, 2));
+  border-bottom: 1px dashed color-mix(in srgb, var(--border) 80%, transparent);
+  display: flex;
+  align-items: center;
+}
+
+.pk-runner-lane:last-child {
+  border-bottom: none;
+}
+
+.pk-runner-lane-label {
+  position: absolute;
+  left: 0.4rem;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  z-index: 3;
+}
+
+.pk-runner-lane-prob {
+  position: absolute;
+  left: 0.4rem;
+  bottom: 0.1rem;
+  font-size: 0.6rem;
+  color: color-mix(in srgb, var(--text) 55%, transparent);
+  z-index: 3;
+}
+
+.pk-runner-ghost {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  top: 50%;
+  font-size: 1.4rem;
+  z-index: 2;
+  transition: opacity 0.12s linear;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 60%, transparent));
+}
+
+/* --- Coins + obstacles -------------------------------------------------- */
+.pk-runner-cell {
+  position: absolute;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  z-index: 1;
+}
+
+.pk-runner-cell--coin {
+  color: var(--warn);
+  font-size: 1.25rem;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--warn) 60%, transparent);
+}
+
+.pk-runner-cell--obstacle {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--danger),
+    var(--danger) 6px,
+    color-mix(in srgb, var(--danger) 55%, #000) 6px,
+    color-mix(in srgb, var(--danger) 55%, #000) 12px
+  );
+  border-radius: 4px;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--danger) 55%, transparent);
+}
+
+.pk-runner-coinflash {
+  position: absolute;
+  left: 18%;
+  top: 8%;
+  color: var(--warn);
+  font-weight: 700;
+  font-size: 1.1rem;
+  z-index: 4;
+  animation: pk-runner-rise 0.6s ease-out both;
+}
+
+@keyframes pk-runner-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  40% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+/* Measurement snap: a brief field flash on a real (p>0) obstacle measurement. */
+.pk-runner.is-flash .pk-runner-field {
+  animation: pk-runner-flash 0.5s ease-out;
+}
+
+@keyframes pk-runner-flash {
+  0% {
+    box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--entangle) 90%, transparent);
+  }
+  100% {
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+}
+
+/* --- Gate thumb row ----------------------------------------------------- */
+.pk-runner-gates {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.pk-runner-gate {
+  flex: 1 1 auto;
+  min-width: 3.2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 0.7rem 0.5rem;
+}
+
+/* --- Game over ---------------------------------------------------------- */
+.pk-runner-over {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  z-index: 10;
+  border-radius: 12px;
+}
+
+.pk-runner-over-card {
+  text-align: center;
+  max-width: 22rem;
+  padding: 1.4rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-panel);
+}
+
+.pk-runner-over-card h2 {
+  margin: 0 0 0.4rem;
+  color: var(--entangle);
+}
+
+.pk-runner-over-flavour {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0 0 1rem;
+}
+
+.pk-runner-over-stats {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  margin-bottom: 1.1rem;
+}
+
+.pk-runner-over-stats strong {
+  display: block;
+  font-size: 1.4rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pk-runner-restart {
+  width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pk-runner-ghost,
+  .pk-runner.is-flash .pk-runner-field,
+  .pk-runner-coinflash {
+    transition: none !important;
+    animation: none !important;
+  }
+}

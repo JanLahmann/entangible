@@ -35,6 +35,10 @@ describe('parseUrlOverrides', () => {
     expect(parseUrlOverrides('')).toEqual({});
   });
 
+  it('accepts ?mode=runner (Quantum Runner, task #52)', () => {
+    expect(parseUrlOverrides('?mode=runner')).toEqual({ mode: 'runner' });
+  });
+
   it('reads ?input=manual|camera and ignores junk', () => {
     expect(parseUrlOverrides('?input=manual').input).toBe('manual');
     expect(parseUrlOverrides('?input=camera').input).toBe('camera');
@@ -74,6 +78,10 @@ describe('sanitize', () => {
       noise: 'off',
       menu: 'coffee',
     });
+  });
+
+  it('accepts runner as a valid mode (task #52)', () => {
+    expect(sanitize({ mode: 'runner' }).mode).toBe('runner');
   });
 
   it('defaults input to camera and only accepts "manual" to override it', () => {

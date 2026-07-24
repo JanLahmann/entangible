@@ -51,6 +51,11 @@ MODE_PANELS: dict[str, list[str]] = {
     "composer": ["results", "state", "qasm"],
     "golf": ["scorecard", "minicircuit", "results"],
     "quantina": ["menu", "order", "results"],
+    # Quantum Runner (task #52) is a pocket-only game surface — it drives its own
+    # full-stage UI and needs no sidebar panels. The empty preset also means the
+    # booth kiosk (which has no runner UI in v1) falls back gracefully to its
+    # composer-style stage when the operator selects ``runner``.
+    "runner": [],
     "attract": [],
 }
 
@@ -178,7 +183,7 @@ class LayoutStore:
         """Switch mode and reset panels to that mode's preset.
 
         Unknown modes are ignored (state unchanged) — the wire protocol only
-        defines ``composer`` / ``golf`` / ``attract``.
+        defines ``composer`` / ``golf`` / ``quantina`` / ``runner`` / ``attract``.
         """
         if mode not in VALID_MODES:
             logger.info("ignoring select_mode with unknown mode: %r", mode)

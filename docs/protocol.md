@@ -163,7 +163,7 @@ not send the `select_*` control messages.
 ```jsonc
 {
   "type": "layout",
-  "mode": "composer",                    // "composer" | "golf" | "quantina" | "attract"
+  "mode": "composer",                    // "composer" | "golf" | "quantina" | "runner" | "attract"
   "sidebar": "right",                    // "right" | "left"
   "panels": ["results", "state", "qasm"], // visible panels, in order (registry names)
   "wires": "compact",                    // "compact" | "all" — displayed wire count
@@ -183,7 +183,10 @@ operator key (it shows the `/debug/stream` MJPEG); viewer phones never surface
 it (the connected app hides all camera UI). `mode` gained
 `quantina` with QN2; clients on older bundles ignore it (unknown mode → their
 default rendering). In quantina mode a `menu` of `null` means "pack not chosen
-yet" — clients fall back to the built-in `coffee` pack.
+yet" — clients fall back to the built-in `coffee` pack. `mode` gained `runner`
+(the Quantum Runner game — task #52), a pocket-only surface with an empty panel
+preset; the booth kiosk has no runner UI in v1 and falls back gracefully to its
+composer-style stage (see docs/runner.md).
 
 ### Client → server (additive, booth-v2)
 

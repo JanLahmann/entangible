@@ -105,7 +105,7 @@ function PhoneCameraCard() {
   );
 }
 
-const DISPLAY_MODES: DisplayMode[] = ['composer', 'golf', 'quantina', 'attract'];
+const DISPLAY_MODES: DisplayMode[] = ['composer', 'golf', 'quantina', 'runner', 'attract'];
 
 /** Booth-wide noise-model presets (one per IBM chip generation, plus off). */
 const NOISE_PRESETS: NoisePreset[] = ['off', 'falcon', 'eagle', 'heron', 'nighthawk'];
