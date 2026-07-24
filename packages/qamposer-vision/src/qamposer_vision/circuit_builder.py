@@ -39,6 +39,12 @@ _CNOT_TARGET_ID = 15
 #: The SWAP tile (``×``). Two in one column pair into a SWAP between their rows.
 _SWAP_ID = 45
 
+#: A ● (id 14) is a generic controlled-gate modifier (task #51): one single-qubit
+#: gate tile + one ● in a column is that gate's controlled form. ``X`` maps to a
+#: native CNOT (``● + X ≡ ● + ⊕``, preserving legacy pairing); the rest map to a
+#: controlled type carried in the circuit JSON and emitted natively in QASM.
+_CONTROLLED_GATE: dict[str, str] = {"Y": "CY", "Z": "CZ", "H": "CH", "S": "CS", "T": "CT"}
+
 
 @dataclass(frozen=True, slots=True)
 class TilePlacement:
@@ -65,7 +71,7 @@ class BuildWarning:
     """A structured, machine-readable reason a tile was excluded.
 
     ``kind`` is one of ``"cell_conflict"``, ``"lone_control"``,
-    ``"lone_target"``, ``"lone_swap"``.
+    ``"lone_target"``, ``"lone_swap"``, ``"control_ambiguous"``.
     """
 
     kind: str
@@ -145,6 +151,106 @@ def _cnot_gate(control_row: int, target_row: int, col: int) -> dict[str, Any]:
         "target": target_row,
         "position": col,
     }
+
+
+def _controlled_gate(
+    ctype: str, control_row: int, target_row: int, col: int
+) -> dict[str, Any]:
+    """A single-control controlled gate (CY/CZ/CH/CS/CT) in circuit JSON form."""
+    return {
+        "id": f"{ctype.lower()}-{control_row}-{col}",
+        "type": ctype,
+        "control": control_row,
+        "target": target_row,
+        "position": col,
+    }
+
+
+def _ccx_gate(control_rows: list[int], target_row: int, col: int) -> dict[str, Any]:
+    """A Toffoli (CCX): two controls + one X target. Controls stored sorted."""
+    c0, c1 = sorted(control_rows)
+    return {
+        "id": f"ccx-{c0}-{c1}-{col}",
+        "type": "CCX",
+        "control": c0,
+        "control2": c1,
+        "target": target_row,
+        "position": col,
+    }
+
+
+def _build_controlled(
+    controls: list[int],
+    xtargets: list[int],
+    sgates: list[TilePlacement],
+    col: int,
+) -> tuple[list[dict[str, Any]], list[BuildWarning]]:
+    """Resolve a column holding ≥1 ● control AND ≥1 single-qubit gate tile.
+
+    Ruling (task #51 — FIXED): one gate + one ● → its controlled form; two ● + X
+    → CCX. Everything else (● + ⊕ + gate; ● + ≥2 gates; ≥3 controls; 2 controls
+    with a non-X gate; a controlled rotation) is ambiguous → excluded with a
+    single :class:`BuildWarning` of kind ``"control_ambiguous"``.
+    """
+    gates: list[dict[str, Any]] = []
+    warnings: list[BuildWarning] = []
+    nc = len(controls)
+    ng = len(sgates)
+    marker_ids = tuple(
+        sorted(
+            [_CNOT_CONTROL_ID] * nc
+            + [_CNOT_TARGET_ID] * len(xtargets)
+            + [p.marker_id for p in sgates]
+        )
+    )
+    anchor_row = min(controls)
+
+    def ambiguous(reason: str) -> None:
+        warnings.append(
+            BuildWarning(
+                kind="control_ambiguous",
+                message=(
+                    f"Ambiguous ● control in column {col}: {reason}; excluded."
+                ),
+                row=anchor_row,
+                col=col,
+                marker_ids=marker_ids,
+            )
+        )
+
+    if xtargets:
+        ambiguous("a ● control shares its column with both a ⊕ target and a gate")
+        return gates, warnings
+    if ng >= 2:
+        ambiguous("a ● control shares its column with two or more gate tiles")
+        return gates, warnings
+
+    # Exactly one gate tile from here on.
+    sgate = sgates[0]
+    gate_letter = sgate.spec.gate  # H/X/Y/Z/S/T/RX/RY/RZ
+    target = sgate.row
+
+    if nc >= 3:
+        ambiguous("three or more ● controls")
+        return gates, warnings
+
+    if nc == 2:
+        if gate_letter == "X":
+            gates.append(_ccx_gate(controls, target, col))
+        else:
+            ambiguous("two ● controls with a gate other than X (only CCX is supported)")
+        return gates, warnings
+
+    # nc == 1
+    control = controls[0]
+    if gate_letter == "X":
+        gates.append(_cnot_gate(control, target, col))
+    elif gate_letter in _CONTROLLED_GATE:
+        gates.append(_controlled_gate(_CONTROLLED_GATE[gate_letter], control, target, col))
+    else:
+        # RX/RY/RZ (incl. dial tiles) — no controlled rotations in v1.
+        ambiguous("a ● control with a rotation gate (controlled rotations unsupported)")
+    return gates, warnings
 
 
 def emit_swap(row_a: int, row_b: int, col: int) -> list[dict[str, Any]]:
@@ -313,36 +419,49 @@ def build_circuit(
             continue
         kept.append(cell_tiles[0])
 
-    # 2. Split kept tiles into single-qubit gates, CNOT halves and SWAP tiles.
+    # 2. Bucket kept tiles by column: single-qubit gate tiles, CNOT halves and
+    #    SWAP tiles. Gate tiles are bucketed (not emitted immediately) because a
+    #    ● control now combines with a gate tile in its column (see step 3).
     gates: list[dict[str, Any]] = []
     controls_by_col: dict[int, list[int]] = {}
     targets_by_col: dict[int, list[int]] = {}
     swaps_by_col: dict[int, list[int]] = {}
+    sgates_by_col: dict[int, list[TilePlacement]] = {}
 
     for placement in kept:
         spec = placement.spec
         if spec.gate == "CNOT":
             if spec.role == "control":
                 controls_by_col.setdefault(placement.col, []).append(placement.row)
-            else:  # target
+            else:  # target (⊕)
                 targets_by_col.setdefault(placement.col, []).append(placement.row)
         elif spec.gate == "SWAP":
             swaps_by_col.setdefault(placement.col, []).append(placement.row)
         else:
-            gates.append(
-                _single_qubit_gate(
-                    spec, placement.row, placement.col, placement.rotation
-                )
-            )
+            sgates_by_col.setdefault(placement.col, []).append(placement)
 
-    # 3. Pair CNOT halves per column.
-    for col in sorted(set(controls_by_col) | set(targets_by_col)):
-        pairs, col_warnings = _pair_cnots(
-            controls_by_col.get(col, []), targets_by_col.get(col, []), col
-        )
-        warnings.extend(col_warnings)
-        for control_row, target_row in pairs:
-            gates.append(_cnot_gate(control_row, target_row, col))
+    # 3. Resolve each column carrying a control, ⊕ target and/or gate tile. A ●
+    #    + single-qubit gate is that gate's controlled form (X→CX, Y→CY, Z→CZ,
+    #    H→CH, S→CS, T→CT); two ● + X is CCX. A column with a ● but NO gate tile
+    #    keeps the legacy ●/⊕ CNOT pairing (incl. nearest-unpaired) UNCHANGED.
+    for col in sorted(
+        set(controls_by_col) | set(targets_by_col) | set(sgates_by_col)
+    ):
+        controls = controls_by_col.get(col, [])
+        xtargets = targets_by_col.get(col, [])
+        sgates = sgates_by_col.get(col, [])
+        if controls and sgates:
+            col_gates, col_warnings = _build_controlled(controls, xtargets, sgates, col)
+            gates.extend(col_gates)
+            warnings.extend(col_warnings)
+        else:
+            for p in sgates:
+                gates.append(_single_qubit_gate(p.spec, p.row, p.col, p.rotation))
+            if controls or xtargets:
+                pairs, col_warnings = _pair_cnots(controls, xtargets, col)
+                warnings.extend(col_warnings)
+                for control_row, target_row in pairs:
+                    gates.append(_cnot_gate(control_row, target_row, col))
 
     # 3b. Pair SWAP (×) tiles per column and emit each as its 3-CNOT form.
     for col in sorted(swaps_by_col):

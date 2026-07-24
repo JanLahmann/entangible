@@ -1,0 +1,13 @@
+{
+  "qubits": 5,
+  "gates": [
+    {
+      "id": "ccx-0-1-0",
+      "type": "CCX",
+      "control": 0,
+      "control2": 1,
+      "target": 2,
+      "position": 0
+    }
+  ]
+}

@@ -28,12 +28,22 @@ function stateProbs(c: Circuit): number[] {
 }
 
 describe('noise — parity with statevector (zero noise)', () => {
+  // Controlled gates (task #51): `type` is widened past the library GateType
+  // union — the density sim consumes the same controlled types the JSON carries.
+  const cg = (partial: Record<string, unknown>): Gate =>
+    ({ id: `cg${seq++}`, ...partial }) as unknown as Gate;
   const cases: Record<string, Circuit> = {
     bell: circuit([H(0), CNOT(0, 1)]),
     ghz5: circuit([H(0), CNOT(0, 1, 1), CNOT(0, 2, 2), CNOT(0, 3, 3), CNOT(0, 4, 4)]),
     rotations: circuit([RX(0, Math.PI / 3), RZ(0, Math.PI / 5, 1), H(2, 2)]),
     asymmetric: circuit([H(3), CNOT(3, 1)]),
     empty: circuit([]),
+    // Density-matrix path must reproduce the controlled-U statevector exactly.
+    ch: circuit([H(0), cg({ type: 'CH', control: 0, target: 1, position: 1 })]),
+    cz: circuit([H(0), H(1), cg({ type: 'CZ', control: 0, target: 1, position: 2 })]),
+    cs: circuit([X(0), X(1), cg({ type: 'CS', control: 0, target: 1, position: 1 })]),
+    ct: circuit([X(0), X(1), cg({ type: 'CT', control: 0, target: 1, position: 1 })]),
+    ccx: circuit([H(0), H(1), cg({ type: 'CCX', control: 0, control2: 1, target: 2, position: 2 })]),
   };
   for (const [name, c] of Object.entries(cases)) {
     it(`reproduces statevector probabilities for ${name}`, () => {

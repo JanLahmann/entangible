@@ -127,6 +127,79 @@ function applyCnot(state: StateVector, control: number, target: number): void {
 }
 
 // ---------------------------------------------------------------------------
+// Generic controlled-U (control ID 14 as a generic modifier — see task #51 /
+// docs/marker-ids.md). A column with one single-qubit gate + one ● is its
+// controlled version (X→CX, Y→CY, Z→CZ, H→CH, S→CS, T→CT); two ● + X is CCX.
+// One code path applies any controlled gate: a control MASK on the basis
+// indices gates the target's 2×2 unitary. CX stays on the dedicated `applyCnot`
+// (a pure swap) so the legacy Bell/GHZ path is byte-for-byte unchanged.
+// ---------------------------------------------------------------------------
+
+/**
+ * The 2×2 target unitary of a controlled gate `type` (the U that acts on the
+ * target when every control is |1⟩), or `null` if `type` is not a controlled
+ * gate. CS/CT are the true controlled-PHASE gates diag(1,i)/diag(1,e^{iπ/4})
+ * (matching the QASM cu1(π/2)/cu1(π/4) emission) — NOT controlled-RZ, whose
+ * control-conditional global phase would differ.
+ */
+export function controlledTargetOp(type: string): Matrix2 | null {
+  switch (type) {
+    case 'CNOT':
+    case 'CX':
+    case 'CCX':
+      return [cx(0), cx(1), cx(1), cx(0)]; // X
+    case 'CY':
+      return [cx(0), cx(0, -1), cx(0, 1), cx(0)]; // Y
+    case 'CZ':
+      return [cx(1), cx(0), cx(0), cx(-1)]; // Z
+    case 'CH':
+      return [cx(R), cx(R), cx(R), cx(-R)]; // H
+    case 'CS':
+      return [cx(1), cx(0), cx(0), cx(0, 1)]; // S = diag(1, i)
+    case 'CT':
+      return [cx(1), cx(0), cx(0), cx(R, R)]; // T = diag(1, e^{iπ/4})
+    default:
+      return null;
+  }
+}
+
+/** The control rows of a (possibly multi-control) gate, or `null` if malformed. */
+function controlsOf(g: Gate): number[] | null {
+  const t = g.type as string;
+  if (t === 'CCX') {
+    const c2 = (g as { control2?: number }).control2;
+    if (g.control == null || c2 == null) return null;
+    return [g.control, c2];
+  }
+  if (g.control == null) return null;
+  return [g.control];
+}
+
+/**
+ * Apply a controlled 2×2 unitary `m` to `target` gated on all `controls` being
+ * |1⟩, in place. Generic over any number of controls (CX/…/CT: one; CCX: two).
+ */
+function applyControlled(
+  state: StateVector,
+  controls: readonly number[],
+  target: number,
+  m: Matrix2,
+): void {
+  const tbit = 1 << target;
+  let cmask = 0;
+  for (const c of controls) cmask |= 1 << c;
+  for (let i = 0; i < DIM; i++) {
+    if ((i & tbit) === 0 && (i & cmask) === cmask) {
+      const j = i | tbit;
+      const a = state[i];
+      const b = state[j];
+      state[i] = add(mul(m[0], a), mul(m[1], b));
+      state[j] = add(mul(m[2], a), mul(m[3], b));
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Exported gate unitaries (single source for both simulators)
 // ---------------------------------------------------------------------------
 
@@ -151,12 +224,51 @@ const CNOT_MATRIX: readonly Complex[] = [
   cx(0), cx(0), cx(1), cx(0),
 ];
 
+/**
+ * The dense 2^k×2^k unitary of a controlled gate: identity everywhere except
+ * the target's 2×2 unitary `u` applied on the single block where all
+ * `numControls` controls are |1⟩. The `qubits` order (controls first, then
+ * target) puts the controls as the most-significant local bits — so this block
+ * is the last two local indices — matching `gateUnitary`'s qubit ordering and
+ * the density simulator's most-significant-first convention. For CX this
+ * reproduces `CNOT_MATRIX` exactly (verified by the parity test).
+ */
+function controlledDense(numControls: number, u: Matrix2): Complex[] {
+  const dim = 1 << (numControls + 1);
+  const mat: Complex[] = new Array(dim * dim);
+  for (let i = 0; i < dim * dim; i++) mat[i] = cx(0);
+  const base = ((1 << numControls) - 1) << 1; // all controls set, target = 0
+  for (let i = 0; i < dim; i++) {
+    if (i !== base && i !== base + 1) mat[i * dim + i] = cx(1);
+  }
+  mat[base * dim + base] = u[0];
+  mat[base * dim + base + 1] = u[1];
+  mat[(base + 1) * dim + base] = u[2];
+  mat[(base + 1) * dim + base + 1] = u[3];
+  return mat;
+}
+
 /** Dense unitary of a gate, or `null` if it is malformed / out of range. */
 export function gateUnitary(g: Gate): GateUnitary | null {
-  if (g.type === 'CNOT') {
+  const t = g.type as string;
+  if (t === 'CNOT' || t === 'CX') {
     if (g.control == null || g.target == null) return null;
     if (g.control >= NUM_QUBITS || g.target >= NUM_QUBITS) return null;
     return { matrix: CNOT_MATRIX, qubits: [g.control, g.target] };
+  }
+  if (t === 'CCX') {
+    const controls = controlsOf(g);
+    if (controls == null || g.target == null) return null;
+    if (controls.some((c) => c >= NUM_QUBITS) || g.target >= NUM_QUBITS) return null;
+    const u = controlledTargetOp(t);
+    if (!u) return null;
+    return { matrix: controlledDense(2, u), qubits: [...controls, g.target] };
+  }
+  const cu = controlledTargetOp(t);
+  if (cu) {
+    if (g.control == null || g.target == null) return null;
+    if (g.control >= NUM_QUBITS || g.target >= NUM_QUBITS) return null;
+    return { matrix: controlledDense(1, cu), qubits: [g.control, g.target] };
   }
   const q = g.qubit;
   if (q == null || q >= NUM_QUBITS) return null;
@@ -175,11 +287,20 @@ export function statevector(circuit: Circuit): StateVector {
   // Apply gates in circuit (column) order; ties broken stably.
   const gates = [...circuit.gates].sort((a, b) => a.position - b.position);
   for (const g of gates) {
-    if (g.type === 'CNOT') {
+    const t = g.type as string;
+    if (t === 'CNOT' || t === 'CX') {
       if (g.control == null || g.target == null) continue;
       if (g.control >= NUM_QUBITS || g.target >= NUM_QUBITS) continue;
       applyCnot(state, g.control, g.target);
     } else {
+      const cu = controlledTargetOp(t);
+      if (cu) {
+        const controls = controlsOf(g);
+        if (controls == null || g.target == null) continue;
+        if (controls.some((c) => c >= NUM_QUBITS) || g.target >= NUM_QUBITS) continue;
+        applyControlled(state, controls, g.target, cu);
+        continue;
+      }
       const q = g.qubit;
       if (q == null || q >= NUM_QUBITS) continue;
       const m = singleQubitUnitary(g);
@@ -193,8 +314,12 @@ export function statevector(circuit: Circuit): StateVector {
 export function activeQubits(circuit: Circuit): number[] {
   const s = new Set<number>();
   for (const g of circuit.gates) {
-    if (g.type === 'CNOT') {
+    // Controlled gates (CNOT/CX/CY/CZ/CH/CS/CT/CCX) carry control(+control2)+target;
+    // single-qubit gates carry qubit. Add whichever wires the gate touches.
+    if (g.control != null || g.target != null) {
       if (g.control != null) s.add(g.control);
+      const c2 = (g as { control2?: number }).control2;
+      if (c2 != null) s.add(c2);
       if (g.target != null) s.add(g.target);
     } else if (g.qubit != null) {
       s.add(g.qubit);

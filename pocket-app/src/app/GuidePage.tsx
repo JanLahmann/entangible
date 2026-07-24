@@ -120,7 +120,8 @@ export function GuidePage() {
             </li>
             <li>
               Place tiles — the circuit, outcomes and QASM follow live. A <b>●</b> and a{' '}
-              <b>⊕</b> in one column make a CNOT.
+              <b>⊕</b> in one column make a CNOT; a <b>●</b> next to any gate makes its
+              controlled version (● + <b>H</b> = controlled-H, two <b>●</b> + <b>X</b> = Toffoli).
             </li>
             <li>Build a Bell pair for a surprise.</li>
           </ol>

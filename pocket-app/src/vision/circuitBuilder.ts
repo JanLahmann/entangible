@@ -13,6 +13,17 @@ const CNOT_TARGET_ID = 15;
 // The SWAP tile (×). Two in one column pair into a SWAP between their rows.
 const SWAP_ID = 45;
 
+// A ● (id 14) is a generic controlled-gate modifier (task #51): one single-qubit
+// gate tile + one ● in a column is that gate's controlled form. X → CX is a
+// native CNOT (● + X ≡ ● + ⊕); the rest map to a controlled type in the JSON.
+const CONTROLLED_GATE: Readonly<Record<string, string>> = {
+  Y: 'CY',
+  Z: 'CZ',
+  H: 'CH',
+  S: 'CS',
+  T: 'CT',
+};
+
 export interface TilePlacement {
   readonly markerId: number;
   readonly row: number;
@@ -31,6 +42,7 @@ export type WarningKind =
   | 'lone_control'
   | 'lone_target'
   | 'lone_swap'
+  | 'control_ambiguous'
   | 'off_grid';
 
 export interface BuildWarning {
@@ -46,6 +58,8 @@ export interface CircuitGate {
   type: string;
   qubit?: number;
   control?: number;
+  /** Second control for CCX (Toffoli). */
+  control2?: number;
   target?: number;
   position: number;
   parameter?: number;
@@ -120,6 +134,109 @@ function cnotGate(controlRow: number, targetRow: number, col: number): CircuitGa
     target: targetRow,
     position: col,
   };
+}
+
+/** A single-control controlled gate (CY/CZ/CH/CS/CT). Port of `_controlled_gate`. */
+function controlledGate(
+  ctype: string,
+  controlRow: number,
+  targetRow: number,
+  col: number,
+): CircuitGate {
+  return {
+    id: `${ctype.toLowerCase()}-${controlRow}-${col}`,
+    type: ctype,
+    control: controlRow,
+    target: targetRow,
+    position: col,
+  };
+}
+
+/** A Toffoli (CCX): two controls + one X target. Controls stored sorted. */
+function ccxGate(controlRows: number[], targetRow: number, col: number): CircuitGate {
+  const [c0, c1] = [...controlRows].sort((a, b) => a - b);
+  return {
+    id: `ccx-${c0}-${c1}-${col}`,
+    type: 'CCX',
+    control: c0,
+    control2: c1,
+    target: targetRow,
+    position: col,
+  };
+}
+
+/**
+ * Resolve a column holding ≥1 ● control AND ≥1 single-qubit gate tile. EXACT
+ * port of Python `_build_controlled` (task #51): one gate + one ● → its
+ * controlled form; two ● + X → CCX; every other combination is ambiguous →
+ * excluded with one `control_ambiguous` warning.
+ */
+function buildControlled(
+  controls: number[],
+  xtargets: number[],
+  sgates: TilePlacement[],
+  col: number,
+): { gates: CircuitGate[]; warnings: BuildWarning[] } {
+  const gates: CircuitGate[] = [];
+  const warnings: BuildWarning[] = [];
+  const nc = controls.length;
+  const ng = sgates.length;
+  const markerIds = [
+    ...Array<number>(nc).fill(CNOT_CONTROL_ID),
+    ...Array<number>(xtargets.length).fill(CNOT_TARGET_ID),
+    ...sgates.map((p) => p.markerId),
+  ].sort((a, b) => a - b);
+  const anchorRow = Math.min(...controls);
+
+  const ambiguous = (reason: string): void => {
+    warnings.push({
+      kind: 'control_ambiguous',
+      message: `Ambiguous ● control in column ${col}: ${reason}; excluded.`,
+      row: anchorRow,
+      col,
+      marker_ids: markerIds,
+    });
+  };
+
+  if (xtargets.length > 0) {
+    ambiguous('a ● control shares its column with both a ⊕ target and a gate');
+    return { gates, warnings };
+  }
+  if (ng >= 2) {
+    ambiguous('a ● control shares its column with two or more gate tiles');
+    return { gates, warnings };
+  }
+
+  // Exactly one gate tile from here on.
+  const sgate = sgates[0];
+  const gateLetter = specFor(sgate.markerId).gate; // H/X/Y/Z/S/T/RX/RY/RZ
+  const target = sgate.row;
+
+  if (nc >= 3) {
+    ambiguous('three or more ● controls');
+    return { gates, warnings };
+  }
+
+  if (nc === 2) {
+    if (gateLetter === 'X') {
+      gates.push(ccxGate(controls, target, col));
+    } else {
+      ambiguous('two ● controls with a gate other than X (only CCX is supported)');
+    }
+    return { gates, warnings };
+  }
+
+  // nc === 1
+  const control = controls[0];
+  if (gateLetter === 'X') {
+    gates.push(cnotGate(control, target, col));
+  } else if (CONTROLLED_GATE[gateLetter]) {
+    gates.push(controlledGate(CONTROLLED_GATE[gateLetter], control, target, col));
+  } else {
+    // RX/RY/RZ (incl. dial tiles) — no controlled rotations in v1.
+    ambiguous('a ● control with a rotation gate (controlled rotations unsupported)');
+  }
+  return { gates, warnings };
 }
 
 /**
@@ -269,11 +386,14 @@ export function buildCircuit(placements: TilePlacement[], qubits: number): Build
     kept.push(cellTiles[0]);
   }
 
-  // 2. Split kept tiles into single-qubit gates, CNOT halves and SWAP tiles.
+  // 2. Bucket kept tiles by column: single-qubit gate tiles, CNOT halves and
+  //    SWAP tiles. Gate tiles are bucketed (not emitted immediately) because a ●
+  //    control now combines with a gate tile in its column (see step 3).
   const gates: CircuitGate[] = [];
   const controlsByCol = new Map<number, number[]>();
   const targetsByCol = new Map<number, number[]>();
   const swapsByCol = new Map<number, number[]>();
+  const sgatesByCol = new Map<number, TilePlacement[]>();
 
   for (const p of kept) {
     const spec = specFor(p.markerId);
@@ -287,23 +407,43 @@ export function buildCircuit(placements: TilePlacement[], qubits: number): Build
       if (list) list.push(p.row);
       else swapsByCol.set(p.col, [p.row]);
     } else {
-      gates.push(singleQubitGate(spec, p.row, p.col, p.rotation ?? 0));
+      const list = sgatesByCol.get(p.col);
+      if (list) list.push(p);
+      else sgatesByCol.set(p.col, [p]);
     }
   }
 
-  // 3. Pair CNOT halves per column.
-  const cols = [...new Set([...controlsByCol.keys(), ...targetsByCol.keys()])].sort(
-    (a, b) => a - b,
-  );
+  // 3. Resolve each column carrying a control, ⊕ target and/or gate tile. A ● +
+  //    single-qubit gate is that gate's controlled form (X→CX, Y→CY, Z→CZ, H→CH,
+  //    S→CS, T→CT); two ● + X is CCX. A column with a ● but NO gate tile keeps
+  //    the legacy ●/⊕ CNOT pairing (incl. nearest-unpaired) UNCHANGED.
+  const cols = [
+    ...new Set([...controlsByCol.keys(), ...targetsByCol.keys(), ...sgatesByCol.keys()]),
+  ].sort((a, b) => a - b);
   for (const col of cols) {
-    const { pairs, warnings: colWarnings } = pairCnots(
-      controlsByCol.get(col) ?? [],
-      targetsByCol.get(col) ?? [],
-      col,
-    );
-    warnings.push(...colWarnings);
-    for (const [controlRow, targetRow] of pairs) {
-      gates.push(cnotGate(controlRow, targetRow, col));
+    const controls = controlsByCol.get(col) ?? [];
+    const xtargets = targetsByCol.get(col) ?? [];
+    const sgates = sgatesByCol.get(col) ?? [];
+    if (controls.length > 0 && sgates.length > 0) {
+      const { gates: colGates, warnings: colWarnings } = buildControlled(
+        controls,
+        xtargets,
+        sgates,
+        col,
+      );
+      gates.push(...colGates);
+      warnings.push(...colWarnings);
+    } else {
+      for (const p of sgates) {
+        gates.push(singleQubitGate(specFor(p.markerId), p.row, p.col, p.rotation ?? 0));
+      }
+      if (controls.length > 0 || xtargets.length > 0) {
+        const { pairs, warnings: colWarnings } = pairCnots(controls, xtargets, col);
+        warnings.push(...colWarnings);
+        for (const [controlRow, targetRow] of pairs) {
+          gates.push(cnotGate(controlRow, targetRow, col));
+        }
+      }
     }
   }
 

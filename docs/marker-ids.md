@@ -122,6 +122,52 @@ target, position}` gate later is a one-function edit.
 accepted for now; a native SWAP display arrives with the qamposer-react fork
 (then `emit_swap` returns one `{type: "SWAP", …}` gate and the overlap goes away).
 
+## Control tile ● (14) as a generic modifier
+
+The control tile **● (ID 14)** is a *generic controlled-gate modifier*. In one
+column, a single-qubit gate tile + one ● is that gate's **controlled version**;
+the **control** qubit is the ●'s row, the **target** is the gate's row:
+
+| Column contents | Emitted gate | QASM (qelib1) |
+| --- | --- | --- |
+| ● + `X` (or ● + ⊕) | `CNOT` (`CX`) | `cx q[c], q[t];` |
+| ● + `Y` | `CY` | `cy q[c], q[t];` |
+| ● + `Z` | `CZ` | `cz q[c], q[t];` |
+| ● + `H` | `CH` | `ch q[c], q[t];` |
+| ● + `S` | `CS` | `cu1(pi/2) q[c], q[t];` |
+| ● + `T` | `CT` | `cu1(pi/4) q[c], q[t];` |
+| ● ● + `X` | `CCX` (Toffoli) | `ccx q[c1], q[c2], q[t];` |
+
+**Backward compatibility.** The target half **⊕ (ID 15)** is still a valid
+X-target: `● + ⊕ ≡ ● + X`, and the legacy `●`/`⊕` **CNOT pairing** (nearest-
+unpaired, deterministic, multiple pairs per column) is unchanged. Note ⊕ only
+ever means an X-target — `● ● + ⊕` stays the legacy *one CX + one lone control*
+pairing, **not** a CCX (a CCX requires an `X` gate tile).
+
+**CS/CT are controlled-*phase* gates.** Unlike the bare `S`/`T` tiles (emitted as
+`RZ(π/2)`/`RZ(π/4)`), the controlled forms emit `cu1(π/2)`/`cu1(π/4)` — the true
+controlled-`diag(1, i)` / `diag(1, e^{iπ/4})`. A controlled-`RZ` would carry a
+different control-conditional global phase, so the engine applies `S`/`T` (not
+`RZ`) as the target unitary, matching `cu1`.
+
+**Ambiguities → excluded with a `control_ambiguous` warning** (the tiles are
+never guessed at): ● with two or more gate tiles in its column; two ● with a
+gate other than `X`; three or more ●; `● + ⊕ + another gate`; and **`RX`/`RY`/
+`RZ` + ●** (no controlled rotations in v1 — dial tiles count as rotations). A ●
+with no gate and no ⊕ in its column stays the existing `lone_control` warning.
+
+**Representation & known limitation.** `@qamposer/react@0.2`'s `GateType` has no
+controlled gate beyond `CNOT`, so `CY`/`CZ`/`CH`/`CS`/`CT`/`CCX` are carried as
+their own gate types in the Circuit JSON (a `CCX` adds a `control2` field) and
+applied directly by `shared/quantum` (generic controlled-U via a control mask on
+the basis indices) and by `qasm.py` / the pocket `qasm.ts` port (native QASM
+above). The library's `CircuitEditor` does not render these types natively, so
+in camera mode a controlled gate shows as a plain labelled box without the
+control line — a display-only gap, fixed upstream when the fork gains native
+controlled-gate types (upstream wishlist). The build-on-screen manual editor can
+only place what the library's palette offers (`CNOT` among them), so it cannot
+yet express e.g. `CH`.
+
 ## Reserved
 
 IDs **46–49** (`RESERVED_IDS = range(46, 50)`) are reserved for future tiles.
@@ -142,6 +188,9 @@ above.)
   tiles (42–44)** cover the same four angles per axis with one physical tile,
   choosing the angle from the tile's board-frame rotation instead of the ID.
 - **CNOT (14/15)** is split into a control (●) and target (⊕) tile; the two are
-  paired within a column by the circuit builder.
-- Gate types match `@qamposer/react`'s `GateType`
-  (`H`, `X`, `Y`, `Z`, `RX`, `RY`, `RZ`, `CNOT`).
+  paired within a column by the circuit builder. The ● is also a **generic
+  controlled-gate modifier** — see "Control tile ● (14) as a generic modifier".
+- Base tile gate types match `@qamposer/react`'s `GateType`
+  (`H`, `X`, `Y`, `Z`, `RX`, `RY`, `RZ`, `CNOT`). The controlled forms emitted by
+  the ● modifier (`CY`, `CZ`, `CH`, `CS`, `CT`, `CCX`) are additional Circuit-JSON
+  gate types with no native `@qamposer/react` equivalent (see that section).

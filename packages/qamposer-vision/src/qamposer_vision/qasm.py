@@ -25,9 +25,18 @@ _GATE_TO_QASM: dict[str, str] = {
     "RX": "rx",
     "RY": "ry",
     "RZ": "rz",
+    # Controlled gates (task #51). cx/cy/cz/ch/ccx are native qelib1; CS/CT are
+    # emitted as controlled-phase cu1(π/2)/cu1(π/4) — see _gate_to_instruction.
+    "CY": "cy",
+    "CZ": "cz",
+    "CH": "ch",
+    "CCX": "ccx",
 }
 
 _ROTATION_TYPES = ("RX", "RY", "RZ")
+
+#: Two-qubit controlled gates emitted as ``<name> q[c], q[t];``.
+_CONTROLLED_TWO_QUBIT = ("CY", "CZ", "CH")
 
 
 def format_parameter(value: float) -> str:
@@ -63,6 +72,20 @@ def format_parameter(value: float) -> str:
 def _gate_to_instruction(gate: dict[str, Any]) -> str | None:
     """Convert a single gate dict to a QASM instruction (or None to skip)."""
     gate_type = gate.get("type")
+    # CS/CT are controlled-phase gates emitted via cu1 (no direct name in
+    # _GATE_TO_QASM), so handle them before the name-lookup guard below.
+    if gate_type in ("CS", "CT"):
+        # Controlled-S = cu1(π/2), controlled-T = cu1(π/4). cu1 preserves the
+        # controlled-phase global-phase semantics on qelib1's u1 (unlike a
+        # controlled-RZ, whose control-conditional phase would differ).
+        # control/target order is irrelevant to cu1's symmetric physics.
+        control = gate.get("control")
+        target = gate.get("target")
+        if control is not None and target is not None:
+            angle = math.pi / 2 if gate_type == "CS" else math.pi / 4
+            return f"cu1({format_parameter(angle)}) q[{control}], q[{target}];"
+        return None
+
     qasm_gate = _GATE_TO_QASM.get(gate_type)
     if not qasm_gate:
         return None
@@ -72,6 +95,21 @@ def _gate_to_instruction(gate: dict[str, Any]) -> str | None:
         target = gate.get("target")
         if control is not None and target is not None:
             return f"cx q[{control}], q[{target}];"
+        return None
+
+    if gate_type == "CCX":
+        control = gate.get("control")
+        control2 = gate.get("control2")
+        target = gate.get("target")
+        if control is not None and control2 is not None and target is not None:
+            return f"ccx q[{control}], q[{control2}], q[{target}];"
+        return None
+
+    if gate_type in _CONTROLLED_TWO_QUBIT:
+        control = gate.get("control")
+        target = gate.get("target")
+        if control is not None and target is not None:
+            return f"{qasm_gate} q[{control}], q[{target}];"
         return None
 
     if gate_type in _ROTATION_TYPES:

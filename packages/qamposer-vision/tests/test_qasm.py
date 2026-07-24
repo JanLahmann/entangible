@@ -21,6 +21,11 @@ SCENARIO_NAMES = [
     "warn_lone_control",
     "s_and_t",
     "swap",
+    # Controlled gates via the ● modifier (task #51).
+    "cx_plain",
+    "ch",
+    "ccx",
+    "controlled_family",
 ]
 
 
@@ -61,6 +66,28 @@ def test_format_parameter_decimal_fallback() -> None:
     assert format_parameter(0.5) == "0.5"
     assert format_parameter(1.0) == "1"
     assert format_parameter(0.123456789) == "0.123457"
+
+
+def test_controlled_gates_native_qasm() -> None:
+    # cy/cz/ch/ccx are native qelib1; CS/CT are controlled-phase cu1(π/2)/cu1(π/4).
+    circuit = {
+        "qubits": 5,
+        "gates": [
+            {"id": "cy-0-0", "type": "CY", "control": 0, "target": 1, "position": 0},
+            {"id": "cz-0-1", "type": "CZ", "control": 0, "target": 1, "position": 1},
+            {"id": "ch-0-2", "type": "CH", "control": 0, "target": 1, "position": 2},
+            {"id": "cs-0-3", "type": "CS", "control": 0, "target": 1, "position": 3},
+            {"id": "ct-0-4", "type": "CT", "control": 0, "target": 1, "position": 4},
+            {"id": "ccx-0-1-5", "type": "CCX", "control": 0, "control2": 1, "target": 2, "position": 5},
+        ],
+    }
+    qasm = circuit_to_qasm(circuit)
+    assert "cy q[0], q[1];" in qasm
+    assert "cz q[0], q[1];" in qasm
+    assert "ch q[0], q[1];" in qasm
+    assert "cu1(pi/2) q[0], q[1];" in qasm
+    assert "cu1(pi/4) q[0], q[1];" in qasm
+    assert "ccx q[0], q[1], q[2];" in qasm
 
 
 def test_gates_sorted_by_position() -> None:

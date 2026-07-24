@@ -1,0 +1,33 @@
+{
+  "qubits": 5,
+  "gates": [
+    {
+      "id": "cy-0-0",
+      "type": "CY",
+      "control": 0,
+      "target": 1,
+      "position": 0
+    },
+    {
+      "id": "cz-0-1",
+      "type": "CZ",
+      "control": 0,
+      "target": 1,
+      "position": 1
+    },
+    {
+      "id": "cs-0-2",
+      "type": "CS",
+      "control": 0,
+      "target": 1,
+      "position": 2
+    },
+    {
+      "id": "ct-0-3",
+      "type": "CT",
+      "control": 0,
+      "target": 1,
+      "position": 3
+    }
+  ]
+}

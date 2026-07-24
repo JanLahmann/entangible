@@ -279,6 +279,139 @@ def test_cell_conflict_excludes_both() -> None:
     assert conflicts[0].marker_ids == (H, X)
 
 
+# --- Controlled gates via the ● modifier (task #51) ------------------------
+
+
+def _one_gate(gates: list[dict]) -> dict:
+    assert len(gates) == 1
+    return gates[0]
+
+
+def test_control_plus_x_is_cx_without_target_tile() -> None:
+    # ● + X (a plain X tile, id 11) ≡ ● + ⊕: a native CNOT, control = ●'s row.
+    result = build_circuit([TilePlacement(CTRL, 0, 0), TilePlacement(X, 1, 0)], QUBITS)
+    assert result.warnings == []
+    g = _one_gate(result.circuit["gates"])
+    assert (g["type"], g["control"], g["target"], g["id"]) == ("CNOT", 0, 1, "cnot-0-0")
+
+
+def test_control_plus_single_qubit_gate_controlled_forms() -> None:
+    for marker, ctype in ((Y, "CY"), (Z, "CZ"), (H, "CH"), (S, "CS"), (T, "CT")):
+        result = build_circuit(
+            [TilePlacement(CTRL, 2, 0), TilePlacement(marker, 4, 0)], QUBITS
+        )
+        assert result.warnings == [], ctype
+        g = _one_gate(result.circuit["gates"])
+        assert g["type"] == ctype
+        assert (g["control"], g["target"]) == (2, 4)
+        assert g["id"] == f"{ctype.lower()}-2-0"
+        assert "qubit" not in g
+
+
+def test_two_controls_plus_x_is_ccx() -> None:
+    result = build_circuit(
+        [TilePlacement(CTRL, 0, 0), TilePlacement(CTRL, 1, 0), TilePlacement(X, 2, 0)],
+        QUBITS,
+    )
+    assert result.warnings == []
+    g = _one_gate(result.circuit["gates"])
+    assert g["type"] == "CCX"
+    assert (g["control"], g["control2"], g["target"]) == (0, 1, 2)
+    assert g["id"] == "ccx-0-1-0"
+
+
+def test_ccx_controls_sorted_regardless_of_order() -> None:
+    # Control rows given high-then-low still store control < control2.
+    result = build_circuit(
+        [TilePlacement(CTRL, 4, 0), TilePlacement(CTRL, 1, 0), TilePlacement(X, 2, 0)],
+        QUBITS,
+    )
+    g = _one_gate(result.circuit["gates"])
+    assert (g["control"], g["control2"], g["target"]) == (1, 4, 2)
+
+
+def test_control_with_two_gate_tiles_is_ambiguous() -> None:
+    result = build_circuit(
+        [TilePlacement(CTRL, 0, 0), TilePlacement(H, 1, 0), TilePlacement(X, 2, 0)],
+        QUBITS,
+    )
+    assert result.circuit["gates"] == []
+    assert len(result.warnings) == 1
+    assert result.warnings[0].kind == "control_ambiguous"
+
+
+def test_two_controls_with_non_x_gate_is_ambiguous() -> None:
+    result = build_circuit(
+        [TilePlacement(CTRL, 0, 0), TilePlacement(CTRL, 1, 0), TilePlacement(H, 2, 0)],
+        QUBITS,
+    )
+    assert result.circuit["gates"] == []
+    assert result.warnings[0].kind == "control_ambiguous"
+
+
+def test_three_controls_is_ambiguous() -> None:
+    result = build_circuit(
+        [
+            TilePlacement(CTRL, 0, 0),
+            TilePlacement(CTRL, 1, 0),
+            TilePlacement(CTRL, 2, 0),
+            TilePlacement(X, 3, 0),
+        ],
+        QUBITS,
+    )
+    assert result.circuit["gates"] == []
+    assert result.warnings[0].kind == "control_ambiguous"
+
+
+def test_control_plus_rotation_is_ambiguous() -> None:
+    # No controlled rotations in v1: ● + RX(π/2) is excluded with a warning.
+    result = build_circuit(
+        [TilePlacement(CTRL, 0, 0), TilePlacement(RX_HALF_PI, 1, 0)], QUBITS
+    )
+    assert result.circuit["gates"] == []
+    assert result.warnings[0].kind == "control_ambiguous"
+
+
+def test_control_plus_dial_rotation_is_ambiguous() -> None:
+    # Dial tiles resolve to RX/RY/RZ, so ● + dial is also a controlled rotation.
+    result = build_circuit(
+        [TilePlacement(CTRL, 0, 0), TilePlacement(RX_DIAL, 1, 0, rotation=1)], QUBITS
+    )
+    assert result.circuit["gates"] == []
+    assert result.warnings[0].kind == "control_ambiguous"
+
+
+def test_control_target_and_gate_together_is_ambiguous() -> None:
+    # ● + ⊕ + another gate in one column is ambiguous → all excluded.
+    result = build_circuit(
+        [TilePlacement(CTRL, 0, 0), TilePlacement(TGT, 1, 0), TilePlacement(H, 2, 0)],
+        QUBITS,
+    )
+    assert result.circuit["gates"] == []
+    assert result.warnings[0].kind == "control_ambiguous"
+
+
+def test_legacy_cnot_pairing_unchanged_with_two_controls_one_target() -> None:
+    # ● ● + ⊕ (no gate tile) stays the LEGACY nearest-pairing (one CX + one lone
+    # control), NOT a CCX — CCX requires an X *gate* tile, and this preserves the
+    # existing pairing behaviour byte-for-byte.
+    result = build_circuit(
+        [TilePlacement(CTRL, 0, 0), TilePlacement(CTRL, 4, 0), TilePlacement(TGT, 1, 0)],
+        QUBITS,
+    )
+    assert _cnot_pairs(result.circuit["gates"]) == {(0, 1, 0)}
+    lone = [w for w in result.warnings if w.kind == "lone_control"]
+    assert len(lone) == 1 and lone[0].row == 4
+
+
+def test_control_and_gate_in_different_columns_do_not_interact() -> None:
+    # A ● in column 1 and an unrelated H in column 0 stay independent: the H is a
+    # plain gate; the ● is a lone control.
+    result = build_circuit([TilePlacement(H, 0, 0), TilePlacement(CTRL, 2, 1)], QUBITS)
+    assert [g["id"] for g in result.circuit["gates"]] == ["h-0-0"]
+    assert result.warnings[0].kind == "lone_control"
+
+
 def test_warning_to_dict_is_json_safe() -> None:
     result = build_circuit([TilePlacement(CTRL, 1, 1)], QUBITS)
     d = result.warnings[0].to_dict()

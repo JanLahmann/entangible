@@ -46,7 +46,7 @@ Every message is a JSON object with a `type` discriminator.
 {
   "type": "circuit",
   "seq": 42,                  // monotonically increasing per host process
-  "circuit": { "qubits": 5, "gates": [ /* exact @qamposer/react Circuit */ ] },
+  "circuit": { "qubits": 5, "gates": [ /* @qamposer/react Circuit + controlled gates */ ] },
   "qasm": "OPENQASM 2.0;\n...",
   "source": "camera"          // "camera" | "replay" | "push"
 }
@@ -56,6 +56,10 @@ Every message is a JSON object with a `type` discriminator.
   which the stabilizer already guarantees.
 - The **latest** `circuit` message is replayed verbatim to every new client
   immediately after connect (late-joiner catch-up), before any live traffic.
+- Beyond the native `@qamposer/react` `GateType`s, gates may carry the controlled
+  types the ● modifier emits (`CY`/`CZ`/`CH`/`CS`/`CT`, and `CCX` with an extra
+  `control2` field); see `docs/marker-ids.md`. `qasm` renders these natively
+  (`cy`/`cz`/`ch`/`ccx`, and `cu1(π/2)`/`cu1(π/4)` for `CS`/`CT`).
 
 ### `detection` — diagnostics, throttled to ≤ 5 Hz
 
@@ -80,7 +84,7 @@ Every message is a JSON object with a `type` discriminator.
 
 - Corner markers (IDs 0–3) are **not** listed in `markers`.
 - `warnings[].code` values come from the circuit builder (`lone_control`,
-  `lone_target`, `cell_conflict`, …); `row`/`col` optional.
+  `lone_target`, `cell_conflict`, `control_ambiguous`, …); `row`/`col` optional.
 - Latest `detection` also replayed on connect (may be stale; `fps: 0` signals
   a stopped pipeline).
 

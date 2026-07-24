@@ -1,0 +1,12 @@
+{
+  "qubits": 5,
+  "gates": [
+    {
+      "id": "cnot-0-0",
+      "type": "CNOT",
+      "control": 0,
+      "target": 1,
+      "position": 0
+    }
+  ]
+}

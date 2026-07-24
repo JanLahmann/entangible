@@ -73,6 +73,24 @@ SCENARIOS: list[Scenario] = [
     # SWAP: H on q0, then two × tiles in column 1 (q0/q1) → a SWAP(0,1) emitted
     # as its 3-CNOT decomposition (cx(0,1), cx(1,0), cx(0,1)).
     Scenario("swap", ((10, 0, 0), (45, 0, 1), (45, 1, 1))),
+    # --- Controlled gates via the ● modifier (task #51) ---------------------
+    # ● + X (no ⊕) → CX(0,1): the ● is a generic modifier, X is a plain X tile.
+    Scenario("cx_plain", ((14, 0, 0), (11, 1, 0))),
+    # ● + H → CH(0,1) (controlled-Hadamard).
+    Scenario("ch", ((14, 0, 0), (10, 1, 0))),
+    # Two ● + X → CCX (Toffoli): controls q0/q1, target q2.
+    Scenario("ccx", ((14, 0, 0), (14, 1, 0), (11, 2, 0))),
+    # One controlled gate per column: ●+Y→CY, ●+Z→CZ, ●+S→CS, ●+T→CT. CS/CT are
+    # controlled-phase (cu1) in QASM; CY/CZ are native qelib1.
+    Scenario(
+        "controlled_family",
+        (
+            (14, 0, 0), (12, 1, 0),   # CY(0,1)
+            (14, 0, 1), (13, 1, 1),   # CZ(0,1)
+            (14, 0, 2), (40, 1, 2),   # CS(0,1)  (S tile id 40)
+            (14, 0, 3), (41, 1, 3),   # CT(0,1)  (T tile id 41)
+        ),
+    ),
 ]
 
 SCENARIOS_BY_NAME = {s.name: s for s in SCENARIOS}
