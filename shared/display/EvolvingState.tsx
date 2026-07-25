@@ -271,6 +271,11 @@ export function EvolvingState({
 
   return (
     <div className={`${p}-evo`}>
+      {/* Name what the visitor is looking at — a Bloch sphere (one qubit) and
+          a Q-sphere (many) read identically to a newcomer. */}
+      <span className={`${p}-view-label`}>
+        {view === 'bloch' ? 'Bloch sphere' : 'Q-sphere'}
+      </span>
       {view === 'bloch' ? (
         <BlochView statevector={sv} qubit={blochQubit} target={blochTarget} classPrefix={p} />
       ) : (

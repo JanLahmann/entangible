@@ -1448,6 +1448,14 @@ body,
   font-weight: 600;
 }
 
+.pk-view-label {
+  align-self: flex-start;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.55;
+}
+
 .pk-ket-label {
   margin-right: 0.5em;
   font-size: 0.85em;

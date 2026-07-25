@@ -325,7 +325,7 @@ describe('EvolvingState bra-ket line (#59)', () => {
       <EvolvingState circuit={bell} view="qsphere" classPrefix="pk" showKet />,
     );
     const kids = Array.from((container.querySelector('.pk-evo') as HTMLElement).children);
-    expect(kids.map((el) => el.className)).toEqual(['pk-qsphere', 'pk-ket', 'pk-evo-scrubber']);
+    expect(kids.map((el) => el.className)).toEqual(['pk-view-label', 'pk-qsphere', 'pk-ket', 'pk-evo-scrubber']);
   });
 
   it('follows the animation mid-tween (the math moves with the balls)', () => {
