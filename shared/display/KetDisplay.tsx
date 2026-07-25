@@ -94,6 +94,20 @@ export interface KetDisplayProps {
   minProb?: number;
 }
 
+
+/**
+ * Fold the imaginary unit into the coefficient with i in the NUMERATOR:
+ * 1/√2 → i/√2, √3/2 → √3i/2, 1/(2√2) → i/(2√2); bare → i; decimals → 0.71i.
+ */
+function withImaginary(coef: string): string {
+  if (coef === '') return 'i';
+  const slash = coef.indexOf('/');
+  if (slash < 0) return `${coef}i`;
+  const num = coef.slice(0, slash);
+  const den = coef.slice(slash);
+  return num === '1' ? `i${den}` : `${num}i${den}`;
+}
+
 /** One typeset term: the join operator, the coefficient, and the ket. */
 interface Term {
   index: number;
@@ -166,11 +180,13 @@ export function ketTerms(
     // amplitude of magnitude 1 always typesets as the bare ket |010⟩.
     const bare = exponent === null && !unit && !negative && near(mag, 1, MAG_TOL);
     const op = i === 0 ? (negative ? `${MINUS} ` : '') : negative ? ` ${MINUS} ` : ' + ';
+    const plain = bare ? '' : magnitudeLabel(mag);
     return {
       index: v.index,
       op,
-      coef: bare ? '' : magnitudeLabel(mag),
-      unit,
+      // Imaginary terms carry i in the numerator (i/√2), per Jan.
+      coef: unit ? withImaginary(plain) : plain,
+      unit: '',
       exponent,
       ket: `|${v.index.toString(2).padStart(n, '0')}⟩`,
     };

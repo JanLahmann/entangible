@@ -83,8 +83,8 @@ describe('KetDisplay', () => {
   });
 
   it('renders ±π/2 phases as ±i (H · S and H · S†)', () => {
-    expect(text(state({ 0: c(R), 1: c(0, R) }), 1)).toBe('1/√2|0⟩ + 1/√2i|1⟩');
-    expect(text(state({ 0: c(R), 1: c(0, -R) }), 1)).toBe('1/√2|0⟩ − 1/√2i|1⟩');
+    expect(text(state({ 0: c(R), 1: c(0, R) }), 1)).toBe('1/√2|0⟩ + i/√2|1⟩');
+    expect(text(state({ 0: c(R), 1: c(0, -R) }), 1)).toBe('1/√2|0⟩ − i/√2|1⟩');
   });
 
   it('renders a general phase as a π-fraction exponent in a <sup> (H · T)', () => {
