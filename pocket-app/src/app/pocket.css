@@ -2604,9 +2604,13 @@ body,
 /* == Spectator circuit: hide the editor's interactive chrome ============ */
 /* The table is the editor — on-screen measurement toggles and toolbars
    read as tappable UI on a display that is inspect-only. The classical
-   wire stays (authentic Composer language). */
+   wire stays (authentic Composer language). EXCEPT in manual
+   (build-on-screen) mode: there the editor is live and its selection
+   toolbar is the ONLY way to delete a gate on a touch device, so the
+   stage's --manual class lifts the toolbar hiding (measurement icons stay
+   hidden everywhere — they are decoration in every pocket mode). */
 .pk-stage-editor .circuit-editor__measurements,
-.pk-stage-editor .circuit-editor__toolbar {
+.pk-stage:not(.pk-stage--manual) .pk-stage-editor .circuit-editor__toolbar {
   display: none;
 }
 
