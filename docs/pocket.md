@@ -104,8 +104,9 @@ Serverless equivalents of the booth's /debug controls — all local
   radius ∝ |amplitude|, fill hue = phase, target-state nodes outlined in
   `--entangle` purple; **SCORECARD** — hole name + target ket, par, strokes
   (= every gate added *and* deleted since the hole was teed off — a retry
-  costs, like real golf; an empty board is a fresh tee-off and zeroes the
-  count), live fidelity %, best-of-device (localStorage); the
+  costs, like real golf; sweeping the board mid-hole keeps counting (#73),
+  only leaving the hole tees the next one off at zero), live fidelity %,
+  best-of-device (localStorage); the
   **recognized circuit stays on the stage** (golf never hides it). Hole-in at
   fidelity ≥ 0.99 → purple banner ("EAGLE!/BIRDIE!/PAR!/HOLE IN +n" by
   strokes vs par) + confetti; clearing the board advances to the next hole.

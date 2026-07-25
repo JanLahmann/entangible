@@ -709,8 +709,9 @@ export interface GolfState {
   readonly best: Readonly<Record<number, number>>;
   /**
    * Cumulative strokes on the hole in play: every add and every delete since
-   * the hole was teed off. Reset to 0 by a board-clear (hole advance, restart,
-   * or a plain wipe-and-start-over).
+   * the hole was teed off. Reset to 0 only when the hole is LEFT — the advance
+   * after a hole-in, the course-complete clear, and the post-course restart.
+   * Sweeping the board mid-hole keeps counting (#73).
    */
   readonly strokes: number;
   /** Gate multiset of the last circuit seen — the baseline the next change is
@@ -786,14 +787,21 @@ export interface GolfStep {
  *  - **Ball in the hole, pencil down.** Once the hole is latched holed-in the
  *    count freezes: the score is already written, and lifting the tiles off the
  *    table to advance is not a stroke.
- *  - **Teardown never lands on the next hole.** Every board-clear branch
- *    (advance, complete, restart, plain wipe) resets `strokes` to 0 AND the
- *    diff baseline `gateKeys` to the empty multiset. Since the baseline is
- *    empty, a stale tile the camera still sees (or that flickers back) can only
- *    ever be charged as an *add* — a leftover *removal* is arithmetically
- *    impossible. That makes the manual path (one `clear()` emit) and the camera
- *    path (tiles lifted one at a time, the last one triggering the advance)
- *    behave identically without any ordering assumption.
+ *  - **Teardown never lands on the next hole.** The board-clear branches that
+ *    LEAVE the hole — the post-hole-in advance, the course-complete clear and
+ *    the post-course restart — reset `strokes` to 0 and the diff baseline
+ *    `gateKeys` to the empty multiset. Since the baseline is empty, a stale tile
+ *    the camera still sees (or that flickers back) can only ever be charged as
+ *    an *add* — a leftover *removal* is arithmetically impossible. That makes
+ *    the manual path (one `clear()` emit) and the camera path (tiles lifted one
+ *    at a time, the last one triggering the advance) behave identically without
+ *    any ordering assumption.
+ *  - **Sweeping the board mid-hole is not a do-over (#73).** An empty board on a
+ *    hole you have not holed in keeps its stroke count: the tiles you lifted
+ *    were strokes, and starting the same hole over from scratch is a decision
+ *    with a price, exactly as in golf. (This overrules #68's original "any empty
+ *    board is a fresh tee-off", which let a stuck player wipe their card.) Only
+ *    the baseline resets, and only because the board really is empty.
  *
  * The tile stabiliser upstream already hysteresis-filters the camera, so there
  * is no debouncing here: an occlusion that really removes and re-adds a gate
@@ -897,12 +905,15 @@ export function golfStep(
         scoreName: null,
       };
     }
-    // Wiped without holing in: a fresh tee-off on the same hole.
+    // Swept the board without holing in (#73): NOT a fresh tee-off. Clearing
+    // mid-hole is just another edit — one stroke per tile lifted, already
+    // charged above — and the hole plays on from there. Only the baseline goes
+    // empty, which it does anyway because the board IS empty.
     return {
-      state: { ...prev, holedIn: false, strokes: 0, gateKeys: NO_GATES },
+      state: { ...prev, holedIn: false, strokes, gateKeys: NO_GATES },
       hole,
       fidelity: 0,
-      strokes: 0,
+      strokes,
       holedIn: false,
       justHoledIn: false,
       advanced: false,

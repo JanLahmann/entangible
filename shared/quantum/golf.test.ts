@@ -321,6 +321,24 @@ describe('cumulative strokes per hole (#68)', () => {
     expect(step.state.best[2]).toBe(4);
   });
 
+  it('charges a fumble that passes through an empty board (#73)', () => {
+    // The case the old "any empty board is a fresh tee-off" rule wiped clean:
+    // on a ONE-gate hole, a wrong tile has to come off before the right one
+    // goes on, so the board is momentarily empty. That is a fumble, and it is
+    // now scored as one — three strokes (par), not one (an undeserved eagle).
+    let step = golfStep(holeState(1), circuit([g('X', 0, { qubit: 0 })])); // wrong club
+    expect(step.strokes).toBe(1);
+    expect(step.holedIn).toBe(false);
+    step = golfStep(step.state, empty); // off it comes …
+    expect(step.strokes).toBe(2);
+    expect(step.advanced).toBe(false);
+    step = golfStep(step.state, circuit([g('H', 0, { qubit: 0 })])); // … the right one on
+    expect(step.strokes).toBe(3);
+    expect(step.justHoledIn).toBe(true);
+    expect(step.scoreName).toBe('PAR'); // par 3 (min 1 + 2)
+    expect(step.state.best[1]).toBe(3);
+  });
+
   it('stops counting once the ball is in, and tees the next hole off at zero', () => {
     // Hole in E2 at par, then lift the tiles one at a time (the camera path).
     let step = golfStep(holeState(2), refCircuit(2));
@@ -342,8 +360,11 @@ describe('cumulative strokes per hole (#68)', () => {
     // charged as an add, never as a leftover removal from the hole before.
     step = golfStep(step.state, circuit([g('H', 0, { qubit: 0 })]));
     expect(step.strokes).toBe(1);
+    // Lifting it again is a stroke like any other: hole 3 is not holed in, so
+    // the count carries on (#73) instead of teeing off afresh.
     step = golfStep(step.state, empty);
-    expect(step.state.strokes).toBe(0); // an empty board is always a fresh tee-off
+    expect(step.state.strokes).toBe(2);
+    expect(step.state.gateKeys).toEqual({});
   });
 
   it('charges 2 for an occlusion-style remove + re-add of the same gate', () => {
@@ -371,15 +392,24 @@ describe('cumulative strokes per hole (#68)', () => {
     expect(step.state.best[3]).toBe(3); // the flicker-free run keeps the best
   });
 
-  it('resets on a mid-hole wipe and on the post-course restart', () => {
+  it('keeps counting through a mid-hole wipe (#73), and resets on the restart', () => {
     let step = golfStep(holeState(3), circuit(ghz(2)));
     expect(step.strokes).toBe(2);
-    // Sweeping the board without holing in is a fresh tee-off, not an advance.
+    // Sweeping the board without holing in is neither an advance nor a do-over:
+    // the two tiles lifted are two more strokes, and the hole plays on.
     step = golfStep(step.state, empty);
     expect(step.advanced).toBe(false);
     expect(step.state.levelIndex).toBe(2);
-    expect(step.state.strokes).toBe(0);
+    expect(step.strokes).toBe(4);
+    expect(step.state.strokes).toBe(4);
     expect(step.state.gateKeys).toEqual({});
+
+    // Rebuilding from the swept board keeps adding to the same card, so a
+    // player cannot wipe an expensive hole clean by starting over.
+    step = golfStep(step.state, circuit(ghz(3)));
+    expect(step.strokes).toBe(7);
+    expect(step.justHoledIn).toBe(true);
+    expect(step.state.best[3]).toBe(7);
 
     // The complete screen: tiles sitting on it cost nothing, the restart is clean.
     const done = { ...initialGolfState({ 1: 1 }), levelIndex: 17, complete: true };
