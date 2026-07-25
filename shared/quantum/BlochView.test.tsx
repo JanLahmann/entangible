@@ -3,6 +3,8 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup, screen, fireEvent } from '@testing-library/react';
 import { BlochView } from './BlochView';
 import { type Complex, type StateVector, DIM } from './statevector';
+import { blochVector } from './bloch';
+import { HOLES, holeTargetState } from './golf';
 
 afterEach(cleanup);
 
@@ -71,5 +73,38 @@ describe('BlochView labels', () => {
     const btn = screen.getByRole('button', { name: 'Reset orientation' });
     fireEvent.click(btn); // no-op smoke
     expect(btn).toBeTruthy();
+  });
+
+  it('the golf flag follows the target prop (#65: M1 is |1⟩, not |+⟩)', () => {
+    // Default (no target): flag at |+⟩. With target = -z (|1⟩): a different
+    // screen position — the flag must not be hard-wired to |+⟩ any more.
+    const { container: def } = render(<BlochView statevector={plus} classPrefix="bo" />);
+    const { container: south } = render(
+      <BlochView statevector={plus} target={{ x: 0, y: 0, z: -1 }} classPrefix="bo" />,
+    );
+    const flagCircle = (c: HTMLElement) =>
+      c.querySelector('.bo-bl-target circle') as SVGCircleElement;
+    const a = flagCircle(def);
+    const b = flagCircle(south);
+    expect(a).toBeTruthy();
+    expect(b).toBeTruthy();
+    const posA = `${a.getAttribute('cx')},${a.getAttribute('cy')}`;
+    const posB = `${b.getAttribute('cx')},${b.getAttribute('cy')}`;
+    expect(posA).not.toBe(posB);
+  });
+
+  it('hole targets map to the expected flag directions (#65)', () => {
+    // M1 |1⟩ → south pole; E1 |+⟩ → +x; D1 |−⟩ → −x; X1 magic-T → equator at 45°.
+    const vecFor = (hole: number) => blochVector(holeTargetState(HOLES[hole - 1]), 0);
+    const close = (v: { x: number; y: number; z: number }, e: [number, number, number]) => {
+      expect(v.x).toBeCloseTo(e[0], 5);
+      expect(v.y).toBeCloseTo(e[1], 5);
+      expect(v.z).toBeCloseTo(e[2], 5);
+    };
+    close(vecFor(6), [0, 0, -1]); // M1 |1⟩
+    close(vecFor(1), [1, 0, 0]); // E1 |+⟩
+    close(vecFor(11), [-1, 0, 0]); // D1 |−⟩
+    const r = Math.SQRT1_2;
+    close(vecFor(16), [r, r, 0]); // X1 (|0⟩+e^{iπ/4}|1⟩)/√2
   });
 });

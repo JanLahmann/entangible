@@ -238,12 +238,20 @@ export function EvolvingState({
     return out;
   }, [edgesBySegment, seg, eased, nodePos]);
 
+  // Level-1 flag: the hole's own target on the Bloch sphere. The canonical
+  // target lives on qubit 0 (holeTargetState builds on the lowest qubits);
+  // undefined outside golf keeps BlochView's legacy |+> flag.
+  const blochTarget = useMemo(
+    () => (view === 'bloch' && targetState ? blochVector(targetState, 0) : undefined),
+    [view, targetState],
+  );
+
   const showScrubber = lastIndex > 0;
 
   return (
     <div className={`${p}-evo`}>
       {view === 'bloch' ? (
-        <BlochView statevector={sv} qubit={blochQubit} classPrefix={p} />
+        <BlochView statevector={sv} qubit={blochQubit} target={blochTarget} classPrefix={p} />
       ) : (
         <QSphereView
           statevector={sv}

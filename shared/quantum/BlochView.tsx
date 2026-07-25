@@ -42,6 +42,12 @@ export interface BlochViewProps {
   statevector?: StateVector;
   /** Force a specific qubit; otherwise the most-superposed qubit is chosen. */
   qubit?: number;
+  /**
+   * Where the golf flag points. Defaults to |+⟩ — correct only for E1's
+   * superposition hole; the 18-hole course also plays M1 (|1⟩), D1 (|−⟩) and
+   * X1 (magic-T) on this view, so golf passes each hole's own target vector.
+   */
+  target?: BlochVector;
   size?: number;
   classPrefix: string;
   title?: string;
@@ -51,6 +57,7 @@ export function BlochView({
   circuit,
   statevector: svProp,
   qubit,
+  target: targetVec = TARGET_PLUS,
   size = 220,
   classPrefix,
   title = 'Bloch sphere state projection',
@@ -91,7 +98,7 @@ export function BlochView({
   }, [yaw, pitch, size]);
 
   const state = pt(vec);
-  const target = pt(TARGET_PLUS); // |+⟩
+  const target = pt(targetVec); // the hole's goal (|+⟩ outside golf)
 
   // Axis lines + X/Y/Z letters + |ket⟩ labels for all six endpoints. Each end's
   // surface point drives its own depth-dim; labels are pushed a fixed number of
