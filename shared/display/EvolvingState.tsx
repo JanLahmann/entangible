@@ -285,7 +285,7 @@ export function EvolvingState({
       )}
       {/* The notation is fed the ANIMATED `sv`, so it moves with the balls. */}
       {showKet && (
-        <KetDisplay statevector={sv} n={n} classPrefix={p} label={targetState ? 'State' : undefined} />
+        <KetDisplay statevector={sv} n={n} classPrefix={p} label={targetState ? 'State' : undefined} maxTerms={16} />
       )}
       {/* The goal, clearly labelled right under the live state (Jan: the target
           must be readable next to the actual state, not only as sphere ghosts). */}
@@ -296,6 +296,7 @@ export function EvolvingState({
           classPrefix={p}
           label="Target"
           highlight={ketDiff}
+          maxTerms={16}
         />
       )}
       {showScrubber && (

@@ -110,7 +110,7 @@ const PHASE_TOL_DEG = 1e-6;
 /** Rounds whose targets must be phase-free (see constraint (c) in the header). */
 const PHASE_FREE_ROUNDS: ReadonlySet<GolfRound> = new Set<GolfRound>(['easy', 'medium']);
 /** Terms shown in a generated hole's scorecard ket (the rest elide to "+ ⋯"). */
-const KET_TERMS = 4;
+const KET_TERMS = 16; // full 4-qubit targets fit since ket lines wrap; only 5q elides
 
 /** Gate types that need a control wire (so: only from level 2 up). */
 const CONTROLLED: ReadonlySet<string> = new Set([
