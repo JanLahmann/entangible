@@ -465,7 +465,14 @@ const COURSE: readonly HoleDef[] = [
   { round: 'extra', qubits: 5, name: 'Golden GHZ', targetKet: '(|00000⟩+ω|11111⟩)/√2', par: 8 },
 ];
 
-const ROUND_INITIAL: Readonly<Record<GolfRound, string>> = {
+/**
+ * The one-letter code of each round — the letter its holes are numbered with
+ * (E1…, M1…, D1…, X1/X3/X5) and the letter the scorecard's chip strip labels
+ * its rows with. Exported so those two can never disagree: deriving the row
+ * label from `ROUND_LABEL` instead used to print the extra round as "E",
+ * because "Extra" and "Easy" share an initial (#74).
+ */
+export const ROUND_CODE: Readonly<Record<GolfRound, string>> = {
   easy: 'E',
   medium: 'M',
   difficult: 'D',
@@ -477,7 +484,7 @@ export const HOLES: readonly Hole[] = (() => {
   return COURSE.map((d, i) => {
     counters[d.round] += 1;
     // The extra round is numbered by qubit count (X1/X3/X5); the rest sequentially.
-    const code = ROUND_INITIAL[d.round] + (d.round === 'extra' ? d.qubits : counters[d.round]);
+    const code = ROUND_CODE[d.round] + (d.round === 'extra' ? d.qubits : counters[d.round]);
     return {
       hole: i + 1,
       round: d.round,
@@ -617,12 +624,30 @@ export function strokeDelta(prev: Circuit, next: Circuit): number {
   return countsDelta(gateCounts(prev), gateCounts(next));
 }
 
+/** How a completed hole scored, as a bare category — the scorecard colours its
+ *  chips by this (#74), and `scoreName` writes it out for the holed-in line. */
+export type ScoreKind = 'eagle' | 'birdie' | 'par' | 'over';
+
+/** Classify a completed hole: strokes vs par. */
+export function scoreKind(strokes: number, par: number): ScoreKind {
+  if (strokes < par - 1) return 'eagle';
+  if (strokes < par) return 'birdie';
+  if (strokes === par) return 'par';
+  return 'over';
+}
+
 /** Golf score name for a completed hole (strokes vs par). */
 export function scoreName(strokes: number, par: number): string {
-  if (strokes < par - 1) return 'EAGLE';
-  if (strokes < par) return 'BIRDIE';
-  if (strokes === par) return 'PAR';
-  return `HOLE IN +${strokes - par}`;
+  switch (scoreKind(strokes, par)) {
+    case 'eagle':
+      return 'EAGLE';
+    case 'birdie':
+      return 'BIRDIE';
+    case 'par':
+      return 'PAR';
+    default:
+      return `HOLE IN +${strokes - par}`;
+  }
 }
 
 // ---------------------------------------------------------------------------

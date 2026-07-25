@@ -1446,13 +1446,48 @@
   color: var(--text);
 }
 
+/* A finished hole reads normally instead of muted; its RESULT carries the
+   colour (#74), on the numbers only — a whole chip in colour would turn the
+   strip into a traffic light and bury which hole you are on. */
 .bo-golf-chip.is-done {
-  color: var(--ok);
+  color: var(--text);
+}
+
+.bo-golf-chip-score {
+  display: flex;
+  align-items: baseline;
+  gap: 0.18rem;
 }
 
 .bo-golf-chip-best {
   font-family: ui-monospace, SFMono-Regular, monospace;
   font-size: 0.76rem;
+}
+
+.bo-golf-chip-vspar {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.6rem;
+  opacity: 0.9;
+}
+
+.bo-golf-chip--eagle .bo-golf-chip-best,
+.bo-golf-chip--eagle .bo-golf-chip-vspar {
+  color: var(--entangle-text);
+}
+
+.bo-golf-chip--birdie .bo-golf-chip-best,
+.bo-golf-chip--birdie .bo-golf-chip-vspar {
+  color: var(--ok);
+}
+
+.bo-golf-chip--par .bo-golf-chip-best,
+.bo-golf-chip--par .bo-golf-chip-vspar {
+  color: var(--text);
+}
+
+.bo-golf-chip--over .bo-golf-chip-best,
+.bo-golf-chip--over .bo-golf-chip-vspar {
+  color: var(--warn);
 }
 
 /* ===================================================================== */

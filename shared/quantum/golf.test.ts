@@ -12,6 +12,8 @@ import {
   holeSolution,
   strokeDelta,
   scoreName,
+  scoreKind,
+  ROUND_CODE,
   golfStep,
   initialGolfState,
   holeHighlight,
@@ -244,6 +246,32 @@ describe('scoreName', () => {
     expect(scoreName(3, 3)).toBe('PAR');
     expect(scoreName(5, 3)).toBe('HOLE IN +2');
     expect(scoreName(1, 1)).toBe('PAR');
+  });
+
+  it('classifies the same scores for the chip colours (#74)', () => {
+    expect(scoreKind(1, 3)).toBe('eagle');
+    expect(scoreKind(2, 3)).toBe('birdie');
+    expect(scoreKind(3, 3)).toBe('par');
+    expect(scoreKind(5, 3)).toBe('over');
+    // The name is written FROM the kind, so a colour can never disagree with
+    // the word on the holed-in line.
+    for (const par of [3, 5, 8]) {
+      for (let s = 1; s <= par + 3; s++) {
+        const named = scoreName(s, par);
+        const kind = scoreKind(s, par);
+        expect(named.startsWith(kind === 'over' ? 'HOLE IN' : kind.toUpperCase())).toBe(true);
+      }
+    }
+  });
+});
+
+describe('round codes (#74)', () => {
+  it('gives the extra round its own letter, and matches every hole code', () => {
+    expect(ROUND_CODE).toEqual({ easy: 'E', medium: 'M', difficult: 'D', extra: 'X' });
+    // The bug this fixes: deriving the letter from ROUND_LABEL printed "Extra"
+    // as "E", colliding with "Easy" on the scorecard's fourth row.
+    expect(ROUND_CODE.extra).not.toBe(ROUND_CODE.easy);
+    for (const h of HOLES) expect(h.code.charAt(0), `hole ${h.hole}`).toBe(ROUND_CODE[h.round]);
   });
 });
 

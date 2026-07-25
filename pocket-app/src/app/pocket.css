@@ -1842,13 +1842,48 @@ body,
   color: var(--text);
 }
 
+/* A finished hole reads normally instead of muted; its RESULT carries the
+   colour (#74), on the numbers only — a whole chip in colour would turn the
+   strip into a traffic light and bury which hole you are on. */
 .pk-golf-chip.is-done {
-  color: var(--ok);
+  color: var(--text);
+}
+
+.pk-golf-chip-score {
+  display: flex;
+  align-items: baseline;
+  gap: 0.15rem;
 }
 
 .pk-golf-chip-best {
   font-family: var(--mono);
   font-size: 0.7rem;
+}
+
+.pk-golf-chip-vspar {
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  opacity: 0.9;
+}
+
+.pk-golf-chip--eagle .pk-golf-chip-best,
+.pk-golf-chip--eagle .pk-golf-chip-vspar {
+  color: var(--entangle-text);
+}
+
+.pk-golf-chip--birdie .pk-golf-chip-best,
+.pk-golf-chip--birdie .pk-golf-chip-vspar {
+  color: var(--ok);
+}
+
+.pk-golf-chip--par .pk-golf-chip-best,
+.pk-golf-chip--par .pk-golf-chip-vspar {
+  color: var(--text);
+}
+
+.pk-golf-chip--over .pk-golf-chip-best,
+.pk-golf-chip--over .pk-golf-chip-vspar {
+  color: var(--warn);
 }
 
 /* Random course (#70): the header chip that says "these 18 holes were dealt,

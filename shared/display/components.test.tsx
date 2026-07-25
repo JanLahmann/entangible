@@ -403,6 +403,43 @@ describe('Scorecard (shared)', () => {
     expect(container.querySelector('.pk-golf-solution-btn')).toBeNull();
   });
 
+  it('labels the round rows E / M / D / X — the extra row is not another E (#74)', () => {
+    for (const p of ['bo', 'pk'] as const) {
+      const { container } = render(
+        <Scorecard state={initialGolfState()} circuit={bell} classPrefix={p} />,
+      );
+      expect(
+        Array.from(container.querySelectorAll(`.${p}-golf-round`)).map((n) => n.textContent),
+      ).toEqual(['E', 'M', 'D', 'X']);
+      cleanup();
+    }
+  });
+
+  it('shows each completed hole’s result on its chip, coloured by score (#74)', () => {
+    // E1 par 3 in 1 (eagle), E2 par 4 in 3 (birdie), E3 par 5 in 5 (par),
+    // E4 par 6 in 9 (over). E5 is untouched.
+    const state = initialGolfState({ 1: 1, 2: 3, 3: 5, 4: 9 });
+    const { container } = render(<Scorecard state={state} circuit={bell} classPrefix="pk" />);
+    const chips = Array.from(container.querySelectorAll('.pk-golf-chip')).slice(0, 5);
+    const read = (i: number) => ({
+      best: chips[i].querySelector('.pk-golf-chip-best')?.textContent,
+      vsPar: chips[i].querySelector('.pk-golf-chip-vspar')?.textContent ?? null,
+      kind: ['eagle', 'birdie', 'par', 'over'].find((k) =>
+        chips[i].classList.contains(`pk-golf-chip--${k}`),
+      ),
+    });
+    expect(read(0)).toEqual({ best: '1', vsPar: '−2', kind: 'eagle' });
+    expect(read(1)).toEqual({ best: '3', vsPar: '−1', kind: 'birdie' });
+    expect(read(2)).toEqual({ best: '5', vsPar: 'E', kind: 'par' });
+    expect(read(3)).toEqual({ best: '9', vsPar: '+3', kind: 'over' });
+    // An unplayed hole is unchanged: a dot, no vs-par, no score colour.
+    expect(read(4)).toEqual({ best: '·', vsPar: null, kind: undefined });
+    expect(chips[4].classList.contains('is-done')).toBe(false);
+    // The tooltip carries the same result in words.
+    expect(chips[0].getAttribute('title')).toBe('E1 · Superposition · par 3 · best 1 (−2)');
+    expect(chips[4].getAttribute('title')).toBe('E5 · GHZ-5 · par 7');
+  });
+
   it('leaves the classic card free of any course chip', () => {
     const { container } = render(
       <Scorecard state={initialGolfState()} circuit={bell} classPrefix="pk" />,

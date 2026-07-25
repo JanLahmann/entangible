@@ -25,6 +25,9 @@
  * hole looks exactly as it did before. The search is async, chunked and cached
  * per (course, seed, hole), so it runs once and never blocks a paint.
  *
+ * A completed hole's chip in the 18-hole strip carries its RESULT (#74): best
+ * strokes plus vs-par, tinted eagle / birdie / par / over.
+ *
  * The card is course-agnostic (#70): the hole list comes from `courseHoles`, so
  * a RANDOM round renders its generated holes (names, kets and generator-sized
  * pars) through the same layout, plus a "Random round" chip in the header.
@@ -36,11 +39,13 @@ import { useEffect, useState } from 'react';
 import type { Circuit } from '@qamposer/react';
 import {
   ROUND_LABEL,
+  ROUND_CODE,
   COURSE_PAR,
   coursePar,
   clubGateTypes,
   evaluate,
   holeTargetState,
+  scoreKind,
   scoreName,
   courseTotals,
   formatVsPar,
@@ -362,8 +367,17 @@ function Solutions({
   );
 }
 
-/** Round-grouped strip of all 18 holes; the current hole is outlined, done
- *  holes show their best stroke count. */
+/**
+ * Round-grouped strip of all 18 holes; the current hole is outlined, and a
+ * completed one shows its RESULT (#74): the best stroke count with its vs-par
+ * beside it, tinted by how that scored (eagle / birdie / par / over). The tint
+ * is on the numbers only — a whole chip in colour turns the strip into a
+ * traffic light and drowns out which hole you are on.
+ *
+ * The row label comes from `ROUND_CODE`, the same map the hole codes are built
+ * from, so the extra round reads "X" like its X1/X3/X5 holes instead of the "E"
+ * an initial-of-the-label derivation used to print.
+ */
 function ChipStrip({
   p,
   holes,
@@ -379,22 +393,38 @@ function ChipStrip({
     <div className={`${p}-golf-course`} aria-label="all holes">
       {ROUNDS.map((round) => (
         <div key={round} className={`${p}-golf-row`}>
-          <span className={`${p}-golf-round`}>{ROUND_LABEL[round].charAt(0)}</span>
+          <span className={`${p}-golf-round`}>{ROUND_CODE[round]}</span>
           <div className={`${p}-golf-list`}>
-            {holes.filter((h) => h.round === round).map((h) => (
-              <div
-                key={h.hole}
-                className={`${p}-golf-chip ${h.hole === currentHole ? 'is-current' : ''} ${
-                  best[h.hole] !== undefined ? 'is-done' : ''
-                }`}
-                title={`${h.code} · ${h.name} · par ${h.par}`}
-              >
-                <span>{h.code}</span>
-                <span className={`${p}-golf-chip-best`}>
-                  {best[h.hole] === undefined ? '·' : best[h.hole]}
-                </span>
-              </div>
-            ))}
+            {holes.filter((h) => h.round === round).map((h) => {
+              const strokes = best[h.hole];
+              const done = strokes !== undefined;
+              const kind = done ? scoreKind(strokes, h.par) : null;
+              const vsPar = done ? formatVsPar(strokes - h.par) : null;
+              return (
+                <div
+                  key={h.hole}
+                  className={[
+                    `${p}-golf-chip`,
+                    h.hole === currentHole ? 'is-current' : '',
+                    done ? 'is-done' : '',
+                    kind ? `${p}-golf-chip--${kind}` : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  title={
+                    done
+                      ? `${h.code} · ${h.name} · par ${h.par} · best ${strokes} (${vsPar})`
+                      : `${h.code} · ${h.name} · par ${h.par}`
+                  }
+                >
+                  <span>{h.code}</span>
+                  <span className={`${p}-golf-chip-score`}>
+                    <span className={`${p}-golf-chip-best`}>{done ? strokes : '·'}</span>
+                    {done && <span className={`${p}-golf-chip-vspar`}>{vsPar}</span>}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       ))}
