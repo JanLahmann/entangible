@@ -33,6 +33,27 @@ describe('useSphereRotation home', () => {
     expect(result.current.pitch).toBeCloseTo(-0.4);
   });
 
+  it('drags like a trackball: the sphere follows the finger', () => {
+    // Under the Rx(pitch)·Rz(yaw) camera, +yaw moves front content LEFT and
+    // +pitch moves it UP — so a rightward drag must DECREASE yaw and a
+    // downward drag must DECREASE pitch (front content moves right / down,
+    // with the finger). Pins the sign convention (Jan: it turned the other way).
+    const { result } = renderHook(() => useSphereRotation({ home: { yaw: 0, pitch: 0 } }));
+    act(() => {
+      result.current.handlers.onPointerDown({
+        clientX: 0,
+        clientY: 0,
+        pointerId: 1,
+        currentTarget: {},
+      } as never);
+    });
+    act(() => {
+      result.current.handlers.onPointerMove({ clientX: 50, clientY: 30 } as never);
+    });
+    expect(result.current.yaw).toBeLessThan(0);
+    expect(result.current.pitch).toBeLessThan(0);
+  });
+
   it('falls back to the default orientation without a home', () => {
     const { result } = renderHook(() => useSphereRotation());
     expect(result.current.yaw).toBe(0);

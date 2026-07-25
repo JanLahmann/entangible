@@ -84,8 +84,12 @@ export function useSphereRotation(
     const dy = e.clientY - lastRef.current.y;
     lastRef.current = { x: e.clientX, y: e.clientY };
     if (dx !== 0 || dy !== 0) userMovedRef.current = true;
-    setYaw((y) => y + dx * DRAG_GAIN);
-    setPitch((p) => clampPitch(p + dy * DRAG_GAIN));
+    // Trackball feel: the grabbed sphere follows the finger. Under the
+    // Rx(pitch)·Rz(yaw) camera, +yaw moves front content LEFT and +pitch moves
+    // it UP, so both deltas must SUBTRACT for drag-right to spin the front
+    // rightwards and drag-down to tip it downwards.
+    setYaw((y) => y - dx * DRAG_GAIN);
+    setPitch((p) => clampPitch(p - dy * DRAG_GAIN));
   }, []);
 
   const endDrag = useCallback(() => {
