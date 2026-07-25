@@ -104,8 +104,39 @@ describe('displayCircuit', () => {
     expect(displayQubits(circuit([H(4)]), 'compact', 4)).toBe(5);
     // …the floor never exceeds the physical ceiling…
     expect(displayQubits(empty, 'compact', 9)).toBe(5);
-    // …and 'all' plus small floors behave as before.
+    // …and 'all' ignores it entirely.
     expect(displayQubits(empty, 'all', 2)).toBe(5);
-    expect(displayQubits(empty, 'compact', 2)).toBe(3);
+  });
+});
+
+/**
+ * #67 — golf shows EXACTLY the hole's wires. `minWires` replaces the generic
+ * 3-wire floor instead of raising it, so a level-1 hole is a single wire rather
+ * than one wire plus two that mean nothing.
+ */
+describe('displayQubits — minWires replaces the 3-floor (golf holes)', () => {
+  const empty = circuit([]);
+
+  it('a 1-qubit hole shows one wire on an empty board', () => {
+    expect(displayQubits(empty, 'compact', 1)).toBe(1);
+    expect(displayCircuit(empty, 'compact', 1).qubits).toBe(1);
+  });
+
+  it('a 2-qubit hole shows two', () => {
+    expect(displayQubits(empty, 'compact', 2)).toBe(2);
+    expect(displayCircuit(empty, 'compact', 2).qubits).toBe(2);
+  });
+
+  it('still grows with actual use — a gate on q2 wins over a 1-qubit hole', () => {
+    expect(displayQubits(circuit([H(2)]), 'compact', 1)).toBe(3);
+    expect(displayQubits(circuit([H(1)]), 'compact', 1)).toBe(2);
+    expect(displayQubits(circuit([CNOT(0, 3)]), 'compact', 2)).toBe(4);
+  });
+
+  it('leaves every non-golf caller (minWires 0) on the 3-wire floor', () => {
+    expect(displayQubits(empty, 'compact', 0)).toBe(3);
+    expect(displayQubits(empty, 'compact')).toBe(3);
+    expect(displayQubits(circuit([H(1)]), 'compact', 0)).toBe(3);
+    expect(displayQubits(empty, 'all', 0)).toBe(5);
   });
 });

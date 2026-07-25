@@ -13,6 +13,8 @@
  *                 at 3. Auto-grows to 4/5 the moment a tile lands on q3/q4 and
  *                 contracts again when it is removed; on Pocket the tile
  *                 stabilizer keeps that from flickering.
+ *   - `minWires` (golf) REPLACES that floor with the hole's own qubit count, so
+ *     a 1-qubit hole shows ONE wire — see `displayQubits`.
  *
  * `displayCircuit` returns the SAME object when the wire count already matches,
  * so React memoisation and the editor's identity checks stay stable.
@@ -41,21 +43,28 @@ export function highestUsedRow(circuit: Circuit): number {
 
 /**
  * Number of wires to DISPLAY for `circuit` under the given `wires` setting.
- * `minWires` raises the compact floor: golf passes the current hole's qubit
- * count so e.g. a 4-qubit hole shows 4 wires BEFORE any gate lands on q3 —
- * the player must see the wires the target needs, not discover them.
+ *
+ * `minWires > 0` REPLACES the generic 3-wire floor rather than raising it (#67):
+ * golf passes the current hole's qubit count, and the board must then show
+ * EXACTLY the hole's wires — a 4-qubit hole shows 4 before any gate lands on q3
+ * (the player must see the wires the target needs, not discover them), and a
+ * 1-qubit hole shows ONE, not three empty wires two of which are noise. It still
+ * grows with actual use (a gate on q2 wins over a 1-qubit hole) and is still
+ * capped at the physical `FULL_WIRES`.
+ *
+ * With the default `minWires = 0` — every non-golf mode — nothing changes: the
+ * compact floor of 3 applies as before, and 'all' is always 5.
  */
 export function displayQubits(circuit: Circuit, wires: Wires, minWires = 0): number {
   if (wires === 'all') return FULL_WIRES;
-  return Math.min(
-    FULL_WIRES,
-    Math.max(MIN_COMPACT_WIRES, minWires, highestUsedRow(circuit) + 1),
-  );
+  const floor = minWires > 0 ? minWires : MIN_COMPACT_WIRES;
+  return Math.min(FULL_WIRES, Math.max(floor, highestUsedRow(circuit) + 1));
 }
 
 /**
  * The circuit as SHOWN in the editor: identical gates, display-clamped wire
- * count. Returns the input unchanged when no re-count is needed.
+ * count (`minWires` as in `displayQubits`). Returns the input unchanged when no
+ * re-count is needed.
  */
 export function displayCircuit(circuit: Circuit, wires: Wires, minWires = 0): Circuit {
   const qubits = displayQubits(circuit, wires, minWires);

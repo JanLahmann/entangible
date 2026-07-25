@@ -176,8 +176,9 @@ export function KioskView() {
 
   const liveCircuit: Circuit = circuit?.circuit ?? createDefaultCircuit(BOARD_QUBITS);
   // Golf state lives up here (before the golf-engine block) because the wire
-  // trim needs the current hole: its qubit count floors the compact display so
-  // a 4-qubit hole shows 4 wires before any tile lands on q3.
+  // trim needs the current hole: its qubit count REPLACES the compact 3-wire
+  // floor (#67), so the kiosk shows exactly the hole's wires — 4 on a 4-qubit
+  // hole before any tile lands on q3, one on a level-1 hole.
   const [golfState, setGolfState] = useState<GolfState>(() => initialGolfState());
   const golfMinWires = mode === 'golf' ? HOLES[golfState.levelIndex].qubits : 0;
   // Display-only wire trim: the editor + histogram follow `wires`; every other
