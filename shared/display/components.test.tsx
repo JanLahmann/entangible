@@ -271,7 +271,7 @@ describe('Scorecard (shared)', () => {
     const { container } = render(<Scorecard state={state} circuit={bell} classPrefix="pk" />);
     expect(container.querySelector('.pk-golf-random')?.textContent).toBe('Random round');
     expect(container.querySelector('.pk-golf-name')?.textContent).toBe(`E1 — ${hole.name}`);
-    expect(container.querySelector('.pk-golf-ket')?.textContent).toBe(hole.targetKet);
+    expect(container.querySelector('.pk-golf-ket')?.textContent).toBe(`Target${hole.targetKet}`);
     const stats = Array.from(container.querySelectorAll('.pk-stat')).map((n) => n.textContent);
     expect(stats).toContain(`par ${hole.par}`);
     // Same 18-chip strip — the structure is shared with the classic course.
