@@ -11,23 +11,36 @@
  * still comes from evaluating the live circuit.
  * When the course is finished it shows the final total-vs-par summary.
  *
+ * The card is course-agnostic (#70): the hole list comes from `courseHoles`, so
+ * a RANDOM round renders its generated holes (names, kets and generator-sized
+ * pars) through the same layout, plus a "Random round" chip in the header.
+ *
  * `monoKet` toggles the one pre-SC2 difference: pocket adds `pk-mono` to the
  * target-ket span; the booth does not tint its ket.
  */
 import type { Circuit } from '@qamposer/react';
 import {
-  HOLES,
   ROUND_LABEL,
   COURSE_PAR,
+  coursePar,
   evaluate,
   scoreName,
   courseTotals,
   formatVsPar,
   type GolfRound,
   type GolfState,
+  type Hole,
 } from '@quantum/golf';
+import { courseHoles } from '@quantum/golfRandom';
 
 const ROUNDS: readonly GolfRound[] = ['easy', 'medium', 'difficult', 'extra'];
+
+/** The "you are not on the fixed course" marker (#70) — rendered only when a
+ *  generated round is in play, so the classic card is unchanged. */
+function CourseChip({ p, state }: { p: string; state: GolfState }) {
+  if (state.course !== 'random') return null;
+  return <span className={`${p}-golf-random`}>Random round</span>;
+}
 
 export function Scorecard({
   state,
@@ -50,20 +63,27 @@ export function Scorecard({
   onNextLevel?: () => void;
 }) {
   const p = classPrefix;
-  const hole = HOLES[state.levelIndex];
-  const totals = courseTotals(state.best);
+  // The course in play: the fixed 18, or this session's generated ones (#70).
+  const holes = courseHoles(state);
+  const hole = holes[state.levelIndex];
+  const totals = courseTotals(state.best, holes);
   const totalLabel = totals.completed > 0 ? formatVsPar(totals.vsPar) : 'E';
+  // A generated course sums its own pars; the fixed one keeps the constant.
+  const fullPar = state.course === 'random' ? coursePar(holes) : COURSE_PAR;
 
   // Course finished — show the final scorecard summary.
   if (state.complete) {
     return (
       <div>
-        <div className={`${p}-label`}>Scorecard · course complete</div>
+        <div className={`${p}-label`}>
+          Scorecard · course complete
+          <CourseChip p={p} state={state} />
+        </div>
         <div className={`${p}-well ${p}-golf`}>
           <div className={`${p}-golf-hole`}>
             <span className={`${p}-golf-name`}>Course complete! ⛳</span>
             <span className={`${p}-golf-qubits`}>
-              {totals.strokes} strokes · par {COURSE_PAR}
+              {totals.strokes} strokes · par {fullPar}
             </span>
             <span className={`${p}-golf-total`}>
               {formatVsPar(totals.vsPar)} <small>vs par</small>
@@ -78,7 +98,7 @@ export function Scorecard({
               'clear the board to play again'
             )}
           </div>
-          <ChipStrip p={p} currentHole={-1} best={state.best} />
+          <ChipStrip p={p} holes={holes} currentHole={-1} best={state.best} />
         </div>
       </div>
     );
@@ -92,7 +112,8 @@ export function Scorecard({
   return (
     <div>
       <div className={`${p}-label`}>
-        Scorecard · {ROUND_LABEL[hole.round]} · hole {hole.hole}/{HOLES.length}
+        Scorecard · {ROUND_LABEL[hole.round]} · hole {hole.hole}/{holes.length}
+        <CourseChip p={p} state={state} />
       </div>
       <div className={`${p}-well ${p}-golf`}>
         <div className={`${p}-golf-hole`}>
@@ -133,7 +154,7 @@ export function Scorecard({
             )}
           </div>
         )}
-        <ChipStrip p={p} currentHole={hole.hole} best={state.best} />
+        <ChipStrip p={p} holes={holes} currentHole={hole.hole} best={state.best} />
       </div>
     </div>
   );
@@ -143,10 +164,12 @@ export function Scorecard({
  *  holes show their best stroke count. */
 function ChipStrip({
   p,
+  holes,
   currentHole,
   best,
 }: {
   p: string;
+  holes: readonly Hole[];
   currentHole: number;
   best: Readonly<Record<number, number>>;
 }) {
@@ -156,7 +179,7 @@ function ChipStrip({
         <div key={round} className={`${p}-golf-row`}>
           <span className={`${p}-golf-round`}>{ROUND_LABEL[round].charAt(0)}</span>
           <div className={`${p}-golf-list`}>
-            {HOLES.filter((h) => h.round === round).map((h) => (
+            {holes.filter((h) => h.round === round).map((h) => (
               <div
                 key={h.hole}
                 className={`${p}-golf-chip ${h.hole === currentHole ? 'is-current' : ''} ${

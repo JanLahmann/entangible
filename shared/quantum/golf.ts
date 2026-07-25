@@ -24,6 +24,13 @@
  * through an injectable Storage (pocket uses localStorage; the booth keeps it in
  * memory). All exported logic is pure and injectable.
  *
+ * The 18 holes above are the CLASSIC course. A second, RANDOM course (#70)
+ * mirrors its structure with generated targets; it lives in `@quantum/golfRandom`
+ * so this module never depends on the generator. Everything here is
+ * course-agnostic: `golfStep` takes the hole list as an optional argument
+ * (defaulting to `HOLES`), a generated hole carries its own target placements,
+ * and `GolfState.course`/`randomSeed` say which course a state is playing.
+ *
  * Bit convention: leftmost ket bit = first arrangement qubit, matching
  * shared/display/outcomes.ts. Internally targets live in the little-endian
  * statevector basis (index i has qubit q set when (i >> q) & 1).
@@ -84,6 +91,23 @@ export interface Hole {
   readonly par: number;
   /** The round's cumulative gate-set hint. */
   readonly clubs: readonly string[];
+  /**
+   * GENERATED holes only (the random course, #70): every target statevector
+   * this hole accepts, one per placement. Fixed course holes leave it undefined
+   * and are scored from the precomputed `TARGETS` table instead.
+   */
+  readonly targets?: readonly StateVector[];
+  /** GENERATED holes only: the target built on qubits 0..k−1 (see `holeTargetState`). */
+  readonly canonicalTarget?: StateVector;
+}
+
+/**
+ * A club list as `@qamposer/react` gate types. Only 'CX' needs translating —
+ * the library spells the controlled-NOT 'CNOT'; every other club
+ * ('X','H','Y','Z','S','T','CH') is already its library name.
+ */
+export function gateTypesForClubs(clubs: readonly string[]): GateType[] {
+  return clubs.map((c) => (c === 'CX' ? 'CNOT' : c) as GateType);
 }
 
 /**
@@ -92,12 +116,9 @@ export interface Hole {
  * The physical board cannot restrict tiles, so on the table the clubs stay a
  * hint; on screen we hand out exactly the round's set, so the palette teaches
  * the round instead of every gate the library knows.
- *
- * Only 'CX' needs translating — the library spells the controlled-NOT 'CNOT';
- * every other club ('X','H','Y','Z','S','T','CH') is already its library name.
  */
 export function clubGateTypes(hole: Hole): GateType[] {
-  return hole.clubs.map((c) => (c === 'CX' ? 'CNOT' : c) as GateType);
+  return gateTypesForClubs(hole.clubs);
 }
 
 // ---------------------------------------------------------------------------
@@ -204,6 +225,29 @@ function buildTargets(k: number, spec: TargetSpec): StateVector[] {
   const out: StateVector[] = [];
   for (const place of places) for (const terms of spec.families) out.push(buildTarget(place, terms));
   return out;
+}
+
+/** Below this probability an amplitude is not a term of a placed target. */
+const TERM_EPS = 1e-12;
+
+/**
+ * Every ORDERED placement of an arbitrary `canonical` target (a state living on
+ * qubits 0..k−1) across the 5-qubit board — the same machinery the Cascade hole
+ * uses, opened up for the generated random course (#70). A generated target has
+ * no symmetry to exploit, so like the Cascade it is matched against every
+ * ordered k-arrangement: the answer can be built on ANY k wires in any order.
+ */
+export function orderedPlacements(k: number, canonical: StateVector): StateVector[] {
+  const terms: Term[] = [];
+  for (let i = 0; i < 1 << k; i++) {
+    const a = canonical[i];
+    if (a.re * a.re + a.im * a.im <= TERM_EPS) continue;
+    const bits: number[] = [];
+    // Position j of a term is arrangement qubit j, so it carries bit j of `i`.
+    for (let j = 0; j < k; j++) bits.push((i >> j) & 1);
+    terms.push({ bits, amp: a });
+  }
+  return buildTargets(k, { placement: 'ordered', families: [terms] });
 }
 
 // -- per-hole term families --------------------------------------------------
@@ -355,6 +399,8 @@ const TARGETS: Map<number, StateVector[]> = new Map(
  *  one the Q-sphere ghosts (#58) and the target outline are drawn from. Fidelity
  *  scoring still accepts every placement (see `bestFidelity`). */
 export function holeTargetState(hole: Hole): StateVector {
+  // Generated holes (random course) carry their own canonical target.
+  if (hole.canonicalTarget) return hole.canonicalTarget;
   const spec = holeSpec(hole.hole, hole.qubits);
   return buildTarget(
     Array.from({ length: hole.qubits }, (_, i) => i),
@@ -386,7 +432,9 @@ export function holeHighlight(hole: Hole): Set<number> {
  */
 export function bestFidelity(circuit: Circuit, hole: Hole): number {
   const sv = statevector(circuit);
-  const targets = TARGETS.get(hole.hole) ?? [];
+  // Generated holes (random course, #70) carry their own placement list; fixed
+  // holes read the precomputed table, keyed by hole number.
+  const targets = hole.targets ?? TARGETS.get(hole.hole) ?? [];
   let best = 0;
   for (const t of targets) {
     const f = fidelity(sv, t);
@@ -487,12 +535,22 @@ export interface CourseTotals {
   readonly vsPar: number;
 }
 
-/** Running total across completed holes (those with a recorded best score). */
-export function courseTotals(best: Readonly<Record<number, number>>): CourseTotals {
+/** Total par of a course — `COURSE_PAR` for the fixed 18, summed for a
+ *  generated one (whose pars are their generators' gate counts). */
+export function coursePar(holes: readonly Hole[] = HOLES): number {
+  return holes.reduce((s, h) => s + h.par, 0);
+}
+
+/** Running total across completed holes (those with a recorded best score).
+ *  `holes` defaults to the fixed course; the random course passes its own. */
+export function courseTotals(
+  best: Readonly<Record<number, number>>,
+  holes: readonly Hole[] = HOLES,
+): CourseTotals {
   let completed = 0;
   let strokes = 0;
   let par = 0;
-  for (const h of HOLES) {
+  for (const h of holes) {
     const b = best[h.hole];
     if (b === undefined) continue;
     completed += 1;
@@ -510,8 +568,28 @@ export function formatVsPar(vsPar: number): string {
 
 // --- state machine (pure) ---------------------------------------------------
 
+/**
+ * Which course is in play (#70).
+ *
+ *  - `'classic'` — the fixed 18 holes of `HOLES`; pars are the minimum stroke
+ *    count + 2 (#69).
+ *  - `'random'` — 18 GENERATED holes over the same round/level structure, whose
+ *    targets come from random circuits built out of the round's clubs. Par is
+ *    the generator's gate count, which already carries its own slack (a random
+ *    generator is essentially never minimal), so no +2 is added.
+ *
+ * Generated holes are derived from `randomSeed` by `@quantum/golfRandom`; the
+ * seed lives on the state so a session's course is stable across re-renders and
+ * hole retries.
+ */
+export type GolfCourse = 'classic' | 'random';
+
 export interface GolfState {
-  /** 0-based index into HOLES. */
+  /** Which course the hole indices refer to (`courseHoles` resolves it). */
+  readonly course: GolfCourse;
+  /** Base seed of the generated course; 0 (unused) on the classic course. */
+  readonly randomSeed: number;
+  /** 0-based index into the course's holes. */
   readonly levelIndex: number;
   /** Latched once the current hole is holed in; cleared by a board-clear advance. */
   readonly holedIn: boolean;
@@ -535,8 +613,37 @@ export interface GolfState {
   readonly gateKeys: GateCounts;
 }
 
-export function initialGolfState(best: Record<number, number> = {}): GolfState {
-  return { levelIndex: 0, holedIn: false, complete: false, best, strokes: 0, gateKeys: NO_GATES };
+/**
+ * A fresh state teed off on hole 1. Defaults to the CLASSIC course; the random
+ * course is entered by passing `('random', seed)` with an EMPTY `best` — a
+ * generated course's scores are session-only and share no numbering with the
+ * fixed one (see `persistsBest`).
+ */
+export function initialGolfState(
+  best: Record<number, number> = {},
+  course: GolfCourse = 'classic',
+  randomSeed = 0,
+): GolfState {
+  return {
+    course,
+    randomSeed,
+    levelIndex: 0,
+    holedIn: false,
+    complete: false,
+    best,
+    strokes: 0,
+    gateKeys: NO_GATES,
+  };
+}
+
+/**
+ * May this state's best scores be written to `GOLF_HOLES_KEY`? Only the classic
+ * course: a generated course's hole numbers mean something different on every
+ * seed, so persisting them would corrupt the device's real card. Random rounds
+ * are session-only by design.
+ */
+export function persistsBest(state: Pick<GolfState, 'course'>): boolean {
+  return state.course === 'classic';
 }
 
 export interface GolfStep {
@@ -586,14 +693,25 @@ export interface GolfStep {
  * The tile stabiliser upstream already hysteresis-filters the camera, so there
  * is no debouncing here: an occlusion that really removes and re-adds a gate
  * costs 2 strokes, because that is what happened on the table.
+ *
+ * ## Courses (#70)
+ * `holes` is the course in play and defaults to the fixed `HOLES`, so every
+ * existing caller is unchanged. A random-course caller passes
+ * `courseHoles(prev)` from `@quantum/golfRandom` (which is where the generated
+ * holes live, keeping this module free of a dependency on the generator).
  */
-export function golfStep(prev: GolfState, circuit: Circuit): GolfStep {
+export function golfStep(
+  prev: GolfState,
+  circuit: Circuit,
+  holes: readonly Hole[] = HOLES,
+): GolfStep {
   const keys = gateCounts(circuit);
 
   // Course finished: a board-clear restarts; otherwise hold the summary.
   if (prev.complete) {
     if (circuit.gates.length === 0) {
       const state: GolfState = {
+        ...prev,
         levelIndex: 0,
         holedIn: false,
         complete: false,
@@ -603,7 +721,7 @@ export function golfStep(prev: GolfState, circuit: Circuit): GolfStep {
       };
       return {
         state,
-        hole: HOLES[0],
+        hole: holes[0],
         fidelity: 0,
         strokes: 0,
         holedIn: false,
@@ -619,7 +737,7 @@ export function golfStep(prev: GolfState, circuit: Circuit): GolfStep {
     // we only carry the baseline so the restart below tees off from empty.
     return {
       state: { ...prev, gateKeys: keys },
-      hole: HOLES[prev.levelIndex],
+      hole: holes[prev.levelIndex],
       fidelity: 0,
       strokes: 0,
       holedIn: false,
@@ -632,7 +750,7 @@ export function golfStep(prev: GolfState, circuit: Circuit): GolfStep {
     };
   }
 
-  const hole = HOLES[prev.levelIndex];
+  const hole = holes[prev.levelIndex];
   const ev = evaluate(circuit, hole);
   // Ball in the hole, pencil down: once latched, teardown edits cost nothing.
   const strokes = prev.holedIn ? prev.strokes : prev.strokes + countsDelta(prev.gateKeys, keys);
@@ -642,7 +760,7 @@ export function golfStep(prev: GolfState, circuit: Circuit): GolfStep {
   if (ev.gateCount === 0) {
     if (prev.holedIn) {
       // Finished the last hole → the course is complete.
-      if (prev.levelIndex >= HOLES.length - 1) {
+      if (prev.levelIndex >= holes.length - 1) {
         return {
           state: { ...prev, holedIn: false, complete: true, strokes: 0, gateKeys: NO_GATES },
           hole,
@@ -658,7 +776,7 @@ export function golfStep(prev: GolfState, circuit: Circuit): GolfStep {
         };
       }
       const levelIndex = prev.levelIndex + 1;
-      const nextHole = HOLES[levelIndex];
+      const nextHole = holes[levelIndex];
       const nextEv = evaluate(circuit, nextHole);
       return {
         state: { ...prev, levelIndex, holedIn: false, strokes: 0, gateKeys: NO_GATES },

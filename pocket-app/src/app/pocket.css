@@ -1746,6 +1746,46 @@ body,
   font-size: 0.7rem;
 }
 
+/* Random course (#70): the header chip that says "these 18 holes were dealt,
+   not authored", and the two-button course picker above the scorecard. */
+.pk-golf-random {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--entangle);
+  color: #fff;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+}
+
+.pk-course-pick {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.pk-course-btn {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-inset);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pk-course-btn.is-active {
+  border-color: var(--entangle);
+  color: var(--text);
+}
+
+.pk-course-btn:active {
+  filter: brightness(1.15);
+}
+
 /* ---- debug panel ------------------------------------------------------ */
 
 .pk-debug {

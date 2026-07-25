@@ -66,12 +66,14 @@ import {
   initialGolfState,
   loadBest,
   saveBest,
-  HOLES,
+  persistsBest,
   clubGateTypes,
   holeHighlight,
   holeTargetState,
+  type GolfCourse,
   type GolfState,
 } from '@quantum/golf';
+import { courseHoles, randomBaseSeed } from '@quantum/golfRandom';
 import {
   detectEnv,
   exitFullscreen,
@@ -481,11 +483,20 @@ export function App() {
       // quantina session falls through to the composer moment path below.
       const effectiveMode: Mode = update.boothMode ?? modeRef.current;
       if (effectiveMode === 'golf') {
-        const step = golfStep(golfStateRef.current, next);
-        golfStateRef.current = step.state;
-        setGolfState(step.state);
+        const prevGolf = golfStateRef.current;
+        const step = golfStep(prevGolf, next, courseHoles(prevGolf));
+        // Finishing a RANDOM course and clearing the board deals a NEW course:
+        // "play again" on a generated round means a fresh 18, not the same 18.
+        const nextGolf =
+          step.restarted && prevGolf.course === 'random'
+            ? initialGolfState({}, 'random', randomBaseSeed())
+            : step.state;
+        golfStateRef.current = nextGolf;
+        setGolfState(nextGolf);
         if (step.justHoledIn && step.scoreName) {
-          saveBest(storage, step.state.best);
+          // Random bests are session-only — a generated hole 7 is a different
+          // hole on every seed, so writing it would corrupt the device's card.
+          if (persistsBest(step.state)) saveBest(storage, step.state.best);
           setCelebration({
             kind: step.hole.qubits >= 3 ? 'ghz' : 'bell',
             k: step.hole.qubits,
@@ -813,6 +824,11 @@ export function App() {
   // the local settings stand otherwise (see `boothOrLocalPanels`).
   const effectivePanels = boothOrLocalPanels(boothPanels, settings.panels);
 
+  // The golf course in play (#70): the fixed 18 holes, or this session's
+  // generated ones (memoized on the seed inside `courseHoles`).
+  const golfHoles = courseHoles(golfState);
+  const currentLevel = golfHoles[golfState.levelIndex];
+
   // Display-only wire count: the recognized `circuit` is always 5 qubits, but
   // the editor draws `effectiveWires` wires (compact auto-grows 3→5). Panels,
   // simulation, histogram and QASM all keep the physical 5-qubit `circuit`.
@@ -821,7 +837,7 @@ export function App() {
   // first gate reaches q3, and a single wire on a level-1 hole. It still grows
   // with actual use; `useEditorFit` is fine with 1–2 wires (a shorter editor
   // simply never needs scaling).
-  const golfMinWires = effectiveMode === 'golf' ? HOLES[golfState.levelIndex].qubits : 0;
+  const golfMinWires = effectiveMode === 'golf' ? currentLevel.qubits : 0;
   const displayed = useMemo(
     () => displayCircuit(circuit, effectiveWires, golfMinWires),
     [circuit, effectiveWires, golfMinWires],
@@ -887,7 +903,6 @@ export function App() {
   const hostKnown = servedByHost || settings.boothUrl != null;
   const cameraRoleAvailable = cameraRoleOffered({ hostKnown, hasKey: operatorKeyPresent });
   const streamPill = cameraStreamPill(streamStatus);
-  const currentLevel = HOLES[golfState.levelIndex];
   const golfTargets = useMemo(() => holeHighlight(currentLevel), [currentLevel]);
   const golfTargetState = useMemo(() => holeTargetState(currentLevel), [currentLevel]);
   // The Q-sphere and the bra-ket line show the HOLE's state space, not the full
@@ -959,6 +974,26 @@ export function App() {
       }
     });
 
+  // Switch courses (#70). Always a full re-tee on hole 1, and entering `random`
+  // always deals a FRESH base seed — re-tapping "Random" is how you ask for a
+  // new course. Classic reloads the device's persisted card; random starts with
+  // an empty, session-only one. In build-on-screen mode the board is emptied
+  // too, so the new hole 1 tees off from zero strokes instead of charging the
+  // previous hole's leftover tiles as adds.
+  //
+  // Pocket ONLY: the kiosk (KioskView) stays on the classic course by design —
+  // its surface is operator-layout-driven and unattended, while choosing a
+  // random round is a per-visitor decision with nobody there to make it.
+  const pickCourse = (course: GolfCourse) => {
+    const fresh =
+      course === 'random'
+        ? initialGolfState({}, 'random', randomBaseSeed())
+        : initialGolfState(loadBest(storage));
+    golfStateRef.current = fresh;
+    setGolfState(fresh);
+    if (manual) manualSourceRef.current.clear();
+  };
+
   const sidebar = isGolf ? (
     <>
       {showCamera && cameraPanel}
@@ -976,6 +1011,27 @@ export function App() {
           />
         </div>
       </div>
+      <div key="golfcourse">
+        <div className="pk-label">Course</div>
+        <div className="pk-course-pick" role="group" aria-label="golf course">
+          <button
+            type="button"
+            className={`pk-course-btn${golfState.course === 'classic' ? ' is-active' : ''}`}
+            aria-pressed={golfState.course === 'classic'}
+            onClick={() => pickCourse('classic')}
+          >
+            Classic 18
+          </button>
+          <button
+            type="button"
+            className={`pk-course-btn${golfState.course === 'random' ? ' is-active' : ''}`}
+            aria-pressed={golfState.course === 'random'}
+            onClick={() => pickCourse('random')}
+          >
+            {golfState.course === 'random' ? 'New random 18' : 'Random 18'}
+          </button>
+        </div>
+      </div>
       <Scorecard
         key="scorecard"
         state={golfState}
@@ -984,12 +1040,17 @@ export function App() {
         // an explicit Next-hole button; it empties the manual board, which IS
         // the golf advance trigger (camera mode keeps the physical ritual). On
         // the finished course the board is already empty, so restarting resets
-        // the golf state directly (a re-clear wouldn't change the circuit).
+        // the golf state directly (a re-clear wouldn't change the circuit) —
+        // and a finished RANDOM course restarts on a brand-new seed (#70).
         onNextLevel={
           manual
             ? () => {
-                if (golfStateRef.current.complete) {
-                  const fresh = initialGolfState(golfStateRef.current.best);
+                const cur = golfStateRef.current;
+                if (cur.complete) {
+                  const fresh =
+                    cur.course === 'random'
+                      ? initialGolfState({}, 'random', randomBaseSeed())
+                      : initialGolfState(cur.best);
                   golfStateRef.current = fresh;
                   setGolfState(fresh);
                 }
