@@ -58,7 +58,7 @@ import { useRoute } from './hashNav';
 import { settingsStore, useSettings, type Mode, type PanelId } from './settings';
 import { QuantinaPanel, useQuantinaPack } from './QuantinaPanel';
 import { RunnerGame } from './RunnerGame';
-import { displayCircuit } from '@shared/display/displayWires';
+import { displayCircuit, highestUsedRow } from '@shared/display/displayWires';
 import { HINTS, HINT_ROTATE_MS } from '@shared/display/hints';
 import { editorFit, editorNaturalHeight, type EditorFit } from './editorFit';
 import {
@@ -887,6 +887,11 @@ export function App() {
   const currentLevel = HOLES[golfState.levelIndex];
   const golfTargets = useMemo(() => holeHighlight(currentLevel), [currentLevel]);
   const golfTargetState = useMemo(() => holeTargetState(currentLevel), [currentLevel]);
+  // The Q-sphere and the bra-ket line show the HOLE's state space, not the full
+  // five qubits: a level-2 hole gets a 4-node sphere and 2-bit kets. Untouched
+  // qubits are exactly |0⟩, so restricting to the first 2^n amplitudes is
+  // lossless; if play strays onto higher wires the space auto-grows with them.
+  const golfStateQubits = Math.max(currentLevel.qubits, highestUsedRow(circuit) + 1);
   // Golf hands out clubs, not the whole bag (#55): while building a hole on
   // screen the library palette offers exactly this round's gate set. Everywhere
   // else it stays `undefined` — the full palette, unchanged.
@@ -962,6 +967,7 @@ export function App() {
             view={currentLevel.view}
             targets={golfTargets}
             targetState={golfTargetState}
+            n={golfStateQubits}
             showKet
             classPrefix="pk"
           />

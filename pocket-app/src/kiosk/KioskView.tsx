@@ -64,7 +64,7 @@ import { NoisyRun } from './NoisyRun';
 import { TouchInspector } from './TouchInspector';
 import { Scorecard } from './Scorecard';
 import { isTouchEnabled } from './touch';
-import { displayCircuit } from '@shared/display/displayWires';
+import { displayCircuit, highestUsedRow } from '@shared/display/displayWires';
 import { HINTS, HINT_ROTATE_MS } from '@shared/display/hints';
 import { EvolvingState } from '@shared/display/EvolvingState';
 import {
@@ -408,6 +408,7 @@ export function KioskView() {
             view={currentLevel.view}
             targets={golfTargets}
             targetState={golfTargetState}
+            n={Math.max(currentLevel.qubits, highestUsedRow(liveCircuit) + 1)}
             showKet
             classPrefix="bo"
           />
