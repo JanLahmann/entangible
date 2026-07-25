@@ -220,7 +220,8 @@ export function GuidePage() {
             No printer <i>and</i> no camera? Choose <b>Build on screen</b> (Settings → Input, or the
             button on the start screen) to place gates directly in the editor — play the 18-hole
             Quantum Golf course (superposition to CH-only Cascade) and transfer to the Composer, all
-            with no hardware at all.
+            with no hardware at all. In golf the on-screen palette hands you only the current
+            round's clubs; outside golf you get the full gate set.
           </p>
         </section>
 

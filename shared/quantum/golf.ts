@@ -26,7 +26,7 @@
  * shared/display/outcomes.ts. Internally targets live in the little-endian
  * statevector basis (index i has qubit q set when (i >> q) & 1).
  */
-import type { Circuit } from '@qamposer/react';
+import type { Circuit, GateType } from '@qamposer/react';
 import { fidelity, statevector, DIM, NUM_QUBITS, type Complex, type StateVector } from './statevector';
 
 export const HOLE_IN_THRESHOLD = 0.99;
@@ -80,6 +80,20 @@ export interface Hole {
   readonly par: number;
   /** The round's cumulative gate-set hint. */
   readonly clubs: readonly string[];
+}
+
+/**
+ * The clubs of `hole`'s round as `@qamposer/react` gate types — what the
+ * on-screen gate palette offers while a golf hole is built by hand (task #55).
+ * The physical board cannot restrict tiles, so on the table the clubs stay a
+ * hint; on screen we hand out exactly the round's set, so the palette teaches
+ * the round instead of every gate the library knows.
+ *
+ * Only 'CX' needs translating — the library spells the controlled-NOT 'CNOT';
+ * every other club ('X','H','Y','Z','S','T','CH') is already its library name.
+ */
+export function clubGateTypes(hole: Hole): GateType[] {
+  return hole.clubs.map((c) => (c === 'CX' ? 'CNOT' : c) as GateType);
 }
 
 // ---------------------------------------------------------------------------
@@ -357,33 +371,17 @@ export function holeHighlight(hole: Hole): Set<number> {
 }
 
 /**
- * The statevector engine (shared/quantum/statevector.ts, read-only) natively
- * applies H/X/Y/Z/RX/RY/RZ and the controlled gates, but NOT the standalone
- * phase tiles S (marker 40) and T (marker 41). Those are exactly the D/X "clubs".
- * S ≡ RZ(π/2) and T ≡ RZ(π/4) up to a GLOBAL phase — which fidelity ignores — so
- * we rewrite them to the equivalent RZ rotation before simulating. This lets a
- * hole be solved with either the dedicated S/T tile or the RZ(π/2)/RZ(π/4) tile.
- */
-function normalizeForGolf(circuit: Circuit): Circuit {
-  let changed = false;
-  const gates = circuit.gates.map((g) => {
-    const t = g.type as string;
-    if (t === 'S' || t === 'T') {
-      changed = true;
-      return { ...g, type: 'RZ', parameter: t === 'S' ? Math.PI / 2 : Math.PI / 4 } as typeof g;
-    }
-    return g;
-  });
-  return changed ? { ...circuit, gates } : circuit;
-}
-
-/**
  * Best fidelity of `circuit`'s state against a hole's target over every valid
  * placement (unordered subsets for symmetric targets, ordered arrangements for
  * asymmetric ones; a "family" hole tries each variant too).
+ *
+ * The D/X clubs S and T reach us either as native `S`/`T` gates (the on-screen
+ * palette) or as RZ(π/2)/RZ(π/4) (the printed tiles 40/41 emit their RZ
+ * equivalent). The engine applies both spellings; they differ by a GLOBAL phase
+ * only, which fidelity ignores — so a hole holes in whichever tile was used.
  */
 export function bestFidelity(circuit: Circuit, hole: Hole): number {
-  const sv = statevector(normalizeForGolf(circuit));
+  const sv = statevector(circuit);
   const targets = TARGETS.get(hole.hole) ?? [];
   let best = 0;
   for (const t of targets) {

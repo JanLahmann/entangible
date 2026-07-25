@@ -27,8 +27,9 @@ function near(a: number, b: number): boolean {
 
 /**
  * One friendly sentence explaining what a gate does, per {@link Gate} type.
- * Covers the eight `GateType`s; S and T reach the display as `RZ` with a fixed
- * angle (π/2, π/4), which we name back for the visitor.
+ * Covers the library `GateType`s; the printed S and T tiles reach the display as
+ * `RZ` with a fixed angle (π/2, π/4), which we name back for the visitor, while
+ * the on-screen palette drops native `S`/`T` gates — both get the same sentence.
  */
 export function gateInspectCopy(gate: Gate): string {
   const q = gate.qubit ?? 0;
@@ -41,6 +42,10 @@ export function gateInspectCopy(gate: Gate): string {
       return `Y flips q${q} and adds a phase — a bit-flip and phase-flip together.`;
     case 'Z':
       return `Z leaves 0 alone but flips the phase of 1 on q${q} (a phase flip).`;
+    case 'S':
+      return `S adds a quarter-turn phase to q${q} (a √Z gate).`;
+    case 'T':
+      return `T adds an eighth-turn phase to q${q} (a √S gate).`;
     case 'CNOT': {
       const c = gate.control ?? 0;
       const t = gate.target ?? 0;

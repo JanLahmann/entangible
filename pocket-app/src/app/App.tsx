@@ -67,6 +67,7 @@ import {
   loadBest,
   saveBest,
   HOLES,
+  clubGateTypes,
   holeHighlight,
   holeTargetState,
   type GolfState,
@@ -880,6 +881,13 @@ export function App() {
   const currentLevel = HOLES[golfState.levelIndex];
   const golfTargets = useMemo(() => holeHighlight(currentLevel), [currentLevel]);
   const golfTargetState = useMemo(() => holeTargetState(currentLevel), [currentLevel]);
+  // Golf hands out clubs, not the whole bag (#55): while building a hole on
+  // screen the library palette offers exactly this round's gate set. Everywhere
+  // else it stays `undefined` — the full palette, unchanged.
+  const paletteGates = useMemo(
+    () => (isGolf ? clubGateTypes(currentLevel) : undefined),
+    [isGolf, currentLevel],
+  );
 
   // In-browser noise model (composer only — golf stays ideal). Memoized on
   // (circuit, preset, mode): the density-matrix sim is ~ms but must not re-run
@@ -1175,10 +1183,11 @@ export function App() {
               style={stageMinH !== undefined ? { minHeight: stageMinH } : undefined}
             >
               {/* Manual mode: the library's own gate palette — the visible
-                  build-on-screen affordance (drag a gate onto a wire). */}
+                  build-on-screen affordance (drag a gate onto a wire). In golf
+                  it is narrowed to the current round's clubs (#55). */}
               {manual && (
                 <div className="pk-manual-palette">
-                  <Operations />
+                  <Operations gateTypes={paletteGates} />
                 </div>
               )}
               <div

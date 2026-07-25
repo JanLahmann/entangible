@@ -184,6 +184,37 @@ describe('generic controlled-U (task #51)', () => {
   });
 });
 
+// Native S/T (#55): the printed tiles emit RZ(π/2)/RZ(π/4), but the on-screen
+// gate palette drops real `S`/`T` gates — both spellings must simulate.
+describe('native phase gates S / T', () => {
+  it('S phases |1⟩ by i and leaves |0⟩ alone', () => {
+    const sv = statevector(circuit([H(0), g({ type: 'S', qubit: 0, position: 1 })]));
+    expect(sv[0].re).toBeCloseTo(Math.SQRT1_2, 12);
+    expect(sv[0].im).toBeCloseTo(0, 12);
+    expect(sv[1].re).toBeCloseTo(0, 12);
+    expect(sv[1].im).toBeCloseTo(Math.SQRT1_2, 12);
+  });
+
+  it('T phases |1⟩ by e^{iπ/4}', () => {
+    const sv = statevector(circuit([H(0), g({ type: 'T', qubit: 0, position: 1 })]));
+    expect(sv[1].re).toBeCloseTo(0.5, 12);
+    expect(sv[1].im).toBeCloseTo(0.5, 12);
+  });
+
+  it('matches the RZ spelling of the same tile up to a global phase', () => {
+    const withS = statevector(circuit([H(0), g({ type: 'S', qubit: 0, position: 1 })]));
+    const withRz = statevector(
+      circuit([H(0), g({ type: 'RZ', qubit: 0, parameter: Math.PI / 2, position: 1 })]),
+    );
+    expect(fidelity(withS, withRz)).toBeCloseTo(1, 12);
+    const withT = statevector(circuit([H(0), g({ type: 'T', qubit: 0, position: 1 })]));
+    const withRz4 = statevector(
+      circuit([H(0), g({ type: 'RZ', qubit: 0, parameter: Math.PI / 4, position: 1 })]),
+    );
+    expect(fidelity(withT, withRz4)).toBeCloseTo(1, 12);
+  });
+});
+
 describe('applyGatesTo (#57)', () => {
   it('evolves an arbitrary start state, without mutating it', () => {
     // Start from |00001⟩ (q0 set) and apply X on q0 → back to |00000⟩.

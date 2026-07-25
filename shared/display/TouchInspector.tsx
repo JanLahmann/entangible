@@ -12,7 +12,9 @@
  * drag-to-rotate) and resolves the tapped element to either a gate or an
  * outcome column:
  *   - Gate: the `@qamposer/react` editor renders each gate as a
- *     `.circuit-editor__gate` / `.circuit-editor__cnot` child of
+ *     `.circuit-editor__gate` (single-qubit box) / `.circuit-editor__controlled`
+ *     (the controlled family CNOT/CY/CZ/CH/CS/CT/CCX, drawn as control dot +
+ *     line + target) child of
  *     `.circuit-editor__gates`, in `circuit.gates` order with no DOM id. We map
  *     the tapped element to its Gate by its index among those siblings — the
  *     circuit is controlled (never reordered) and the wire-trim transform keeps
@@ -70,12 +72,17 @@ export function outcomeInspectFromAttrs(
   return outcomeInspectCopy(bits, prob);
 }
 
-/** Resolve a tapped gate/cnot element to its Gate copy via sibling index order. */
+/** The editor's per-gate elements: a plain box, or a controlled-gate shape. */
+export const GATE_ELEMENT_SELECTOR = '.circuit-editor__gate, .circuit-editor__controlled';
+
+/** Resolve a tapped gate element to its Gate copy via sibling index order. */
 function gateFromElement(el: Element, circuit: Circuit): string | null {
   const container = el.closest('.circuit-editor__gates');
   if (!container) return null; // preview / toolbar gate — not a real gate
   const siblings = Array.from(
-    container.querySelectorAll(':scope > .circuit-editor__gate, :scope > .circuit-editor__cnot'),
+    container.querySelectorAll(
+      ':scope > .circuit-editor__gate, :scope > .circuit-editor__controlled',
+    ),
   );
   return gateInspectAt(circuit, siblings.indexOf(el));
 }
@@ -135,7 +142,7 @@ export function TouchInspector({
       const target = e.target as Element | null;
       if (!target) return;
 
-      const gateEl = target.closest('.circuit-editor__gate, .circuit-editor__cnot');
+      const gateEl = target.closest(GATE_ELEMENT_SELECTOR);
       if (gateEl) {
         const text = gateFromElement(gateEl, circuitRef.current);
         if (text) {

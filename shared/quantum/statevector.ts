@@ -74,6 +74,15 @@ export function singleQubitUnitary(g: Gate): Matrix2 | null {
       return [cx(0), cx(0, -1), cx(0, 1), cx(0)];
     case 'Z':
       return [cx(1), cx(0), cx(0), cx(-1)];
+    // Native phase gates. The printed S/T tiles reach us as RZ(π/2)/RZ(π/4)
+    // (markers 40/41 carry an `emitAs`), but the on-screen palette drops real
+    // `S`/`T` gates, so both spellings must simulate. S = diag(1, i) and
+    // T = diag(1, e^{iπ/4}) differ from their RZ equivalents by a global phase
+    // only — invisible to probabilities and to fidelity.
+    case 'S':
+      return [cx(1), cx(0), cx(0), cx(0, 1)];
+    case 'T':
+      return [cx(1), cx(0), cx(0), cx(R, R)];
     case 'RX': {
       const t = (g.parameter ?? 0) / 2;
       const c = Math.cos(t);

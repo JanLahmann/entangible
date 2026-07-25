@@ -6,6 +6,7 @@ import {
   HOLE_IN_THRESHOLD,
   COURSE_PAR,
   ROUND_CLUBS,
+  clubGateTypes,
   bestFidelity,
   evaluate,
   scoreName,
@@ -133,6 +134,28 @@ describe('course definition', () => {
     expect(hole(17).clubs).toEqual(ROUND_CLUBS.extra);
     expect(ROUND_CLUBS.extra).toContain('CH');
     expect(ROUND_CLUBS.extra).toContain('T');
+  });
+
+  it('maps the clubs to library gate types for the on-screen palette (#55)', () => {
+    // Only CX is respelled; the order of the clubs hint is preserved.
+    expect(clubGateTypes(hole(1))).toEqual(['X', 'H', 'CNOT']);
+    expect(clubGateTypes(hole(7))).toEqual(['X', 'H', 'CNOT', 'Y']);
+    expect(clubGateTypes(hole(13))).toEqual(['X', 'H', 'CNOT', 'Y', 'Z', 'S']);
+    expect(clubGateTypes(hole(17))).toEqual(['X', 'H', 'CNOT', 'Y', 'Z', 'S', 'T', 'CH']);
+  });
+
+  it('offers a club for every hole, and never a gate the library cannot drop', () => {
+    // Guards the palette prop: an unknown type would silently vanish from the
+    // library's gate list, leaving a round short of a club.
+    const LIBRARY_TYPES = new Set([
+      'H', 'X', 'Y', 'Z', 'S', 'T', 'RX', 'RY', 'RZ',
+      'CNOT', 'CY', 'CZ', 'CH', 'CS', 'CT', 'CCX',
+    ]);
+    for (const h of HOLES) {
+      const types = clubGateTypes(h);
+      expect(types.length, `hole ${h.hole} (${h.code})`).toBe(h.clubs.length);
+      for (const t of types) expect(LIBRARY_TYPES.has(t), `hole ${h.hole}: ${t}`).toBe(true);
+    }
   });
 });
 

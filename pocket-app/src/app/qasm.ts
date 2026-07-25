@@ -24,6 +24,11 @@ const GATE_TO_QASM: Readonly<Record<string, string>> = {
   RX: 'rx',
   RY: 'ry',
   RZ: 'rz',
+  // Native S/T: the printed tiles emit RZ(π/2)/RZ(π/4) (so `qasm.py`, which only
+  // ever sees board circuits, has no entry), but the on-screen gate palette
+  // drops real `S`/`T` gates and those must survive the Composer handoff.
+  S: 's',
+  T: 't',
   CY: 'cy',
   CZ: 'cz',
   CH: 'ch',
