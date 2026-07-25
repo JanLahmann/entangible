@@ -16,11 +16,16 @@ import {
   holeTargetState,
   bestFidelity,
   saveBest,
+  scoreName,
+  COURSE_PAR,
   GOLF_HOLES_KEY,
   HOLE_IN_THRESHOLD,
 } from './golf';
+import { optimalSearch } from './optimal';
 import {
   ROUND_BONUS,
+  GEN_STATE_BUDGET,
+  type GeneratedHole,
   courseHoles,
   currentHole,
   generateCourse,
@@ -29,6 +34,25 @@ import {
 } from './golfRandom';
 
 const CONTROLLED = new Set(['CNOT', 'CX', 'CY', 'CZ', 'CH', 'CS', 'CT', 'CCX']);
+
+/**
+ * One shared corpus of generated courses, built lazily and walked by every
+ * property loop below. Generating a course now runs an optimal search per hole
+ * (#76, ~0.4 s a course), so paying for a fresh 40-seed corpus in each of six
+ * properties is the difference between a few seconds and a minute and a half.
+ * The properties are independent of one another, so checking all of them
+ * against the same deals is exactly as strong as checking each against its own.
+ */
+const CORPUS_SEEDS = Array.from({ length: 24 }, (_, i) => i * 7919 + 11);
+let corpusCache: readonly (readonly GeneratedHole[])[] | null = null;
+function corpus(): readonly (readonly GeneratedHole[])[] {
+  if (!corpusCache) corpusCache = CORPUS_SEEDS.map((seed) => generateCourse(seed));
+  return corpusCache;
+}
+/** Every generated hole in the corpus, flattened. */
+function corpusHoles(): readonly GeneratedHole[] {
+  return corpus().flat();
+}
 
 /** A comparable fingerprint of a generated circuit (ids aside). */
 const shape = (c: Circuit) =>
@@ -101,23 +125,80 @@ describe('random course generation (#70)', () => {
     for (const h of course) expect(h.clubs).toEqual(ROUND_CLUBS[h.round]);
   });
 
-  it('par is the generator gate count + 1 slack (level + round bonus + 1)', () => {
-    for (const { hole, circuit } of generateCourse(99)) {
-      expect(hole.par).toBe(circuit.gates.length + 1);
-      expect(hole.par).toBe(hole.level + ROUND_BONUS[hole.round] + 1);
+  it('par is the COMPUTED optimal + 2 — the classic course’s rule (#76)', () => {
+    for (const seed of [99, 4242]) {
+      for (const { hole, circuit } of generateCourse(seed)) {
+        const size = hole.level + ROUND_BONUS[hole.round];
+        expect(circuit.gates.length, `${hole.code} generator`).toBe(size);
+        // Re-run the very search generation used (same budget → same verdict).
+        const it = optimalSearch(holeTargetState(hole), clubGateTypes(hole), hole.qubits, {
+          maxDepth: size - 1,
+          stateBudget: GEN_STATE_BUDGET,
+        });
+        let step = it.next();
+        while (!step.done) step = it.next();
+        const found = step.value;
+        const where = `seed ${seed} ${hole.code}`;
+        if (found.status === 'shorter') {
+          // Something shorter exists: par is IT plus two, and it is what the
+          // card reveals — not the accident that dealt the hole.
+          expect(hole.par, where).toBe(found.gates.length + 2);
+          expect(hole.solution!.gates.length, where).toBe(found.gates.length);
+          expect(hole.solution!.gates.length).toBeLessThan(size);
+        } else if (found.status === 'minimal') {
+          // The deal happens to be minimal: par is the deal plus two.
+          expect(hole.par, where).toBe(size + 2);
+          expect(hole.solution!.gates.length, where).toBe(size);
+        } else {
+          // Budget ran out (the wide EXTRA slot): the pre-#76 fallback stands.
+          expect(hole.par, where).toBe(size + 1);
+          expect(hole.solution, where).toBe(circuit);
+        }
+      }
     }
-    // …and therefore a random course's par is its own sum, not COURSE_PAR.
-    expect(coursePar(randomCourse(99))).toBe(
-      HOLES.reduce((s, h) => s + h.level + ROUND_BONUS[h.round] + 1, 0),
-    );
+    // A random course still sums its OWN pars, whatever they came out to be.
+    const holes = randomCourse(99);
+    expect(coursePar(holes)).toBe(holes.reduce((s, h) => s + h.par, 0));
+    expect(coursePar(holes)).not.toBe(COURSE_PAR);
   });
 
+  it('floors MEDIUM above the easy round, and leaves M1 the one-gate warm-up (#76)', () => {
+    // The defect this fixes: a medium target used to be buildable in exactly
+    // `level` gates — the same as the easy round's GHZ of that width — in
+    // 84–100% of deals. Medium must now PROVE it needs more.
+    for (const { hole } of corpusHoles()) {
+      {
+        if (hole.round !== 'medium') continue;
+        const best = hole.solution!.gates.length;
+        if (hole.level === 1) {
+          // M1 is exempt by design — and on one wire the medium clubs cannot
+          // reach anything longer anyway once (a) and (c) have spoken.
+          expect(best, `M1 ${hole.code}`).toBe(1);
+          expect(hole.par).toBe(3);
+        } else {
+          expect(best, hole.code).toBeGreaterThan(hole.level);
+          expect(hole.par).toBeGreaterThan(hole.level + 2);
+        }
+      }
+    }
+  });
+
+  it('generates a whole course inside the interaction budget (#76)', () => {
+    // The searches run at generation time, so "Random 18" pays for them once.
+    // `randomCourse` memoizes, so this is a one-off on the tap that starts the
+    // round — measured ~0.4 s here, and the guard is deliberately loose so a
+    // slower CI box does not make it flaky.
+    const t0 = performance.now();
+    generateCourse(20260725);
+    expect(performance.now() - t0).toBeLessThan(2000);
+  }, 20_000);
+
   it('draws only legal gates: the round’s clubs, on the hole’s qubits', () => {
-    for (let seed = 0; seed < 40; seed++) {
-      for (const { hole, circuit } of generateCourse(seed * 7919)) {
+    for (const { hole, circuit } of corpusHoles()) {
+      {
         const legal = new Set<string>(clubGateTypes(hole));
         for (const g of circuit.gates) {
-          expect(legal.has(g.type)).toBe(true);
+          expect(legal.has(g.type), hole.code).toBe(true);
           if (CONTROLLED.has(g.type)) {
             // Controlled gates need a second wire: level ≥ 2, control ≠ target.
             expect(hole.level).toBeGreaterThanOrEqual(2);
@@ -133,8 +214,8 @@ describe('random course generation (#70)', () => {
   });
 
   it('enforces both constraints on every generated hole (property loop)', () => {
-    for (let seed = 0; seed < 40; seed++) {
-      for (const { hole, circuit } of generateCourse(seed * 104729 + 3)) {
+    for (const { hole, circuit } of corpusHoles()) {
+      {
         const target = statevector(circuit);
         // (a) the target is not |0…0⟩, which an empty board would hole in.
         expect(target[0].re ** 2 + target[0].im ** 2).toBeLessThan(1 - 1e-9);
@@ -179,8 +260,8 @@ describe('random course generation (#70)', () => {
   });
 
   it('keeps EASY and MEDIUM targets phase-free (property loop)', () => {
-    for (let seed = 0; seed < 40; seed++) {
-      for (const { hole, circuit } of generateCourse(seed * 7907 + 11)) {
+    for (const { hole, circuit } of corpusHoles()) {
+      {
         if (hole.round !== 'easy' && hole.round !== 'medium') continue;
         const target = statevector(circuit);
         // Every populated amplitude sits at 0° against the reference…
@@ -205,8 +286,8 @@ describe('random course generation (#70)', () => {
   });
 
   it('caps every target at 16 populated terms, so the ket prints in full', () => {
-    for (let seed = 0; seed < 40; seed++) {
-      for (const { hole, circuit } of generateCourse(seed * 3571 + 17)) {
+    for (const { hole, circuit } of corpusHoles()) {
+      {
         expect(populatedTerms(statevector(circuit), hole.level)).toBeLessThanOrEqual(16);
         // The scorecard ket is therefore never elided — no "+ ⋯" on a target.
         expect(hole.targetKet).not.toContain('⋯');
@@ -249,8 +330,8 @@ describe('random course generation (#70)', () => {
   it('leaves DIFFICULT and EXTRA free to carry phases — the rule does not leak', () => {
     let phased = 0;
     let total = 0;
-    for (let seed = 0; seed < 30; seed++) {
-      for (const { hole, circuit } of generateCourse(seed * 31 + 5)) {
+    for (const { hole, circuit } of corpusHoles()) {
+      {
         if (hole.round === 'easy' || hole.round === 'medium') continue;
         total += 1;
         const visuals = basisVisuals(statevector(circuit), 1 << hole.level);
@@ -260,19 +341,26 @@ describe('random course generation (#70)', () => {
         if (hasPhase) phased += 1;
       }
     }
-    expect(total).toBe(30 * 8); // 5 difficult + 3 extra holes per course
+    expect(total).toBe(CORPUS_SEEDS.length * 8); // 5 difficult + 3 extra per course
     // Phase IS the D/X lesson, so a large fraction of them must carry one.
     expect(phased).toBeGreaterThan(total / 5);
 
-    // Anchored on one shipped seed: the new rule cost M4 its minus sign, while
-    // D4 and X1 — same base seed, untouched slot seeds — still carry theirs.
-    const course = generateCourse(20260725);
-    expect(course[8].hole.code).toBe('M4');
-    expect(course[8].hole.targetKet).not.toContain('−');
-    expect(course[13].hole.code).toBe('D4');
-    expect(course[13].hole.targetKet).toContain('−');
-    expect(course[15].hole.code).toBe('X1');
-    expect(course[15].hole.targetKet).toContain('−');
+    // Read off the kets rather than one anchored seed: no EASY or MEDIUM hole
+    // may print a minus sign, and the D/X rounds must keep printing them.
+    let phaseFreeKets = 0;
+    let phasedDX = 0;
+    for (const { hole } of corpusHoles()) {
+      {
+        if (hole.round === 'easy' || hole.round === 'medium') {
+          expect(hole.targetKet, hole.code).not.toContain('−');
+          phaseFreeKets += 1;
+        } else if (hole.targetKet.includes('−') || hole.targetKet.includes('i')) {
+          phasedDX += 1;
+        }
+      }
+    }
+    expect(phaseFreeKets).toBe(CORPUS_SEEDS.length * 10); // 5 easy + 5 medium per course
+    expect(phasedDX).toBeGreaterThan(0);
   });
 
   it('still accepts honest PRODUCT targets — every wire busy is enough', () => {
@@ -303,10 +391,11 @@ describe('random course generation (#70)', () => {
       const ev = evaluate(circuit, hole);
       expect(ev.fidelity).toBeGreaterThan(1 - 1e-9);
       expect(ev.holedIn).toBe(true);
-      expect(ev.gateCount).toBe(hole.par - 1); // generator = par − 1 slack
-      // …which is exactly the answer the card reveals after a hole-in (#71):
-      // the hole carries its generator, so the reveal inherits this proof.
-      expect(hole.solution).toBe(circuit);
+      expect(ev.gateCount).toBe(hole.level + ROUND_BONUS[hole.round]); // the deal
+      // The card reveals the BEST circuit, not the deal (#76): never longer
+      // than the generator, and it holes in just the same.
+      expect(hole.solution!.gates.length).toBeLessThanOrEqual(ev.gateCount);
+      expect(evaluate(hole.solution!, hole).holedIn, hole.code).toBe(true);
     }
     // The ordered-placement machinery (as on the Cascade hole) means the same
     // answer built on other rows, reversed, scores identically.
@@ -369,14 +458,17 @@ describe('course selection', () => {
     let state = initialGolfState({}, 'random', seed);
     const empty: Circuit = { qubits: 5, gates: [] };
 
-    // Hole 1: play the generator, hole in at exactly par (every gate an add).
+    // Hole 1: play the generator. It holes in, and costs its own gate count —
+    // which, with par now the OPTIMAL + 2 (#76), is scored honestly against the
+    // best line rather than against the deal.
+    const genLen = course[0].circuit.gates.length;
     let step = golfStep(state, course[0].circuit, holes);
     expect(step.hole.name).toBe('Random E1');
     expect(step.holedIn).toBe(true);
-    expect(step.strokes).toBe(holes[0].par - 1);
-    expect(step.scoreName).toBe('BIRDIE'); // generator play beats par by the slack stroke
+    expect(step.strokes).toBe(genLen);
+    expect(step.scoreName).toBe(scoreName(genLen, holes[0].par));
     state = step.state;
-    expect(state.best[1]).toBe(holes[0].par - 1);
+    expect(state.best[1]).toBe(genLen);
 
     // Clear → advance to the generated hole 2.
     step = golfStep(state, empty, holes);
@@ -386,7 +478,7 @@ describe('course selection', () => {
 
     // The running total is measured against the GENERATED pars.
     expect(courseTotals(step.state.best, holes).par).toBe(holes[0].par);
-    expect(courseTotals(step.state.best, holes).vsPar).toBe(-1);
+    expect(courseTotals(step.state.best, holes).vsPar).toBe(genLen - holes[0].par);
   });
 
   it('keeps random bests off the device card (session-only by policy)', () => {

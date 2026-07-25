@@ -9,7 +9,7 @@ import {
   DEFAULT_STATE_BUDGET,
 } from './optimal';
 import { HOLES, clubGateTypes, evaluate, holeTargetState, ROUND_CLUBS, gateTypesForClubs } from './golf';
-import { randomCourse } from './golfRandom';
+import { generateCourse } from './golfRandom';
 import { statevector, zeroState, applyGatesTo, NUM_QUBITS } from './statevector';
 
 let seq = 0;
@@ -200,22 +200,28 @@ describe('cost — the searches the card actually starts', () => {
     }
   }, 60_000);
 
-  it('beats the dealt solution on a random course, and the answer holes in', () => {
-    // Where the feature earns its keep: a generator is essentially never minimal.
-    const course = randomCourse(20260725);
+  it('beats the DEALT generator on a random course, and the answer holes in', () => {
+    // Where the feature earns its keep: a random draw is essentially never a
+    // minimal preparation of its own output. (Since #76 the hole already ships
+    // the shorter circuit as its solution — this searches against the raw deal,
+    // which is what generation itself does.)
     let improved = 0;
-    for (const h of course) {
-      if (h.qubits > 3) continue; // keep the test quick; the wide holes are benched
-      const it = optimalSearch(holeTargetState(h), clubGateTypes(h), h.qubits, {
-        maxDepth: h.solution!.gates.length - 1,
+    let total = 0;
+    for (const { hole, circuit: dealt } of generateCourse(20260725)) {
+      if (hole.qubits > 3) continue; // keep the test quick; wide holes are benched
+      total += 1;
+      const it = optimalSearch(holeTargetState(hole), clubGateTypes(hole), hole.qubits, {
+        maxDepth: dealt.gates.length - 1,
       });
       let step = it.next();
       while (!step.done) step = it.next();
       if (step.value.status !== 'shorter') continue;
       improved += 1;
-      expect(step.value.gates.length).toBeLessThan(h.solution!.gates.length);
-      expect(evaluate(circuit(step.value.gates), h).holedIn, `${h.code}`).toBe(true);
+      expect(step.value.gates.length).toBeLessThan(dealt.gates.length);
+      expect(evaluate(circuit(step.value.gates), hole).holedIn, hole.code).toBe(true);
+      // …and that shorter circuit is exactly what the hole ships (#76).
+      expect(hole.solution!.gates.length).toBe(step.value.gates.length);
     }
-    expect(improved).toBeGreaterThan(0);
+    expect(improved).toBeGreaterThan(total / 2);
   }, 60_000);
 });

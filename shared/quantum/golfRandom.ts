@@ -10,12 +10,18 @@
  * own clubs. You are never handed a state you could not reach with the tiles in
  * front of you, because the target IS something those tiles built.
  *
- * ## Par
- * Par is simply the GENERATOR's gate count. No +2 is added: a randomly drawn
- * circuit is essentially never a minimal preparation of its own output (it
- * wastes gates on cancellations, redundant flips and phases that fidelity
- * ignores), so the slack is already baked in. On the classic course the +2 has
- * to be added by hand because those pars are exact minima.
+ * ## Par (#76)
+ * Par is the target's COMPUTED MINIMUM plus two — the classic course's own rule
+ * (#69), now that `@quantum/optimal` can find that minimum. Par used to be the
+ * generator's gate count + 1, on the theory that a random draw carries its own
+ * redundancy; measuring 832 deals showed it carries a median of TWO wasted
+ * gates, so that rule was handing out par − optimal = 3 (and 4 on a fifth of
+ * EXTRA deals) where the classic course hands out 2. Random holes were a full
+ * stroke more forgiving than fixed ones of the same width. Deriving par from
+ * the optimal makes the two courses score the same way.
+ *
+ * When the search cannot resolve inside `GEN_STATE_BUDGET` — the five-wire
+ * EXTRA slot, sometimes — par falls back to the old generator + 1.
  *
  * ## Generation (pure + seeded)
  * For the slot at (round, level k): draw `k + bonus(round)` gates uniformly from
@@ -50,6 +56,17 @@
  * the easy round. So E and M targets must read as plain positive superpositions;
  * D and X stay unconstrained, because phase IS their lesson.
  *
+ * (e) is the DIFFICULTY floor (#76), and it applies to MEDIUM levels 2–5 only.
+ * The same 832-deal survey found that a medium target is buildable in exactly
+ * `level` gates in 84–100% of deals — the identical gate count to the EASY
+ * round's GHZ of the same width. Medium was not harder than easy; it was easy
+ * wearing a different ket, scored more leniently. So a medium draw must now
+ * PROVE it needs more than `level` gates or be redrawn. M1 is exempt by design
+ * (the one-gate warm-up, and on one wire the medium clubs cannot reach anything
+ * longer once (a) and (c) have spoken); DIFFICULT and EXTRA are exempt because
+ * their optimal lengths genuinely spread (45–67% and 33–48% at the floor), which
+ * is the variance golf is supposed to have.
+ *
  * (d) is the readability floor: you are asked to BUILD this state, so you have to
  * be able to see all of it. The ket line caps at `KET_TERMS` terms and elides the
  * rest with "+ ⋯", which for a target would hide part of the goal — a five-H
@@ -60,8 +77,10 @@
  * draws that clear (a)–(c).
  *
  * Everything is derived from one 32-bit base seed: the slot at index `i` uses
- * `baseSeed + i * 1000`, and a rejected draw retries at `+1` (capped far below
- * the 1000 stride, so slots can never collide). The seed lives on `GolfState`,
+ * `baseSeed + i * SLOT_STRIDE`, and a rejected draw retries at `+1` (capped far
+ * below the stride, so slots can never collide). The optimal search is itself
+ * deterministic, so adding (e) and the computed par keeps a seed's course
+ * exactly reproducible. The seed lives on `GolfState`,
  * which is what makes a session's course stable across re-renders, hole retries
  * and clear-the-board advances.
  *
@@ -73,12 +92,12 @@
  * wires in any order. Fidelity, the hole-in threshold and stroke counting (#68)
  * are entirely unchanged.
  *
- * ## Solution (#71)
- * A generated hole hands its GENERATOR back as `hole.solution`, so the "Show
- * solution" reveal on the scorecard works on the random course exactly as it
- * does on the classic one. There is nothing to derive: the circuit that made the
- * target is by construction an answer to it, and at `size` gates against a par
- * of `size + 1` it beats par.
+ * ## Solution (#71, #76)
+ * `hole.solution` is the BEST circuit known for the target: the shorter one the
+ * optimal search found, or the generator itself when the generator is already
+ * minimal (or the search could not resolve). The reveal should teach the good
+ * way to build the state, not the accident that dealt it. The dealt generator
+ * is still returned on `GeneratedHole.circuit` for tests and tooling.
  *
  * This module depends on `@quantum/golf`, never the reverse: `golfStep` takes
  * the course as an optional parameter and defaults to the fixed `HOLES`, so the
@@ -89,6 +108,7 @@ import { ketTerms } from '@shared/display/KetDisplay';
 import { mulberry32, cryptoRng, type Rng } from '@shared/menu/sample';
 import { basisVisuals } from './qsphere';
 import { statevector, DIM, NUM_QUBITS, type StateVector } from './statevector';
+import { optimalSearch } from './optimal';
 import {
   HOLES,
   ROUND_CLUBS,
@@ -108,20 +128,36 @@ export const ROUND_BONUS: Readonly<Record<GolfRound, number>> = {
 };
 
 /** Seed stride between slots; retries stay well inside it (see MAX_ATTEMPTS). */
-const SLOT_STRIDE = 1000;
+const SLOT_STRIDE = 10_000;
 /**
  * Seed offsets tried before the deterministic fallback, sized for the tightest
  * slots. Keeping five wires alive on a 7-gate draw is genuinely demanding, and
  * the phase-free rule tightens the wide EASY/MEDIUM slots further. Measured
- * acceptance over 4000 seeds per slot, with ALL FOUR constraints: D5 1.77%,
+ * acceptance over 4000 seeds per slot, with constraints (a)–(d): D5 1.77%,
  * X5 1.79%, E5 2.82%, M5 3.46% — everything else far looser (M1 82%, E2 31%).
  * The 16-term cap barely moved those numbers (D5 was 1.78% without it), because
  * a draw wide enough to fill 17+ basis states rarely also keeps every wire
- * alive. At 900 attempts even the worst slot falls through to the fallback with
- * probability ~1e-7 per hole, and the budget still fits inside `SLOT_STRIDE`, so
- * slot seed ranges cannot collide.
+ * alive.
+ *
+ * The MEDIUM floor (e) multiplies into that: only 6–16% of draws that clear
+ * (a)–(d) also need more than `level` gates, so M2–M5 compound down to
+ * 0.4%–2.6% and need thousands of offsets, not hundreds. Measured mean attempts
+ * per accepted hole: M2 39, M3 24, M4 106, M5 253 — worst-case slot M5 falls
+ * through to the fallback with probability (1 − 0.0040)^4000 ≈ 1e-7, the same
+ * safety margin the pre-#76 budget carried. `SLOT_STRIDE` grows with it so the
+ * budget still fits inside one slot's seed range and slots cannot collide.
  */
-const MAX_ATTEMPTS = 900;
+const MAX_ATTEMPTS = 4000;
+/**
+ * States a generation-time optimal search may visit before giving up (#76).
+ * Deliberately far below `@quantum/optimal`'s own default: this runs inside the
+ * draw loop, on every candidate that clears (a)–(d), and course generation must
+ * stay a one-off ~300 ms rather than a multi-second stall. Measured: 20k
+ * resolves every E/M/D slot and X1/X3 essentially always; only the five-wire
+ * EXTRA slot regularly outruns it, and that is exactly the case the
+ * generator-length fallback exists for.
+ */
+export const GEN_STATE_BUDGET = 20_000;
 /** How close |amplitude(|0…0⟩)|² may come to 1 before the target counts as trivial. */
 const TRIVIAL_EPS = 1e-9;
 /** Below this probability an amplitude is not evidence that a qubit is alive. */
@@ -285,13 +321,59 @@ const SLOTS: readonly Slot[] = HOLES.map((h) => ({
   code: h.code,
 }));
 
+/** Constraint (e): a hole must be harder to BUILD than an easy hole of the same
+ *  width (#76). Medium only, from level 2 up — M1 is the one-gate warm-up by
+ *  design, and on one wire the medium clubs {X,H,Y} can only reach |1⟩ and |+⟩
+ *  once (a) and (c) have had their say, so no floor is even possible there.
+ *  DIFFICULT and EXTRA are left alone: their optimal lengths spread 1–6 and 5–8
+ *  across deals, which is legitimate variance, not a mislabelled round. */
+function hasFloor(round: GolfRound, k: number): boolean {
+  return round === 'medium' && k >= 2;
+}
+
+/** What a generation-time optimal search learned about a candidate target. */
+interface OptimalFind {
+  /** Shortest circuit length that prepares the target, or `null` if the search
+   *  ran out of budget before it could tell. */
+  readonly optimal: number | null;
+  /** The shorter circuit itself, when one was found (the generator is not it). */
+  readonly gates: Gate[] | null;
+}
+
+/**
+ * How short this target really is (#76), searched with the shared engine and a
+ * tight budget. `maxDepth = size − 1` asks only "is there something shorter than
+ * the draw?", which is the cheap question; a `minimal` verdict means the draw
+ * itself is the shortest answer.
+ */
+function findOptimalFor(
+  target: StateVector,
+  types: readonly GateType[],
+  k: number,
+  size: number,
+): OptimalFind {
+  const it = optimalSearch(target, types, k, {
+    maxDepth: size - 1,
+    stateBudget: GEN_STATE_BUDGET,
+  });
+  let step = it.next();
+  while (!step.done) step = it.next();
+  const result = step.value;
+  if (result.status === 'shorter') return { optimal: result.gates.length, gates: result.gates };
+  if (result.status === 'minimal') return { optimal: size, gates: null };
+  return { optimal: null, gates: null };
+}
+
 /** A generated hole together with the circuit that defines it (the "answer"). */
 export interface GeneratedHole {
   readonly hole: Hole;
-  /** The generator — a par-beating solution, useful to tests and tooling. Also
-   *  carried on the hole itself as `hole.solution`, which is what the scorecard
-   *  reveals after a hole-in (#71). */
+  /** The generator — the circuit the hole was DEALT from. Still exactly what
+   *  the draw produced, even when the optimal search found something shorter
+   *  and `hole.solution` became that instead (#76). */
   readonly circuit: Circuit;
+  /** Seed offsets consumed before this hole was accepted (1 = first draw).
+   *  Exposed for the `MAX_ATTEMPTS` budget arithmetic and its guard test. */
+  readonly attempts: number;
 }
 
 /** Generate one hole for `slot` from `seed` (deterministic in both). */
@@ -302,7 +384,11 @@ export function generateHole(slot: Slot, seed: number): GeneratedHole {
   const size = k + ROUND_BONUS[slot.round];
   const phaseFree = PHASE_FREE_ROUNDS.has(slot.round);
 
+  const floored = hasFloor(slot.round, k);
+
   let gates: Gate[] | null = null;
+  let found: OptimalFind = { optimal: null, gates: null };
+  let attempts = MAX_ATTEMPTS;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const candidate = drawGates(mulberry32(seed + attempt), types, k, size);
     const target = statevector({ qubits: NUM_QUBITS, gates: candidate });
@@ -310,12 +396,31 @@ export function generateHole(slot: Slot, seed: number): GeneratedHole {
     if (!everyQubitLives(target, k)) continue;
     if (phaseFree && !isPhaseFree(target, k)) continue;
     if (!fitsTheKetLine(target, k)) continue;
+    // (e) — asked LAST, because it is the only expensive constraint: the search
+    // runs on the ~2–30% of draws that already cleared (a)–(d), never on all of
+    // them. It doubles as the source of this hole's par (#76).
+    const optimal = findOptimalFor(target, types, k, size);
+    // A floored slot must be able to PROVE it is above the floor; a search that
+    // ran out of budget proves nothing, so the draw is retried rather than
+    // waved through. Measured: medium never actually exhausts this budget.
+    if (floored && (optimal.optimal === null || optimal.optimal <= k)) continue;
     gates = candidate;
+    found = optimal;
+    attempts = attempt + 1;
     break;
   }
   const circuit: Circuit = { qubits: NUM_QUBITS, gates: gates ?? fallbackGates(types, k, size) };
   const target = statevector(circuit);
   const ket = ketText(target, k);
+  // Par on the classic course's own rule (#69): the MINIMUM plus two, so one
+  // extra gate is a birdie and a small fumble still makes par. When the search
+  // could not resolve — the wide EXTRA slot, occasionally — fall back to the
+  // pre-#76 generator + 1, which is the tightest honest bound we have left.
+  const par = found.optimal === null ? size + 1 : found.optimal + 2;
+  // The reveal (#71) should teach the BEST way to build the target, not the
+  // accident that dealt it; the dealt generator stays on `GeneratedHole.circuit`.
+  const solution: Circuit =
+    found.gates === null ? circuit : { qubits: NUM_QUBITS, gates: found.gates };
 
   const hole: Hole = {
     hole: slot.hole,
@@ -327,21 +432,13 @@ export function generateHole(slot: Slot, seed: number): GeneratedHole {
     view: k === 1 ? 'bloch' : 'qsphere',
     targetKet: ket,
     target: ket,
-    // Par = generator size + 1: the draw usually carries its own redundancy,
-    // but an efficient deal would otherwise leave ZERO slack — with #68's
-    // edit-counted strokes a single fumble would make par unreachable (Jan hit
-    // exactly that on a minimal E3 deal).
-    par: size + 1,
+    par,
     clubs,
     targets: orderedPlacements(k, target),
     canonicalTarget: target,
-    // The generator IS a worked answer (#71): it built this target, and at
-    // `size` gates it beats the hole's par of `size + 1`. Carrying it on the
-    // hole is what lets `courseHoles` hand the scorecard a random round whose
-    // "Show solution" works exactly like the classic one's.
-    solution: circuit,
+    solution,
   };
-  return { hole, circuit };
+  return { hole, circuit, attempts };
 }
 
 /** The full 18-hole generated course for `baseSeed`, with its generators. */

@@ -363,27 +363,25 @@ describe('Scorecard (shared)', () => {
     expect(container.querySelectorAll('.pk-golf-solution').length).toBe(1);
   });
 
-  it('draws a shorter answer under the dealt one when it finds one (#72)', async () => {
-    // A generated hole's answer is its generator, which is essentially never
-    // minimal — this is where the search earns its keep.
+  it('calls a random hole’s solution optimal — generation already shortened it (#76)', async () => {
+    // Since #76 a generated hole ships the SHORTEST circuit it could find, so
+    // the reveal's own search confirms it rather than beating it: one drawing,
+    // labelled optimal. (The two-drawing path stays for the holes whose
+    // generation-time search ran out of budget — the wide EXTRA slot.)
     const state = { ...initialGolfState({}, 'random', 4242), holedIn: true, strokes: 9 };
-    const dealt = randomCourse(4242)[0];
+    const hole = randomCourse(4242)[0];
     const { container } = render(<Scorecard state={state} circuit={bell} classPrefix="pk" />);
     fireEvent.click(container.querySelector('.pk-golf-solution-btn') as HTMLButtonElement);
-    await waitFor(() => expect(container.querySelectorAll('.pk-golf-solution').length).toBe(2));
-
-    const labels = Array.from(container.querySelectorAll('.pk-golf-sol-label')).map(
-      (n) => n.textContent,
+    await waitFor(() =>
+      expect(container.querySelector('.pk-golf-sol-label')?.textContent).toBe(
+        'Solution — optimal',
+      ),
     );
-    expect(labels[0]).toBe('Dealt solution');
-    expect(labels[1]).toMatch(/^Optimal \(\d+ gates?\)$/);
-
-    // The optimal drawing really is shorter than the dealt one.
-    const boxes = (i: number) =>
-      container.querySelectorAll('.pk-golf-solution')[i].querySelectorAll('.pk-mini-circ-box')
-        .length;
-    expect(boxes(1)).toBeLessThan(dealt.solution!.gates.length);
-    expect(boxes(1)).toBeGreaterThan(0);
+    expect(container.querySelectorAll('.pk-golf-solution').length).toBe(1);
+    // …and par is that solution plus two, the classic course's own rule.
+    expect(hole.par).toBe(hole.solution!.gates.length + 2);
+    const stats = Array.from(container.querySelectorAll('.pk-stat')).map((n) => n.textContent);
+    expect(stats).toContain(`par ${hole.par}`);
   });
 
   it('says nothing when the search cannot decide, and never blocks the reveal', () => {
