@@ -39,17 +39,25 @@ export function highestUsedRow(circuit: Circuit): number {
   return hi;
 }
 
-/** Number of wires to DISPLAY for `circuit` under the given `wires` setting. */
-export function displayQubits(circuit: Circuit, wires: Wires): number {
+/**
+ * Number of wires to DISPLAY for `circuit` under the given `wires` setting.
+ * `minWires` raises the compact floor: golf passes the current hole's qubit
+ * count so e.g. a 4-qubit hole shows 4 wires BEFORE any gate lands on q3 —
+ * the player must see the wires the target needs, not discover them.
+ */
+export function displayQubits(circuit: Circuit, wires: Wires, minWires = 0): number {
   if (wires === 'all') return FULL_WIRES;
-  return Math.min(FULL_WIRES, Math.max(MIN_COMPACT_WIRES, highestUsedRow(circuit) + 1));
+  return Math.min(
+    FULL_WIRES,
+    Math.max(MIN_COMPACT_WIRES, minWires, highestUsedRow(circuit) + 1),
+  );
 }
 
 /**
  * The circuit as SHOWN in the editor: identical gates, display-clamped wire
  * count. Returns the input unchanged when no re-count is needed.
  */
-export function displayCircuit(circuit: Circuit, wires: Wires): Circuit {
-  const qubits = displayQubits(circuit, wires);
+export function displayCircuit(circuit: Circuit, wires: Wires, minWires = 0): Circuit {
+  const qubits = displayQubits(circuit, wires, minWires);
   return qubits === circuit.qubits ? circuit : { qubits, gates: circuit.gates };
 }

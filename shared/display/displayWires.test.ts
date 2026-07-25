@@ -93,4 +93,19 @@ describe('displayCircuit', () => {
     expect(displayCircuit(phys, 'compact')).toBe(phys);
     expect(displayCircuit(phys, 'all')).toBe(phys);
   });
+
+  it('minWires floors the compact trim (golf: the hole sets the wire count)', () => {
+    // An empty board on a 4-qubit hole must already show 4 wires — the player
+    // sees where the target lives before the first gate lands on q3.
+    const empty = circuit([]);
+    expect(displayQubits(empty, 'compact', 4)).toBe(4);
+    expect(displayCircuit(empty, 'compact', 4).qubits).toBe(4);
+    // Gates above the floor still win…
+    expect(displayQubits(circuit([H(4)]), 'compact', 4)).toBe(5);
+    // …the floor never exceeds the physical ceiling…
+    expect(displayQubits(empty, 'compact', 9)).toBe(5);
+    // …and 'all' plus small floors behave as before.
+    expect(displayQubits(empty, 'all', 2)).toBe(5);
+    expect(displayQubits(empty, 'compact', 2)).toBe(3);
+  });
 });

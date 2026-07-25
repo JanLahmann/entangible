@@ -816,7 +816,13 @@ export function App() {
   // Display-only wire count: the recognized `circuit` is always 5 qubits, but
   // the editor draws `effectiveWires` wires (compact auto-grows 3→5). Panels,
   // simulation, histogram and QASM all keep the physical 5-qubit `circuit`.
-  const displayed = useMemo(() => displayCircuit(circuit, effectiveWires), [circuit, effectiveWires]);
+  // In golf the hole's qubit count floors the compact trim — a 4-qubit hole
+  // shows all 4 wires before the first gate reaches q3.
+  const golfMinWires = effectiveMode === 'golf' ? HOLES[golfState.levelIndex].qubits : 0;
+  const displayed = useMemo(
+    () => displayCircuit(circuit, effectiveWires, golfMinWires),
+    [circuit, effectiveWires, golfMinWires],
+  );
 
   // Auto-fit the editor so every displayed wire is visible on short phone
   // stages; a no-op (scale 1) on roomy iPad/desktop stages.
