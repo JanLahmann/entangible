@@ -994,11 +994,32 @@ export function App() {
     if (manual) manualSourceRef.current.clear();
   };
 
+  // Advance/restart, shared by the scorecard button and the one floating by
+  // the sphere (a phone player should not have to scroll down after holing
+  // in). Build-on-screen only; camera keeps the physical clear-the-board
+  // ritual. Empties the manual board, which IS the golf advance trigger; a
+  // finished course restarts directly (finished RANDOM: brand-new seed, #70).
+  const advanceHole = manual
+    ? () => {
+        const cur = golfStateRef.current;
+        if (cur.complete) {
+          const fresh =
+            cur.course === 'random'
+              ? initialGolfState({}, 'random', randomBaseSeed())
+              : initialGolfState(cur.best);
+          golfStateRef.current = fresh;
+          setGolfState(fresh);
+        }
+        manualSourceRef.current.clear();
+      }
+    : undefined;
+
   const sidebar = isGolf ? (
     <>
       {showCamera && cameraPanel}
       <div key="golfview">
-        <div className="pk-label">{currentLevel.view === 'bloch' ? 'Bloch sphere' : 'Q-sphere'}</div>
+        {/* The view names itself now (EvolvingState's view-label) — no extra
+            panel label, it would double up. */}
         <div className="pk-well">
           <EvolvingState
             circuit={circuit}
@@ -1009,6 +1030,15 @@ export function App() {
             showKet
             classPrefix="pk"
           />
+          {advanceHole && golfState.holedIn && (
+            <button
+              type="button"
+              className="pk-golf-next pk-golf-next--sphere"
+              onClick={advanceHole}
+            >
+              {golfState.complete ? 'Play again ▸' : 'Next hole ▸'}
+            </button>
+          )}
         </div>
       </div>
       <div key="golfcourse">
@@ -1036,28 +1066,7 @@ export function App() {
         key="scorecard"
         state={golfState}
         circuit={circuit}
-        // Build-on-screen has no physical board to clear, so the scorecard gets
-        // an explicit Next-hole button; it empties the manual board, which IS
-        // the golf advance trigger (camera mode keeps the physical ritual). On
-        // the finished course the board is already empty, so restarting resets
-        // the golf state directly (a re-clear wouldn't change the circuit) —
-        // and a finished RANDOM course restarts on a brand-new seed (#70).
-        onNextLevel={
-          manual
-            ? () => {
-                const cur = golfStateRef.current;
-                if (cur.complete) {
-                  const fresh =
-                    cur.course === 'random'
-                      ? initialGolfState({}, 'random', randomBaseSeed())
-                      : initialGolfState(cur.best);
-                  golfStateRef.current = fresh;
-                  setGolfState(fresh);
-                }
-                manualSourceRef.current.clear();
-              }
-            : undefined
-        }
+        onNextLevel={advanceHole}
       />
       {hasPanel('results') && (
         <ResultsHistogram key="results" circuit={circuit} displayQubits={displayed.qubits} />

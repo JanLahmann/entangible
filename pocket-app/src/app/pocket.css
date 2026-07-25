@@ -1448,6 +1448,14 @@ body,
   font-weight: 600;
 }
 
+.pk-golf-next--sphere {
+  display: block;
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.55rem;
+  font-size: 0.95rem;
+}
+
 .pk-view-label {
   align-self: flex-start;
   font-size: 0.68rem;
