@@ -51,6 +51,16 @@ function align(a: { re: number; im: number }, ref: { re: number; im: number }) {
   return { re: a.re * ref.re + a.im * ref.im, im: a.im * ref.re - a.re * ref.im };
 }
 
+/** How many basis states of a k-qubit target carry real amplitude. */
+function populatedTerms(sv: StateVector, k: number): number {
+  let n = 0;
+  for (let i = 0; i < 1 << k; i++) {
+    const a = sv[i];
+    if (a.re * a.re + a.im * a.im > 1e-9) n += 1;
+  }
+  return n;
+}
+
 /** Move a generator off qubits 0..k−1 onto `wires` (position j → wires[j]). */
 function remap(c: Circuit, wires: readonly number[]): Circuit {
   const gates: Gate[] = c.gates.map((g) => ({
@@ -192,6 +202,48 @@ describe('random course generation (#70)', () => {
         expect(hole.targetKet).not.toContain('e^');
       }
     }
+  });
+
+  it('caps every target at 16 populated terms, so the ket prints in full', () => {
+    for (let seed = 0; seed < 40; seed++) {
+      for (const { hole, circuit } of generateCourse(seed * 3571 + 17)) {
+        expect(populatedTerms(statevector(circuit), hole.level)).toBeLessThanOrEqual(16);
+        // The scorecard ket is therefore never elided — no "+ ⋯" on a target.
+        expect(hole.targetKet).not.toContain('⋯');
+      }
+    }
+  });
+
+  it('retries past an over-full 5-qubit draw (documented seed)', () => {
+    // Base seed 1107, slot E5 (seed 5107): the first draw to clear (a), (b) and
+    // (c) is attempt 28, `H4 CNOT(0→1) H2 H3 H1 H0` — an H on every wire, i.e.
+    // the uniform superposition over ALL 32 basis states. Every wire is alive,
+    // nothing carries a phase, and it is nowhere near |0…0⟩, so the pre-(d)
+    // generator took it happily — and handed the player a target the ket line
+    // could only show half of.
+    const stale: Circuit = {
+      qubits: 5,
+      gates: [
+        { id: 'a', type: 'H', position: 0, qubit: 4 },
+        { id: 'b', type: 'CNOT', position: 1, control: 0, target: 1 },
+        { id: 'c', type: 'H', position: 2, qubit: 2 },
+        { id: 'd', type: 'H', position: 3, qubit: 3 },
+        { id: 'e', type: 'H', position: 4, qubit: 1 },
+        { id: 'f', type: 'H', position: 5, qubit: 0 },
+      ],
+    };
+    const staleTarget = statevector(stale);
+    for (let q = 0; q < 5; q++) expect(probOne(staleTarget, q)).toBeCloseTo(0.5, 12); // (b) ✓
+    for (const v of basisVisuals(staleTarget, 32)) {
+      expect(Math.min(v.phaseDeg, 360 - v.phaseDeg)).toBeLessThanOrEqual(1e-6); // (c) ✓
+    }
+    expect(populatedTerms(staleTarget, 5)).toBe(32); // … but (d) ✗
+
+    const e5 = generateCourse(1107)[4];
+    expect(e5.hole.code).toBe('E5');
+    expect(shape(e5.circuit)).not.toBe(shape(stale));
+    expect(populatedTerms(statevector(e5.circuit), 5)).toBeLessThanOrEqual(16);
+    expect(e5.hole.targetKet).not.toContain('⋯');
   });
 
   it('leaves DIFFICULT and EXTRA free to carry phases — the rule does not leak', () => {

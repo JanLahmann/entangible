@@ -30,7 +30,9 @@
  *   (c) on the EASY and MEDIUM rounds only, the target is PHASE-FREE — every
  *       populated amplitude is real and non-negative once aligned to the
  *       reference amplitude (the same convention the Q-sphere colours and the
- *       bra-ket line typeset by).
+ *       bra-ket line typeset by); and
+ *   (d) the target has at most `KET_TERMS` populated basis states, so the ket
+ *       line prints it WHOLE — a target that elides is a target you cannot read.
  *
  * (b) is checked on the STATE, not on the circuit, and is strictly stronger than
  * "the generator touched every qubit": an untouched wire is exactly |0⟩, but so
@@ -47,6 +49,15 @@
  * composing a CZ out of H and CX, which is a difficult-round insight sitting in
  * the easy round. So E and M targets must read as plain positive superpositions;
  * D and X stay unconstrained, because phase IS their lesson.
+ *
+ * (d) is the readability floor: you are asked to BUILD this state, so you have to
+ * be able to see all of it. The ket line caps at `KET_TERMS` terms and elides the
+ * rest with "+ ⋯", which for a target would hide part of the goal — a five-H
+ * spread over all 32 basis states is a perfectly legal draw and a useless hole.
+ * The check is bound to the very constant the ket is typeset with, so the two can
+ * never drift apart. Only k = 5 can trip it (a k ≤ 4 target has at most 16 basis
+ * states to begin with), and it is nearly free: it removes well under 0.1% of the
+ * draws that clear (a)–(c).
  *
  * Everything is derived from one 32-bit base seed: the slot at index `i` uses
  * `baseSeed + i * 1000`, and a rejected draw retries at `+1` (capped far below
@@ -95,10 +106,13 @@ const SLOT_STRIDE = 1000;
  * Seed offsets tried before the deterministic fallback, sized for the tightest
  * slots. Keeping five wires alive on a 7-gate draw is genuinely demanding, and
  * the phase-free rule tightens the wide EASY/MEDIUM slots further. Measured
- * acceptance over 4000 seeds per slot: D5 1.8%, X5 1.8%, M5 3.5%, E5 2.9% —
- * everything else far looser (M1 82%, E2 31%). At 900 attempts even the worst
- * slot falls through to the fallback with probability ~1e-7 per hole, and the
- * budget still fits inside `SLOT_STRIDE`, so slot seed ranges cannot collide.
+ * acceptance over 4000 seeds per slot, with ALL FOUR constraints: D5 1.77%,
+ * X5 1.79%, E5 2.82%, M5 3.46% — everything else far looser (M1 82%, E2 31%).
+ * The 16-term cap barely moved those numbers (D5 was 1.78% without it), because
+ * a draw wide enough to fill 17+ basis states rarely also keeps every wire
+ * alive. At 900 attempts even the worst slot falls through to the fallback with
+ * probability ~1e-7 per hole, and the budget still fits inside `SLOT_STRIDE`, so
+ * slot seed ranges cannot collide.
  */
 const MAX_ATTEMPTS = 900;
 /** How close |amplitude(|0…0⟩)|² may come to 1 before the target counts as trivial. */
@@ -109,7 +123,9 @@ const LIVE_EPS = 1e-9;
 const PHASE_TOL_DEG = 1e-6;
 /** Rounds whose targets must be phase-free (see constraint (c) in the header). */
 const PHASE_FREE_ROUNDS: ReadonlySet<GolfRound> = new Set<GolfRound>(['easy', 'medium']);
-/** Terms shown in a generated hole's scorecard ket (the rest elide to "+ ⋯"). */
+/** Terms shown in a generated hole's scorecard ket (the rest elide to "+ ⋯").
+ *  Doubles as the cap on a target's populated basis states (constraint (d)), so
+ *  a generated ket is always printed in full and never actually elides. */
 const KET_TERMS = 16; // full 4-qubit targets fit since ket lines wrap; only 5q elides
 
 /** Gate types that need a control wire (so: only from level 2 up). */
@@ -195,19 +211,39 @@ function isPhaseFree(target: StateVector, k: number): boolean {
 }
 
 /**
- * A hand-built circuit satisfying ALL the constraints, used only if the retry
- * budget is somehow exhausted: an H on every wire (leaving every qubit alive
- * and |0…0⟩ far behind, with a uniformly positive — hence phase-free —
- * amplitude), padded to `n` gates on q0 with another club, which for every
- * round's club list is X and therefore leaves |+⟩ untouched.
+ * Constraint (d): the target fits the ket line whole — at most `KET_TERMS`
+ * populated basis states, so nothing about the goal hides behind "+ ⋯". Bound to
+ * the very constant the ket is typeset with, so the two cannot drift. Checked
+ * unconditionally (it is one short loop) although only k = 5 can ever fail it:
+ * a k ≤ 4 target has at most 16 basis states to spread over in the first place.
+ */
+function fitsTheKetLine(target: StateVector, k: number): boolean {
+  let populated = 0;
+  for (let i = 0; i < 1 << k; i++) {
+    const a = target[i];
+    if (a.re * a.re + a.im * a.im <= LIVE_EPS) continue;
+    if (++populated > KET_TERMS) return false;
+  }
+  return true;
+}
+
+/**
+ * A hand-built circuit satisfying ALL FOUR constraints, used only if the retry
+ * budget is somehow exhausted: H on q0, X on every other wire — so the target is
+ * |+⟩⊗|1…1⟩, which has exactly TWO populated basis states however wide the hole
+ * is (an H on every wire would spread over all 32 and trip (d) at k = 5), no dead
+ * qubit, no phase, and no chance of being |0…0⟩. Padding to `n` gates repeats the
+ * X on q0, and X|+⟩ = |+⟩, so the padding is genuinely inert whatever the round's
+ * bonus adds. Every round's club list carries both H and X.
  */
 function fallbackGates(types: readonly GateType[], k: number, n: number): Gate[] {
   const single = types.filter((t) => !CONTROLLED.has(t));
   const spread = single.includes('H') ? ('H' as GateType) : single[0];
-  const filler = single.find((t) => t !== spread) ?? spread;
-  const gates: Gate[] = [];
-  for (let q = 0; q < k; q++) gates.push({ id: `fb${q}`, type: spread, position: q, qubit: q });
-  for (let i = k; i < n; i++) gates.push({ id: `fb${i}`, type: filler, position: i, qubit: 0 });
+  const flip =
+    single.includes('X') ? ('X' as GateType) : (single.find((t) => t !== spread) ?? spread);
+  const gates: Gate[] = [{ id: 'fb0', type: spread, position: 0, qubit: 0 }];
+  for (let q = 1; q < k; q++) gates.push({ id: `fb${q}`, type: flip, position: q, qubit: q });
+  for (let i = k; i < n; i++) gates.push({ id: `fb${i}`, type: flip, position: i, qubit: 0 });
   return gates;
 }
 
@@ -215,7 +251,8 @@ function fallbackGates(types: readonly GateType[], k: number, n: number): Gate[]
  * The generated hole's display ket, typeset by the SAME `ketTerms` the live
  * bra-ket line under the sphere uses (so the target and the state you are
  * building are written in one notation), flattened to plain text for the
- * scorecard. Long targets elide — the Q-sphere ghost carries the full truth.
+ * scorecard. Constraint (d) keeps every generated target inside `KET_TERMS`, so
+ * the elision branch is dead for real holes and survives only as a safety net.
  */
 function ketText(target: StateVector, k: number): string {
   const { terms, truncated } = ketTerms(target, k, KET_TERMS);
@@ -263,6 +300,7 @@ export function generateHole(slot: Slot, seed: number): GeneratedHole {
     if (!isNonTrivial(target)) continue;
     if (!everyQubitLives(target, k)) continue;
     if (phaseFree && !isPhaseFree(target, k)) continue;
+    if (!fitsTheKetLine(target, k)) continue;
     gates = candidate;
     break;
   }
