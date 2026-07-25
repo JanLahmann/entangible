@@ -6,6 +6,9 @@
  * shows the current round + hole ("Medium · hole 7/18"), the round's "clubs"
  * gate-set hint, the target ket, par, live strokes/fidelity, the per-hole best,
  * a running total-vs-par across completed holes, and a round-grouped chip strip.
+ * "Strokes" is the hole's CUMULATIVE count from the golf state (#68) — every
+ * add and delete since tee-off, not the gates currently on the board; fidelity
+ * still comes from evaluating the live circuit.
  * When the course is finished it shows the final total-vs-par summary.
  *
  * `monoKet` toggles the one pre-SC2 difference: pocket adds `pk-mono` to the
@@ -106,7 +109,7 @@ export function Scorecard({
             par <b>{hole.par}</b>
           </div>
           <div className={`${p}-stat`}>
-            strokes <b>{ev.strokes}</b>
+            strokes <b>{state.strokes}</b>
           </div>
           <div className={`${p}-stat`}>
             fidelity <b className={holedIn ? 'is-holed' : undefined}>{pct}%</b>
@@ -120,7 +123,7 @@ export function Scorecard({
         </div>
         {holedIn && (
           <div className={`${p}-golf-holed`}>
-            {scoreName(bestStrokes ?? ev.strokes, hole.par)} —{' '}
+            {scoreName(bestStrokes ?? state.strokes, hole.par)} —{' '}
             {onNextLevel ? (
               <button type="button" className={`${p}-golf-next`} onClick={onNextLevel}>
                 Next hole ▸

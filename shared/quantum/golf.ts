@@ -16,7 +16,9 @@
  * qubits — symmetric targets (GHZ/Bell/1q/phase-GHZ) compare against every
  * unordered k-subset, asymmetric targets (the flip families, the Cascade)
  * against every ORDERED arrangement so the answer can be built on any rows in
- * any order. "Strokes" = gates on the board. Hole-in at fidelity ≥ 0.99;
+ * any order. "Strokes" = every gate ADD and every gate DELETE since the hole was
+ * teed off (#68) — deleting a wrong tile and retrying costs strokes, like real
+ * golf. Hole-in at fidelity ≥ 0.99;
  * clearing the board then advances to the next hole (after hole 18 the course
  * completes, then a board-clear restarts). Best-per-hole is optionally persisted
  * through an injectable Storage (pocket uses localStorage; the booth keeps it in
@@ -26,7 +28,7 @@
  * shared/display/outcomes.ts. Internally targets live in the little-endian
  * statevector basis (index i has qubit q set when (i >> q) & 1).
  */
-import type { Circuit, GateType } from '@qamposer/react';
+import type { Circuit, Gate, GateType } from '@qamposer/react';
 import { fidelity, statevector, DIM, NUM_QUBITS, type Complex, type StateVector } from './statevector';
 
 export const HOLE_IN_THRESHOLD = 0.99;
@@ -393,15 +395,71 @@ export function bestFidelity(circuit: Circuit, hole: Hole): number {
 
 export interface Evaluation {
   readonly fidelity: number;
-  readonly strokes: number;
+  /** Gates currently on the board. NOT the score — strokes are cumulative and
+   *  live on `GolfState.strokes` (see `strokeDelta`). */
+  readonly gateCount: number;
   readonly holedIn: boolean;
 }
 
-/** Evaluate a circuit against a hole: fidelity, stroke count, hole-in flag. */
+/** Evaluate a circuit against a hole: fidelity, gate count, hole-in flag. */
 export function evaluate(circuit: Circuit, hole: Hole): Evaluation {
-  const strokes = circuit.gates.length;
-  const f = strokes === 0 ? 0 : bestFidelity(circuit, hole);
-  return { fidelity: f, strokes, holedIn: f >= HOLE_IN_THRESHOLD };
+  const gateCount = circuit.gates.length;
+  const f = gateCount === 0 ? 0 : bestFidelity(circuit, hole);
+  return { fidelity: f, gateCount, holedIn: f >= HOLE_IN_THRESHOLD };
+}
+
+// ---------------------------------------------------------------------------
+// Strokes — every add and every delete counts (#68)
+// ---------------------------------------------------------------------------
+
+/**
+ * A gate's identity for stroke counting: what it IS and how it is WIRED, never
+ * where it sits along the wire.
+ *
+ * `position` (the column) is deliberately excluded, so sliding a tile sideways
+ * — or the editor auto-compacting the columns after a delete — is free, while
+ * rewiring or retyping a gate reads as a remove **and** an add (2 strokes).
+ * The rotation `parameter` is part of the identity: an RZ(π/2) tile and an
+ * RZ(π/4) tile are different clubs (the printed S/T tiles emit exactly those).
+ */
+function gateKey(g: Gate): string {
+  return [g.type, g.qubit, g.control, g.control2, g.target, g.parameter]
+    .map((v) => (v === undefined ? '' : String(v)))
+    .join('|');
+}
+
+/** Multiset of gate keys: key → how many identical gates the board carries. */
+export type GateCounts = Readonly<Record<string, number>>;
+
+/** The empty board's multiset — also the tee-off baseline for a fresh hole. */
+const NO_GATES: GateCounts = {};
+
+/** The gate multiset of a circuit (the baseline a later change is diffed against). */
+function gateCounts(circuit: Circuit): GateCounts {
+  const out: Record<string, number> = {};
+  for (const g of circuit.gates) {
+    const k = gateKey(g);
+    out[k] = (out[k] ?? 0) + 1;
+  }
+  return out;
+}
+
+/** adds + removes between two gate multisets. */
+function countsDelta(prev: GateCounts, next: GateCounts): number {
+  let delta = 0;
+  for (const k of new Set([...Object.keys(prev), ...Object.keys(next)])) {
+    delta += Math.abs((next[k] ?? 0) - (prev[k] ?? 0));
+  }
+  return delta;
+}
+
+/**
+ * Strokes charged for one circuit change: the multiset edit distance
+ * (adds + removes) between two boards. Moving a gate to another column costs
+ * 0; adding or deleting one costs 1; rewiring or retyping one costs 2.
+ */
+export function strokeDelta(prev: Circuit, next: Circuit): number {
+  return countsDelta(gateCounts(prev), gateCounts(next));
 }
 
 /** Golf score name for a completed hole (strokes vs par). */
@@ -457,12 +515,26 @@ export interface GolfState {
   readonly holedIn: boolean;
   /** True once hole 18 is cleared — the course is finished (a board-clear restarts). */
   readonly complete: boolean;
-  /** Best (lowest) holed-in stroke count per hole number (1..18). */
+  /**
+   * Best (lowest) holed-in stroke count per hole number (1..18). Still a plain
+   * number per hole, exactly the shape pre-#68 builds wrote — an old save loads
+   * and compares unchanged (it just recorded a gate count where we now record
+   * cumulative strokes), so there is nothing to migrate.
+   */
   readonly best: Readonly<Record<number, number>>;
+  /**
+   * Cumulative strokes on the hole in play: every add and every delete since
+   * the hole was teed off. Reset to 0 by a board-clear (hole advance, restart,
+   * or a plain wipe-and-start-over).
+   */
+  readonly strokes: number;
+  /** Gate multiset of the last circuit seen — the baseline the next change is
+   *  diffed against. Empty at tee-off (see the teardown rule on `golfStep`). */
+  readonly gateKeys: GateCounts;
 }
 
 export function initialGolfState(best: Record<number, number> = {}): GolfState {
-  return { levelIndex: 0, holedIn: false, complete: false, best };
+  return { levelIndex: 0, holedIn: false, complete: false, best, strokes: 0, gateKeys: NO_GATES };
 }
 
 export interface GolfStep {
@@ -491,12 +563,42 @@ export interface GolfStep {
  * hole is latched holed-in advances to the next hole; clearing after hole 18
  * marks the course complete; a board-clear on the complete screen restarts at
  * hole 1 (keeping best scores). A fresh hole-in latches and records the best.
+ *
+ * ## Strokes (#68)
+ * Each change costs `strokeDelta(previous board, this board)` — adds + removes
+ * — added to `state.strokes`, so deleting a wrong tile and retrying costs
+ * strokes like real golf. Two rules keep that honest across both apps:
+ *
+ *  - **Ball in the hole, pencil down.** Once the hole is latched holed-in the
+ *    count freezes: the score is already written, and lifting the tiles off the
+ *    table to advance is not a stroke.
+ *  - **Teardown never lands on the next hole.** Every board-clear branch
+ *    (advance, complete, restart, plain wipe) resets `strokes` to 0 AND the
+ *    diff baseline `gateKeys` to the empty multiset. Since the baseline is
+ *    empty, a stale tile the camera still sees (or that flickers back) can only
+ *    ever be charged as an *add* — a leftover *removal* is arithmetically
+ *    impossible. That makes the manual path (one `clear()` emit) and the camera
+ *    path (tiles lifted one at a time, the last one triggering the advance)
+ *    behave identically without any ordering assumption.
+ *
+ * The tile stabiliser upstream already hysteresis-filters the camera, so there
+ * is no debouncing here: an occlusion that really removes and re-adds a gate
+ * costs 2 strokes, because that is what happened on the table.
  */
 export function golfStep(prev: GolfState, circuit: Circuit): GolfStep {
+  const keys = gateCounts(circuit);
+
   // Course finished: a board-clear restarts; otherwise hold the summary.
   if (prev.complete) {
     if (circuit.gates.length === 0) {
-      const state: GolfState = { levelIndex: 0, holedIn: false, complete: false, best: prev.best };
+      const state: GolfState = {
+        levelIndex: 0,
+        holedIn: false,
+        complete: false,
+        best: prev.best,
+        strokes: 0,
+        gateKeys: NO_GATES,
+      };
       return {
         state,
         hole: HOLES[0],
@@ -511,11 +613,13 @@ export function golfStep(prev: GolfState, circuit: Circuit): GolfStep {
         scoreName: null,
       };
     }
+    // Tiles on the complete screen: no hole is in play, so nothing is charged;
+    // we only carry the baseline so the restart below tees off from empty.
     return {
-      state: prev,
+      state: { ...prev, gateKeys: keys },
       hole: HOLES[prev.levelIndex],
       fidelity: 0,
-      strokes: circuit.gates.length,
+      strokes: 0,
       holedIn: false,
       justHoledIn: false,
       advanced: false,
@@ -528,14 +632,17 @@ export function golfStep(prev: GolfState, circuit: Circuit): GolfStep {
 
   const hole = HOLES[prev.levelIndex];
   const ev = evaluate(circuit, hole);
+  // Ball in the hole, pencil down: once latched, teardown edits cost nothing.
+  const strokes = prev.holedIn ? prev.strokes : prev.strokes + countsDelta(prev.gateKeys, keys);
 
   // Board cleared → advance / complete if the hole was done, else just reset.
-  if (ev.strokes === 0) {
+  // Every branch tees the next hole off from zero strokes and an EMPTY baseline.
+  if (ev.gateCount === 0) {
     if (prev.holedIn) {
       // Finished the last hole → the course is complete.
       if (prev.levelIndex >= HOLES.length - 1) {
         return {
-          state: { ...prev, holedIn: false, complete: true },
+          state: { ...prev, holedIn: false, complete: true, strokes: 0, gateKeys: NO_GATES },
           hole,
           fidelity: 0,
           strokes: 0,
@@ -552,7 +659,7 @@ export function golfStep(prev: GolfState, circuit: Circuit): GolfStep {
       const nextHole = HOLES[levelIndex];
       const nextEv = evaluate(circuit, nextHole);
       return {
-        state: { ...prev, levelIndex, holedIn: false },
+        state: { ...prev, levelIndex, holedIn: false, strokes: 0, gateKeys: NO_GATES },
         hole: nextHole,
         fidelity: nextEv.fidelity,
         strokes: 0,
@@ -565,8 +672,9 @@ export function golfStep(prev: GolfState, circuit: Circuit): GolfStep {
         scoreName: null,
       };
     }
+    // Wiped without holing in: a fresh tee-off on the same hole.
     return {
-      state: { ...prev, holedIn: false },
+      state: { ...prev, holedIn: false, strokes: 0, gateKeys: NO_GATES },
       hole,
       fidelity: 0,
       strokes: 0,
@@ -584,36 +692,36 @@ export function golfStep(prev: GolfState, circuit: Circuit): GolfStep {
   if (ev.holedIn && !prev.holedIn) {
     const best = { ...prev.best };
     const prevBest = best[hole.hole];
-    if (prevBest === undefined || ev.strokes < prevBest) best[hole.hole] = ev.strokes;
+    if (prevBest === undefined || strokes < prevBest) best[hole.hole] = strokes;
     return {
-      state: { ...prev, holedIn: true, best },
+      state: { ...prev, holedIn: true, best, strokes, gateKeys: keys },
       hole,
       fidelity: ev.fidelity,
-      strokes: ev.strokes,
+      strokes,
       holedIn: true,
       justHoledIn: true,
       advanced: false,
       justCompleted: false,
       restarted: false,
       complete: false,
-      scoreName: scoreName(ev.strokes, hole.par),
+      scoreName: scoreName(strokes, hole.par),
     };
   }
 
   // Steady state: keep the latch until the board is cleared.
   const holedIn = prev.holedIn;
   return {
-    state: { ...prev, holedIn },
+    state: { ...prev, holedIn, strokes, gateKeys: keys },
     hole,
     fidelity: ev.fidelity,
-    strokes: ev.strokes,
+    strokes,
     holedIn,
     justHoledIn: false,
     advanced: false,
     justCompleted: false,
     restarted: false,
     complete: false,
-    scoreName: holedIn ? scoreName(prev.best[hole.hole] ?? ev.strokes, hole.par) : null,
+    scoreName: holedIn ? scoreName(prev.best[hole.hole] ?? strokes, hole.par) : null,
   };
 }
 

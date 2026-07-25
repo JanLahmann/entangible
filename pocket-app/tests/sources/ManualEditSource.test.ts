@@ -146,4 +146,30 @@ describe('golf steps on a manual circuit change', () => {
     src.setFromEditor(circuit(BOARD_QUBITS, [H0, CX])); // Bell pair → hole in
     expect(holedIn).toBe(true);
   });
+
+  it('counts every on-screen add and delete, and clear() tees the next hole off at 0 (#68)', () => {
+    // The Scorecard's "Next hole" button calls clear() — the manual twin of
+    // sweeping the table. It must advance AND reset the stroke count.
+    const src = new ManualEditSource();
+    let golf = { ...initialGolfState(), levelIndex: 1 }; // Bell hole (par 2)
+    src.subscribe((u) => {
+      golf = golfStep(golf, u.circuit).state;
+    });
+    src.start();
+    src.setFromEditor(circuit(BOARD_QUBITS, [H0])); // +1
+    expect(golf.strokes).toBe(1);
+    const strayX = { id: 'X-1', type: 'X', position: 1, qubit: 3 } as const;
+    src.setFromEditor(circuit(BOARD_QUBITS, [H0, strayX])); // wrong club, +1
+    expect(golf.strokes).toBe(2);
+    src.setFromEditor(circuit(BOARD_QUBITS, [H0])); // deleted again, +1
+    expect(golf.strokes).toBe(3);
+    src.setFromEditor(circuit(BOARD_QUBITS, [H0, CX])); // Bell → hole in at 4
+    expect(golf.strokes).toBe(4);
+    expect(golf.best[2]).toBe(4);
+
+    src.clear();
+    expect(golf.levelIndex).toBe(2); // advanced to the GHZ-3 hole …
+    expect(golf.strokes).toBe(0); // … with a clean card
+    expect(golf.gateKeys).toEqual({});
+  });
 });

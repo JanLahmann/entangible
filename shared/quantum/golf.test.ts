@@ -9,6 +9,7 @@ import {
   clubGateTypes,
   bestFidelity,
   evaluate,
+  strokeDelta,
   scoreName,
   golfStep,
   initialGolfState,
@@ -169,9 +170,10 @@ describe('reachability — every reference path holes in', () => {
     }
   });
 
-  it('reference paths hit their par stroke count', () => {
+  it('reference paths hit their par stroke count (built clean from an empty board)', () => {
     for (let n = 1; n <= 18; n++) {
-      expect(evaluate(refCircuit(n), hole(n)).strokes).toBe(hole(n).par);
+      expect(evaluate(refCircuit(n), hole(n)).gateCount).toBe(hole(n).par);
+      expect(strokeDelta(empty, refCircuit(n))).toBe(hole(n).par);
     }
   });
 
@@ -259,6 +261,152 @@ describe('scoreName', () => {
     expect(scoreName(3, 3)).toBe('PAR');
     expect(scoreName(5, 3)).toBe('HOLE IN +2');
     expect(scoreName(1, 1)).toBe('PAR');
+  });
+});
+
+describe('strokeDelta — the per-change edit distance (#68)', () => {
+  it('charges 1 per add and 1 per delete', () => {
+    const h = circuit([g('H', 0, { qubit: 0 })]);
+    expect(strokeDelta(empty, h)).toBe(1);
+    expect(strokeDelta(h, empty)).toBe(1);
+    expect(strokeDelta(empty, circuit(ghz(3)))).toBe(3);
+    expect(strokeDelta(circuit(ghz(3)), circuit(ghz(2)))).toBe(1);
+    expect(strokeDelta(circuit(ghz(2)), circuit(ghz(3)))).toBe(1);
+  });
+
+  it('is free to slide a gate along its wire (position is excluded)', () => {
+    expect(
+      strokeDelta(circuit([g('H', 0, { qubit: 0 })]), circuit([g('H', 4, { qubit: 0 })])),
+    ).toBe(0);
+    // Auto-compaction after a delete shifts everything left — only the delete counts.
+    const before = circuit([
+      g('X', 0, { qubit: 0 }),
+      g('H', 1, { qubit: 1 }),
+      g('Y', 2, { qubit: 2 }),
+    ]);
+    const after = circuit([g('X', 0, { qubit: 0 }), g('Y', 1, { qubit: 2 })]);
+    expect(strokeDelta(before, after)).toBe(1);
+  });
+
+  it('charges 2 (remove + add) for rewiring or retyping a gate', () => {
+    const h0 = circuit([g('H', 0, { qubit: 0 })]);
+    expect(strokeDelta(h0, circuit([g('H', 0, { qubit: 1 })]))).toBe(2); // rewired
+    expect(strokeDelta(h0, circuit([g('X', 0, { qubit: 0 })]))).toBe(2); // retyped
+    // Swapping a CNOT's control and target is a rewire, not a move.
+    expect(
+      strokeDelta(
+        circuit([g('CNOT', 0, { control: 0, target: 1 })]),
+        circuit([g('CNOT', 0, { control: 1, target: 0 })]),
+      ),
+    ).toBe(2);
+  });
+
+  it('treats identical gates as a multiset', () => {
+    const one = circuit([g('X', 0, { qubit: 0 })]);
+    const two = circuit([g('X', 0, { qubit: 0 }), g('X', 1, { qubit: 0 })]);
+    expect(strokeDelta(one, two)).toBe(1);
+    expect(strokeDelta(two, one)).toBe(1);
+    expect(strokeDelta(two, two)).toBe(0);
+  });
+
+  it('tells the rotation tiles apart by angle (RZ(π/2) ≠ RZ(π/4))', () => {
+    const s = circuit([g('RZ', 0, { qubit: 0, parameter: Math.PI / 2 })]);
+    const t = circuit([g('RZ', 0, { qubit: 0, parameter: Math.PI / 4 })]);
+    expect(strokeDelta(s, t)).toBe(2);
+    expect(strokeDelta(s, s)).toBe(0);
+  });
+});
+
+describe('cumulative strokes per hole (#68)', () => {
+  const holeState = (n: number) => ({ ...initialGolfState(), levelIndex: n - 1 });
+
+  it('charges the retry: a deleted wrong tile still costs a stroke', () => {
+    const rightBell = refCircuit(2); // H q0 ; CNOT q0→q1 (par 2)
+    let step = golfStep(holeState(2), circuit([g('H', 0, { qubit: 0 })]));
+    expect(step.strokes).toBe(1);
+
+    // A wrong CNOT lands (2), comes off again (3), the right one lands (4).
+    step = golfStep(step.state, circuit([g('H', 0, { qubit: 0 }), g('CNOT', 1, { control: 2, target: 3 })]));
+    expect(step.strokes).toBe(2);
+    expect(step.holedIn).toBe(false);
+    step = golfStep(step.state, circuit([g('H', 0, { qubit: 0 })]));
+    expect(step.strokes).toBe(3);
+    step = golfStep(step.state, rightBell);
+    expect(step.strokes).toBe(4);
+    expect(step.justHoledIn).toBe(true);
+    expect(step.scoreName).toBe('HOLE IN +2'); // par 2, four strokes
+    expect(step.state.best[2]).toBe(4);
+  });
+
+  it('stops counting once the ball is in, and tees the next hole off at zero', () => {
+    // Hole in E2 at par, then lift the tiles one at a time (the camera path).
+    let step = golfStep(holeState(2), refCircuit(2));
+    expect(step.strokes).toBe(2);
+    expect(step.justHoledIn).toBe(true);
+
+    step = golfStep(step.state, circuit([g('H', 0, { qubit: 0 })]));
+    expect(step.strokes).toBe(2); // teardown is not a stroke
+    expect(step.state.best[2]).toBe(2);
+
+    step = golfStep(step.state, empty); // last tile off → advance
+    expect(step.advanced).toBe(true);
+    expect(step.hole.hole).toBe(3);
+    expect(step.strokes).toBe(0);
+    expect(step.state.strokes).toBe(0);
+    expect(step.state.gateKeys).toEqual({}); // tee-off baseline is EMPTY …
+
+    // … so a stale tile the camera still sees on the new hole can only ever be
+    // charged as an add, never as a leftover removal from the hole before.
+    step = golfStep(step.state, circuit([g('H', 0, { qubit: 0 })]));
+    expect(step.strokes).toBe(1);
+    step = golfStep(step.state, empty);
+    expect(step.state.strokes).toBe(0); // an empty board is always a fresh tee-off
+  });
+
+  it('charges 2 for an occlusion-style remove + re-add of the same gate', () => {
+    // Deliberate: the tile stabiliser upstream already hysteresis-filters, so a
+    // gate that disappears and comes back is a REAL table event, worth a delete
+    // plus an add. No extra debouncing lives in the engine.
+    let step = golfStep(holeState(3), circuit(ghz(3)));
+    expect(step.strokes).toBe(3);
+    expect(step.justHoledIn).toBe(true);
+    expect(step.state.best[3]).toBe(3);
+
+    // Replay the same hole: a flicker mid-build costs two strokes.
+    let state = golfStep(step.state, empty).state; // clear → advance to hole 4
+    state = { ...state, levelIndex: 2, holedIn: false }; // back on hole 3
+    step = golfStep(state, circuit(ghz(2)));
+    expect(step.strokes).toBe(2);
+    step = golfStep(step.state, circuit([g('H', 0, { qubit: 0 })])); // CNOT occluded
+    expect(step.strokes).toBe(3);
+    step = golfStep(step.state, circuit(ghz(2))); // … and back
+    expect(step.strokes).toBe(4);
+    step = golfStep(step.state, circuit(ghz(3)));
+    expect(step.strokes).toBe(5);
+    expect(step.justHoledIn).toBe(true);
+    expect(step.scoreName).toBe('HOLE IN +2');
+    expect(step.state.best[3]).toBe(3); // the flicker-free run keeps the best
+  });
+
+  it('resets on a mid-hole wipe and on the post-course restart', () => {
+    let step = golfStep(holeState(3), circuit(ghz(2)));
+    expect(step.strokes).toBe(2);
+    // Sweeping the board without holing in is a fresh tee-off, not an advance.
+    step = golfStep(step.state, empty);
+    expect(step.advanced).toBe(false);
+    expect(step.state.levelIndex).toBe(2);
+    expect(step.state.strokes).toBe(0);
+    expect(step.state.gateKeys).toEqual({});
+
+    // The complete screen: tiles sitting on it cost nothing, the restart is clean.
+    const done = { ...initialGolfState({ 1: 1 }), levelIndex: 17, complete: true };
+    step = golfStep(done, circuit(ghz(3)));
+    expect(step.complete).toBe(true);
+    expect(step.strokes).toBe(0);
+    step = golfStep(step.state, empty);
+    expect(step.restarted).toBe(true);
+    expect(step.state.strokes).toBe(0);
+    expect(step.state.gateKeys).toEqual({});
   });
 });
 
@@ -357,7 +505,14 @@ describe('golfStep state machine', () => {
   });
 
   it('holds the complete screen while gates sit on the board', () => {
-    const state = { levelIndex: 17, holedIn: false, complete: true, best: {} as Record<number, number> };
+    const state = {
+      levelIndex: 17,
+      holedIn: false,
+      complete: true,
+      best: {} as Record<number, number>,
+      strokes: 0,
+      gateKeys: {},
+    };
     const step = golfStep(state, circuit([g('H', 0, { qubit: 0 })]));
     expect(step.complete).toBe(true);
     expect(step.restarted).toBe(false);

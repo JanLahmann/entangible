@@ -244,6 +244,14 @@ describe('Scorecard (shared)', () => {
     }
   });
 
+  it('shows the hole’s cumulative strokes, not the gates on the board (#68)', () => {
+    // `bell` is a 2-gate circuit, but the hole has cost 5 strokes so far.
+    const state = { ...initialGolfState(), strokes: 5 };
+    const { container } = render(<Scorecard state={state} circuit={bell} classPrefix="pk" />);
+    const stats = Array.from(container.querySelectorAll('.pk-stat')).map((n) => n.textContent);
+    expect(stats).toContain('strokes 5');
+  });
+
   it('honours the monoKet seam: pocket tints the ket, the booth does not', () => {
     const booth = render(
       <Scorecard state={initialGolfState()} circuit={bell} classPrefix="bo" />,

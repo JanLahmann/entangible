@@ -179,7 +179,10 @@ Compare against canonical states up to global phase, fidelity ≥ 0.99.
   par, live fidelity, per-hole best, and a running total-vs-par; clearing the
   board after hole 18 shows the final score, and a re-clear restarts. Best
   strokes persist per hole on the pocket app (in memory on the booth); the old
-  5-level best migrates once into E1–E5.
+  5-level best migrates once into E1–E5. Strokes count every gate ADD and
+  DELETE on the hole cumulatively (#68) — sliding a tile to another column is
+  free, rewiring or retyping it costs 2; the count freezes on the hole-in and
+  resets on any board-clear, so a teardown never lands on the next hole.
 - **Golf-mode animation** (builds on the layer-evolution idea in design.md):
   the target node carries the flag and *pulses* (2 s cycle); on every stable
   circuit change the ball replays from |0…0⟩ **gate-layer by gate-layer**
@@ -251,7 +254,8 @@ existence never leaks to visitors.
 
 **Display modes** — the booth is a mode host: `composer` (default), `golf`
 (Bloch/Q-sphere golf, when built — stage becomes the sphere, sidebar becomes
-the scorecard: hole, par, strokes = gates, best-of-day), `attract`. Switching:
+the scorecard: hole, par, strokes = every add + delete, best-of-day),
+`attract`. Switching:
 staff selector on /debug (pills), additive `select_mode` WS message
 (protocol v1 additive), `--mode` CLI flag, kiosk hotkey. Current mode reads as
 a topbar pill. Golf hidden entirely until implemented.
