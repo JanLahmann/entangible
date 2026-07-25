@@ -114,15 +114,19 @@ export function QSphereView({
   );
 
   // Auto-face: point the camera at the weighted centroid of the interesting
-  // mass (target + live probability). A near-zero centroid means the state is
+  // mass. With a goal (`targetState`) the camera faces the GOAL only — the
+  // target is stable per hole, so the view holds still while the evolution
+  // animation plays instead of chasing the tweened state. Without a goal it
+  // faces the live probability mass. A near-zero centroid means the state is
   // symmetric (or empty) and no direction is more informative than the default.
   const home = useMemo(() => {
+    const weights = targetVisuals ?? liveVisuals;
     let x = 0;
     let y = 0;
     let z = 0;
     let total = 0;
     for (const node of nodes) {
-      const w = (targetVisuals?.[node.index]?.prob ?? 0) + (liveVisuals[node.index]?.prob ?? 0);
+      const w = weights[node.index]?.prob ?? 0;
       if (w <= 0) continue;
       x += w * node.pos.x;
       y += w * node.pos.y;
