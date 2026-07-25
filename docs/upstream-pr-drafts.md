@@ -77,6 +77,20 @@ Suggested order: PR 1 and PR 2 are independent; PR 3 stacks on PR 1.
 > Motivation: Entangible's golf mode unlocks gates round by round (easy = X/H/CX
 > only) and tutorial-style embeddings generally want a reduced palette.
 
+## PR 5 — `feat/touch-placement` → `main` (stacked on PR 4)
+
+**Title:** feat: tap-to-place gate placement + coarse-pointer touch targets
+
+> HTML5 drag-and-drop needs a long-press lift on iOS Safari, which makes the
+> palette effectively unusable on phones. This adds tap-to-place: tap a tile to
+> arm it (`aria-pressed`, visual outline), tap a wire to place at the same
+> snapped column drops use; controlled gates collect control → target taps
+> (CCX: three) with a pending indicator and a hint line; Escape/re-tap cancels.
+> Drag is unchanged — the two inputs share one placement path
+> (`planPlacement`/`commitPlacement`, deduplicating the old drop logic). Under
+> `@media (pointer: coarse)` palette tiles and the gate toolbar get ≥44px hit
+> areas (Apple HIG minimum). 18 new tests.
+
 ---
 
 ## Follow-ups after any of these merge upstream
