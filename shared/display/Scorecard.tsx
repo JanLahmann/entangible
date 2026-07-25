@@ -123,7 +123,10 @@ export function Scorecard({
           <span className={`${p}-golf-qubits`}>
             {hole.qubits} {hole.qubits === 1 ? 'qubit' : 'qubits'} · clubs: {hole.clubs.join(' · ')}
           </span>
-          <span className={`${p}-golf-ket${monoKet ? ` ${p}-mono` : ''}`}>{hole.targetKet}</span>
+          <span className={`${p}-golf-ket${monoKet ? ` ${p}-mono` : ''}`}>
+            <span className={`${p}-ket-label`}>Target</span>
+            {hole.targetKet}
+          </span>
         </div>
         <div className={`${p}-stats`}>
           <div className={`${p}-stat`}>
