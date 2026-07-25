@@ -25,10 +25,17 @@
  * retried at the next seed offset, unless:
  *
  *   (a) the target is not |0…0⟩ — an empty board would otherwise hole in; and
- *   (b) every qubit 0..k−1 is touched — otherwise the "5-qubit" hole is a
- *       lower-level hole wearing a bigger ket.
+ *   (b) no qubit is DEAD: every wire 0..k−1 carries real |1⟩ population in the
+ *       target, i.e. some amplitude with that bit set is non-negligible.
  *
- * (a) subsumes "the state must actually differ from the product ground state".
+ * (b) is checked on the STATE, not on the circuit, and is strictly stronger than
+ * "the generator touched every qubit": an untouched wire is exactly |0⟩, but so
+ * is one the draw touched and then undid (X·X, a bare Z, a CNOT off a |0⟩
+ * control). Either way the "5-qubit" hole would be a lower-level hole wearing a
+ * bigger ket — `(|000⟩+|010⟩)/√2` is a one-H hole with two idle wires. Product
+ * targets are deliberately still legal: H⊗H⊗H is a fine thing to ask for,
+ * because every wire is doing something. (a) is then implied by (b) but kept
+ * explicit — "an empty board must never hole in" is the invariant that matters.
  *
  * Everything is derived from one 32-bit base seed: the slot at index `i` uses
  * `baseSeed + i * 1000`, and a rejected draw retries at `+1` (capped far below
@@ -51,7 +58,7 @@
 import type { Circuit, Gate, GateType } from '@qamposer/react';
 import { ketTerms } from '@shared/display/KetDisplay';
 import { mulberry32, cryptoRng, type Rng } from '@shared/menu/sample';
-import { activeQubits, statevector, NUM_QUBITS, type StateVector } from './statevector';
+import { statevector, DIM, NUM_QUBITS, type StateVector } from './statevector';
 import {
   HOLES,
   ROUND_CLUBS,
@@ -72,12 +79,19 @@ export const ROUND_BONUS: Readonly<Record<GolfRound, number>> = {
 
 /** Seed stride between slots; retries stay well inside it (see MAX_ATTEMPTS). */
 const SLOT_STRIDE = 1000;
-/** Seed offsets tried before the deterministic fallback. Never reached in
- *  practice — the worst slot (E1: two gates from {X,H}) rejects only half its
- *  draws, so exhausting 200 offsets has probability ~2⁻²⁰⁰. */
-const MAX_ATTEMPTS = 200;
+/**
+ * Seed offsets tried before the deterministic fallback, sized for the tightest
+ * slots. Keeping all five wires alive on a 7-gate draw is genuinely demanding:
+ * D5 and X5 accept ~1 draw in 56 (measured over 3000 seeds; their worst
+ * observed run was ~440 rejects), while E1/M1 accept almost immediately. At 900
+ * the chance of falling through to the fallback is ~1e-7 per hole, and the
+ * budget still fits inside `SLOT_STRIDE`, so slot seed ranges cannot collide.
+ */
+const MAX_ATTEMPTS = 900;
 /** How close |amplitude(|0…0⟩)|² may come to 1 before the target counts as trivial. */
 const TRIVIAL_EPS = 1e-9;
+/** Below this probability an amplitude is not evidence that a qubit is alive. */
+const LIVE_EPS = 1e-9;
 /** Terms shown in a generated hole's scorecard ket (the rest elide to "+ ⋯"). */
 const KET_TERMS = 4;
 
@@ -118,15 +132,33 @@ function drawGates(rng: Rng, types: readonly GateType[], k: number, n: number): 
   return gates;
 }
 
-/** Constraint (b): the draw touches every one of qubits 0..k−1. */
-function touchesEveryQubit(circuit: Circuit, k: number): boolean {
-  return activeQubits(circuit).length === k;
-}
-
 /** Constraint (a): the target is not the all-|0⟩ state (which an empty board hits). */
 function isNonTrivial(target: StateVector): boolean {
   const a = target[0];
   return 1 - (a.re * a.re + a.im * a.im) > TRIVIAL_EPS;
+}
+
+/**
+ * Constraint (b): no DEAD wire — every qubit 0..k−1 has some non-negligible
+ * amplitude with its bit set, so the target genuinely lives on k qubits. A
+ * product state passes (H⊗H⊗H is a legitimate k-qubit target); a state that
+ * pins a wire to |0⟩ does not, because that hole would be a lower-level hole
+ * with idle wires attached.
+ */
+function everyQubitLives(target: StateVector, k: number): boolean {
+  for (let q = 0; q < k; q++) {
+    let alive = false;
+    for (let i = 0; i < DIM; i++) {
+      if (((i >> q) & 1) === 0) continue;
+      const a = target[i];
+      if (a.re * a.re + a.im * a.im > LIVE_EPS) {
+        alive = true;
+        break;
+      }
+    }
+    if (!alive) return false;
+  }
+  return true;
 }
 
 /**
@@ -191,9 +223,9 @@ export function generateHole(slot: Slot, seed: number): GeneratedHole {
   let gates: Gate[] | null = null;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const candidate = drawGates(mulberry32(seed + attempt), types, k, size);
-    const circuit: Circuit = { qubits: NUM_QUBITS, gates: candidate };
-    if (!touchesEveryQubit(circuit, k)) continue;
-    if (!isNonTrivial(statevector(circuit))) continue;
+    const target = statevector({ qubits: NUM_QUBITS, gates: candidate });
+    if (!isNonTrivial(target)) continue;
+    if (!everyQubitLives(target, k)) continue;
     gates = candidate;
     break;
   }

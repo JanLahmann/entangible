@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Circuit, Gate } from '@qamposer/react';
 import { mulberry32 } from '@shared/menu/sample';
-import { activeQubits, statevector } from './statevector';
+import { activeQubits, probOne, statevector } from './statevector';
 import {
   HOLES,
   ROUND_CLUBS,
@@ -107,15 +107,69 @@ describe('random course generation (#70)', () => {
   it('enforces both constraints on every generated hole (property loop)', () => {
     for (let seed = 0; seed < 40; seed++) {
       for (const { hole, circuit } of generateCourse(seed * 104729 + 3)) {
-        // (b) every qubit 0..k−1 is touched — no lower-level hole in disguise.
+        const target = statevector(circuit);
+        // (a) the target is not |0…0⟩, which an empty board would hole in.
+        expect(target[0].re ** 2 + target[0].im ** 2).toBeLessThan(1 - 1e-9);
+        expect(evaluate({ qubits: 5, gates: [] }, hole).holedIn).toBe(false);
+        // (b) no DEAD wire: every qubit carries |1⟩ population in the target.
+        for (let q = 0; q < hole.level; q++) {
+          expect(probOne(target, q)).toBeGreaterThan(1e-9);
+        }
+        // …which implies the circuit-level property it replaced: a wire the
+        // generator never touched could only ever be exactly |0⟩.
         expect(activeQubits(circuit)).toEqual(
           Array.from({ length: hole.level }, (_, i) => i),
         );
-        // (a) the target is not |0…0⟩, which an empty board would hole in.
-        const a = statevector(circuit)[0];
-        expect(a.re * a.re + a.im * a.im).toBeLessThan(1 - 1e-9);
-        expect(evaluate({ qubits: 5, gates: [] }, hole).holedIn).toBe(false);
       }
+    }
+  });
+
+  it('retries past dead-wire draws the circuit-level check used to accept', () => {
+    // Seed 20260725's E3 slot first draws [CNOT(1→2) CNOT(2→1) H1 CNOT(2→0)]:
+    // it touches all three wires — so the old circuit-level rule took it — yet
+    // leaves q0 and q2 pinned to |0⟩, making the "3-qubit" target
+    // (|000⟩+|010⟩)/√2 a one-H hole with two idle wires. Still a legal draw,
+    // now a rejected one.
+    const stale: Circuit = {
+      qubits: 5,
+      gates: [
+        { id: 'a', type: 'CNOT', position: 0, control: 1, target: 2 },
+        { id: 'b', type: 'CNOT', position: 1, control: 2, target: 1 },
+        { id: 'c', type: 'H', position: 2, qubit: 1 },
+        { id: 'd', type: 'CNOT', position: 3, control: 2, target: 0 },
+      ],
+    };
+    expect(activeQubits(stale)).toEqual([0, 1, 2]); // the old check passed …
+    expect(probOne(statevector(stale), 0)).toBe(0); // … but q0 and q2 are dead.
+    expect(probOne(statevector(stale), 2)).toBe(0);
+
+    const e3 = generateCourse(20260725)[2];
+    expect(e3.hole.level).toBe(3);
+    expect(e3.hole.targetKet).not.toBe('1/√2|000⟩ + 1/√2|010⟩');
+    const target = statevector(e3.circuit);
+    for (let q = 0; q < 3; q++) expect(probOne(target, q)).toBeGreaterThan(1e-9);
+  });
+
+  it('still accepts honest PRODUCT targets — every wire busy is enough', () => {
+    // Products are fine pedagogically: H⊗H is a legal target because no qubit
+    // is idle. The constraint rejects dead wires, not the absence of entanglement.
+    const hh: Circuit = {
+      qubits: 5,
+      gates: [
+        { id: 'a', type: 'H', position: 0, qubit: 0 },
+        { id: 'b', type: 'H', position: 1, qubit: 1 },
+      ],
+    };
+    const sv = statevector(hh);
+    for (let q = 0; q < 2; q++) expect(probOne(sv, q)).toBeCloseTo(0.5, 12);
+    // Generated product targets do occur, and they hole in on their generator.
+    const products = generateCourse(11).filter(
+      ({ hole, circuit }) =>
+        hole.level >= 2 && circuit.gates.every((g) => !CONTROLLED.has(g.type)),
+    );
+    expect(products.length).toBeGreaterThan(0);
+    for (const { hole, circuit } of products) {
+      expect(evaluate(circuit, hole).holedIn).toBe(true);
     }
   });
 
