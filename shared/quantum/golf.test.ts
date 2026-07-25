@@ -10,8 +10,6 @@ import {
   bestFidelity,
   evaluate,
   holeSolution,
-  gateStep,
-  solutionSteps,
   strokeDelta,
   scoreName,
   golfStep,
@@ -149,16 +147,17 @@ describe('reachability — every published solution holes in', () => {
     }
   });
 
-  it('showing a solution is read-only: it never touches the board or the score (#68)', () => {
-    // The reveal renders `solutionSteps(hole.solution)` and nothing else — the
-    // player's circuit and their strokes are untouched by looking at it.
-    const state = { ...initialGolfState(), levelIndex: 1, strokes: 7 };
-    const board = circuit([g('H', 0, { qubit: 0 })]);
-    const before = golfStep(state, board);
-    solutionSteps(hole(2).solution!);
-    const after = golfStep(state, board);
-    expect(after).toEqual(before);
-    expect(hole(2).solution).toEqual(holeSolution(2));
+  it('draws on the hole’s own wires — a solution never reaches past q(k−1)', () => {
+    // What `MiniCircuit` is handed: `n = hole.qubits` wires. A solution that
+    // touched a higher wire would draw a row the hole does not have.
+    for (let n = 1; n <= 18; n++) {
+      for (const gate of hole(n).solution!.gates) {
+        for (const q of [gate.qubit, gate.control, gate.control2, gate.target]) {
+          if (q === undefined) continue;
+          expect(q, `hole ${n} (${hole(n).code})`).toBeLessThan(hole(n).qubits);
+        }
+      }
+    }
   });
 
   it('S and T tiles are equivalent to RZ(π/2)/RZ(π/4) (normalized)', () => {
@@ -235,33 +234,6 @@ describe('holeHighlight', () => {
     expect(holeHighlight(hole(6))).toEqual(new Set([1])); // |1⟩ on q0
     expect(holeHighlight(hole(7))).toEqual(new Set([1, 2])); // Ψ-plus |01⟩,|10⟩
     expect(holeHighlight(hole(17))).toEqual(new Set([0, 1, 7])); // Cascade
-  });
-});
-
-describe('solution chips (#71)', () => {
-  it('names single-qubit, controlled and rotation gates', () => {
-    expect(gateStep(g('H', 0, { qubit: 0 }))).toBe('H q0');
-    expect(gateStep(g('X', 1, { qubit: 3 }))).toBe('X q3');
-    // The controlled-NOT prints under its CLUB name, not the library's 'CNOT'.
-    expect(gateStep(g('CNOT', 0, { control: 0, target: 1 }))).toBe('CX q0→q1');
-    expect(gateStep(g('CH', 0, { control: 2, target: 4 }))).toBe('CH q2→q4');
-    expect(gateStep(g('CCX', 0, { control: 0, control2: 1, target: 2 }))).toBe('CCX q0,q1→q2');
-    expect(gateStep(g('RZ', 0, { qubit: 1, parameter: Math.PI / 2 }))).toBe('RZ 0.50π q1');
-  });
-
-  it('reads a solution left to right, whatever order its gates are stored in', () => {
-    expect(solutionSteps(holeSolution(3))).toEqual(['H q0', 'CX q0→q1', 'CX q0→q2']);
-    expect(solutionSteps(holeSolution(17))).toEqual(['H q0', 'CH q0→q1', 'CX q1→q2']);
-    const shuffled = circuit([g('X', 2, { qubit: 1 }), g('H', 0, { qubit: 0 })]);
-    expect(solutionSteps(shuffled)).toEqual(['H q0', 'X q1']);
-  });
-
-  it('gives every hole one chip per gate — a par-beating answer', () => {
-    for (let n = 1; n <= 18; n++) {
-      const steps = solutionSteps(hole(n).solution!);
-      expect(steps.length, `hole ${n}`).toBe(hole(n).par - 2);
-      for (const s of steps) expect(s.length, `hole ${n}: "${s}"`).toBeLessThan(14);
-    }
   });
 });
 

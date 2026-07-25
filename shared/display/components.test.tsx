@@ -15,8 +15,9 @@ import { StatePanel } from './StatePanel';
 import { QasmPanel } from './QasmPanel';
 import { MessageStrip } from './MessageStrip';
 import { Scorecard } from './Scorecard';
+import { MiniCircuit } from './MiniCircuit';
 import { Celebrations } from './Celebrations';
-import { initialGolfState, solutionSteps } from '@quantum/golf';
+import { initialGolfState } from '@quantum/golf';
 import { randomCourse } from '@quantum/golfRandom';
 
 afterEach(cleanup);
@@ -278,7 +279,7 @@ describe('Scorecard (shared)', () => {
     expect(container.querySelectorAll('.pk-golf-chip').length).toBe(18);
   });
 
-  it('reveals the hole’s solution only after a hole-in, and only on request (#71)', () => {
+  it('draws the hole’s solution only after a hole-in, and only on request (#71)', () => {
     for (const p of ['bo', 'pk'] as const) {
       // Mid-hole: nothing to reveal, because the hole is not in yet.
       const playing = render(
@@ -295,14 +296,18 @@ describe('Scorecard (shared)', () => {
       expect(btn.getAttribute('aria-expanded')).toBe('false');
       expect(container.querySelector(`.${p}-golf-solution`)).toBeNull();
 
-      // Expanded: one chip per gate of the reference path, in board order.
+      // Expanded: the reference path DRAWN — H on q0, then a CX down to q1.
       fireEvent.click(btn);
-      const chips = Array.from(
-        container.querySelectorAll(`.${p}-golf-solution .${p}-golf-sol-chip`),
-      ).map((n) => n.textContent);
-      expect(chips).toEqual(['H q0', 'CX q0→q1']);
+      const svg = container.querySelector(`.${p}-golf-solution .${p}-mini-circ`);
+      expect(svg).not.toBeNull();
+      expect(svg?.querySelectorAll(`.${p}-mini-circ-wire`).length).toBe(2);
+      expect(
+        Array.from(svg!.querySelectorAll(`.${p}-mini-circ-gate`)).map((n) => n.textContent),
+      ).toEqual(['H']);
+      expect(svg?.querySelectorAll(`.${p}-mini-circ-dot`).length).toBe(1);
+      expect(svg?.querySelectorAll(`.${p}-mini-circ-cross`).length).toBe(1);
       expect(btn.textContent).toBe('Hide solution');
-      // The 18-hole strip is untouched — solution chips are their own class.
+      // The 18-hole strip is untouched.
       expect(container.querySelectorAll(`.${p}-golf-chip`).length).toBe(18);
 
       // Collapses again on the next tap.
@@ -312,16 +317,33 @@ describe('Scorecard (shared)', () => {
     }
   });
 
-  it('reveals a generated hole’s generator on the random course (#71)', () => {
+  it('draws a generated hole’s generator on the random course (#71)', () => {
     const state = { ...initialGolfState({}, 'random', 4242), holedIn: true, strokes: 9 };
     const generated = randomCourse(4242)[0];
     const { container } = render(<Scorecard state={state} circuit={bell} classPrefix="pk" />);
     fireEvent.click(container.querySelector('.pk-golf-solution-btn') as HTMLButtonElement);
-    const chips = Array.from(container.querySelectorAll('.pk-golf-sol-chip')).map(
-      (n) => n.textContent,
+    const svg = container.querySelector('.pk-golf-solution .pk-mini-circ');
+    expect(svg).not.toBeNull();
+    // E1 is a 1-qubit hole, so its generator draws on exactly one wire.
+    expect(svg?.querySelectorAll('.pk-mini-circ-wire').length).toBe(generated.qubits);
+    // Every generator gate is drawn (a 1-qubit hole has no controlled gates).
+    expect(svg?.querySelectorAll('.pk-mini-circ-box').length).toBe(
+      generated.solution!.gates.length,
     );
-    expect(chips).toEqual(solutionSteps(generated.solution!));
-    expect(chips.length).toBe(generated.par - 1); // the generator beats par by one
+  });
+
+  it('the reveal is inert: it cannot touch the board or the score (#68)', () => {
+    const state = { ...initialGolfState(), levelIndex: 1, holedIn: true, strokes: 7 };
+    const { container } = render(<Scorecard state={state} circuit={bell} classPrefix="pk" />);
+    const strokesBefore = container.querySelector('.pk-stat')?.parentElement?.textContent;
+    fireEvent.click(container.querySelector('.pk-golf-solution-btn') as HTMLButtonElement);
+    expect(container.querySelector('.pk-stat')?.parentElement?.textContent).toBe(strokesBefore);
+    // The drawing takes no pointer events, so tap-to-inspect and the editor
+    // never see gates that only exist as an illustration.
+    expect((container.querySelector('.pk-mini-circ') as SVGElement).style.pointerEvents).toBe(
+      'none',
+    );
+    expect(state.strokes).toBe(7);
   });
 
   it('hides the reveal on the completed-course summary (no hole is in play)', () => {
@@ -335,6 +357,80 @@ describe('Scorecard (shared)', () => {
       <Scorecard state={initialGolfState()} circuit={bell} classPrefix="pk" />,
     );
     expect(container.querySelector('.pk-golf-random')).toBeNull();
+  });
+});
+
+describe('MiniCircuit (shared)', () => {
+  // H q0 ; CX q0→q1 ; CZ q1→q2 (a lettered target) ; RZ(π/2) q2 — one of each
+  // shape the drawing knows, at four occupied positions.
+  const mixed = circuit([
+    g({ type: 'H', qubit: 0, position: 0 }),
+    g({ type: 'CNOT', control: 0, target: 1, position: 1 }),
+    g({ type: 'CZ', control: 1, target: 2, position: 2 }),
+    g({ type: 'RZ', qubit: 2, parameter: Math.PI / 2, position: 3 }),
+  ]);
+
+  it('draws a wire + label per qubit and the right shape per gate', () => {
+    for (const p of ['bo', 'pk'] as const) {
+      const { container } = render(<MiniCircuit circuit={mixed} n={3} classPrefix={p} />);
+      const svg = container.querySelector(`.${p}-mini-circ`)!;
+      expect(svg.querySelectorAll(`.${p}-mini-circ-wire`).length).toBe(3);
+      expect(
+        Array.from(svg.querySelectorAll(`.${p}-mini-circ-label`)).map((n) => n.textContent),
+      ).toEqual(['q0', 'q1', 'q2']);
+      // Boxes: H, the CZ's lettered target, and the rotation. CX draws a ⊕.
+      expect(
+        Array.from(svg.querySelectorAll(`.${p}-mini-circ-gate`)).map((n) => n.textContent),
+      ).toEqual(['H', 'Z', 'RZ']);
+      expect(svg.querySelectorAll(`.${p}-mini-circ-box`).length).toBe(3);
+      expect(svg.querySelectorAll(`.${p}-mini-circ-dot`).length).toBe(2); // CX + CZ controls
+      expect(svg.querySelectorAll(`.${p}-mini-circ-link`).length).toBe(2);
+      expect(svg.querySelectorAll(`.${p}-mini-circ-target`).length).toBe(1); // only the CX
+      expect(svg.querySelectorAll(`.${p}-mini-circ-cross`).length).toBe(1);
+      // A rotation carries its angle, typeset like the inspect popovers.
+      expect(svg.querySelector(`.${p}-mini-circ-angle`)?.textContent).toBe('0.50π');
+      cleanup();
+    }
+  });
+
+  it('colours by gate family, matching the editor and the printed tiles', () => {
+    const { container } = render(<MiniCircuit circuit={mixed} n={3} classPrefix="pk" />);
+    const fills = Array.from(container.querySelectorAll('.pk-mini-circ-box')).map((n) =>
+      n.getAttribute('fill'),
+    );
+    expect(fills).toEqual(['#fa4d56', '#33b1ff', '#33b1ff']); // H red, Z/RZ cyan
+    expect(container.querySelector('.pk-mini-circ-dot')?.getAttribute('fill')).toBe('#002d9c');
+  });
+
+  it('draws a CCX as two control dots on one link into a ⊕', () => {
+    const ccx = circuit([g({ type: 'CCX', control: 0, control2: 1, target: 2, position: 0 })]);
+    const { container } = render(<MiniCircuit circuit={ccx} n={3} classPrefix="pk" />);
+    expect(container.querySelectorAll('.pk-mini-circ-dot').length).toBe(2);
+    expect(container.querySelectorAll('.pk-mini-circ-link').length).toBe(1);
+    expect(container.querySelectorAll('.pk-mini-circ-target').length).toBe(1);
+    expect(container.querySelectorAll('.pk-mini-circ-cross').length).toBe(1);
+    expect(container.querySelectorAll('.pk-mini-circ-box').length).toBe(0);
+  });
+
+  it('compacts sparse columns and never clips a gate off the drawing', () => {
+    // Positions 0/4/9 draw as three ADJACENT columns …
+    const sparse = circuit([
+      g({ type: 'X', qubit: 0, position: 0 }),
+      g({ type: 'X', qubit: 0, position: 4 }),
+      g({ type: 'X', qubit: 0, position: 9 }),
+    ]);
+    const { container } = render(<MiniCircuit circuit={sparse} n={1} classPrefix="pk" />);
+    const xs = Array.from(container.querySelectorAll('.pk-mini-circ-box')).map((n) =>
+      Number(n.getAttribute('x')),
+    );
+    expect(xs[1] - xs[0]).toBe(30);
+    expect(xs[2] - xs[1]).toBe(30);
+    cleanup();
+
+    // … and a gate above the asked-for wire count grows the drawing, not clips it.
+    const high = circuit([g({ type: 'H', qubit: 4, position: 0 })]);
+    const grown = render(<MiniCircuit circuit={high} n={2} classPrefix="pk" />);
+    expect(grown.container.querySelectorAll('.pk-mini-circ-wire').length).toBe(5);
   });
 });
 

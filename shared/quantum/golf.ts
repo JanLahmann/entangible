@@ -31,18 +31,18 @@
  * (defaulting to `HOLES`), a generated hole carries its own target placements,
  * and `GolfState.course`/`randomSeed` say which course a state is playing.
  *
- * Every hole also carries a `solution` (#71): a gate sequence that prepares its
- * target, revealed on request once the hole is holed in. Classic holes use the
- * reference paths their pars were derived from (`holeSolution`, par − 2 long);
- * generated holes use their own generator. It is display data only — read-only
- * text, never applied to the board, so it can never touch strokes (#68).
+ * Every hole also carries a `solution` (#71): a circuit that prepares its
+ * target, DRAWN on request once the hole is holed in (`shared/display/
+ * MiniCircuit`). Classic holes use the reference paths their pars were derived
+ * from (`holeSolution`, par − 2 long); generated holes use their own generator.
+ * It is display data only — nothing here reads it, and it is never applied to
+ * the board, so it can never touch strokes (#68).
  *
  * Bit convention: leftmost ket bit = first arrangement qubit, matching
  * shared/display/outcomes.ts. Internally targets live in the little-endian
  * statevector basis (index i has qubit q set when (i >> q) & 1).
  */
 import type { Circuit, Gate, GateType } from '@qamposer/react';
-import { formatAngle } from './inspectCopy';
 import { fidelity, statevector, DIM, NUM_QUBITS, type Complex, type StateVector } from './statevector';
 
 export const HOLE_IN_THRESHOLD = 0.99;
@@ -107,9 +107,9 @@ export interface Hole {
   /** GENERATED holes only: the target built on qubits 0..k−1 (see `holeTargetState`). */
   readonly canonicalTarget?: StateVector;
   /**
-   * A worked answer for this hole (#71) — a gate sequence that prepares the
-   * target, shown on request AFTER the hole is holed in ("Show solution"). It is
-   * par−2 long on the classic course (the minimum; see `holeSolution`) and the
+   * A worked answer for this hole (#71) — a circuit that prepares the target,
+   * drawn on request AFTER the hole is holed in ("Show solution"). It is par−2
+   * long on the classic course (the minimum; see `holeSolution`) and the
    * generator itself on the random one, so it always beats par. Optional
    * because it is display data: nothing in the engine reads it, and a hole
    * without one simply offers no reveal.
@@ -426,30 +426,6 @@ export function holeSolution(n: number): Circuit {
     default:
       throw new Error(`no solution for hole ${n}`);
   }
-}
-
-/**
- * A solution gate as one compact chip of text: `H q0`, `CX q0→q1`,
- * `CCX q0,q1→q2`, `RZ 0.50π q0`. The controlled-NOT prints under its CLUB name
- * `CX` (what the scorecard's clubs hint and the printed tile call it), not the
- * library's `CNOT`. Angles are typeset by the same `formatAngle` the tap-to-
- * inspect popovers use, so one rotation notation runs through the whole app.
- */
-export function gateStep(gate: Gate): string {
-  const name = gate.type === 'CNOT' ? 'CX' : gate.type;
-  const angle = gate.parameter === undefined ? '' : ` ${formatAngle(gate.parameter)}`;
-  if (gate.control !== undefined && gate.target !== undefined) {
-    const controls =
-      gate.control2 === undefined ? `q${gate.control}` : `q${gate.control},q${gate.control2}`;
-    return `${name}${angle} ${controls}→q${gate.target}`;
-  }
-  return `${name}${angle} q${gate.qubit ?? 0}`;
-}
-
-/** A solution as its gate chips, in board order (left to right). Read-only:
- *  showing a solution never touches the player's circuit or their strokes (#68). */
-export function solutionSteps(solution: Circuit): string[] {
-  return [...solution.gates].sort((a, b) => a.position - b.position).map(gateStep);
 }
 
 // ---------------------------------------------------------------------------

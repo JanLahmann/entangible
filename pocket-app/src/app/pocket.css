@@ -1742,24 +1742,46 @@ body,
   border-color: var(--entangle);
 }
 
-/* The revealed answer: one chip per gate, wrapping like the ket lines. */
+/* The revealed answer, drawn as a mini circuit (shared MiniCircuit). */
 .pk-golf-solution {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  margin-top: 0.35rem;
+  margin-top: 0.4rem;
 }
 
-.pk-golf-sol-chip {
-  padding: 0.12rem 0.4rem;
-  border-radius: 5px;
-  background: var(--bg-inset);
-  border: 1px solid var(--border);
+/* Scales to the card like the ket lines — it must never widen it. */
+.pk-mini-circ {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.pk-mini-circ-wire {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.pk-mini-circ-label {
+  fill: var(--muted);
   font-family: var(--mono);
-  font-size: 0.68rem;
-  font-weight: 400;
-  color: var(--muted);
-  white-space: nowrap;
+  font-size: 8px;
+}
+
+.pk-mini-circ-gate {
+  fill: #fff;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.pk-mini-circ-angle {
+  fill: #fff;
+  font-family: var(--mono);
+  font-size: 6px;
+}
+
+.pk-mini-circ-link,
+.pk-mini-circ-target,
+.pk-mini-circ-cross {
+  stroke-width: 1.5;
+  fill: none;
 }
 
 /* Full 18-hole strip, one row per round (E/M/D/X). */

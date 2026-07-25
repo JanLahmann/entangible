@@ -12,10 +12,10 @@
  * When the course is finished it shows the final total-vs-par summary.
  *
  * Once a hole is holed in, the score line also offers "Show solution" (#71): a
- * toggle that prints the hole's `solution` as compact per-gate chips ("H q0",
- * "CX q0→q1"). It is read-only text — nothing is applied to the board, so a
- * reveal cannot cost a stroke — and it is scoped to the hole it was opened on,
- * so the next hole starts hidden again.
+ * toggle that DRAWS the hole's `solution` as a compact circuit diagram
+ * (`MiniCircuit`). The drawing is inert — pure props, pointer-transparent,
+ * never applied to the board — so a reveal cannot cost a stroke, and it is
+ * scoped to the hole it was opened on, so the next hole starts hidden again.
  *
  * The card is course-agnostic (#70): the hole list comes from `courseHoles`, so
  * a RANDOM round renders its generated holes (names, kets and generator-sized
@@ -34,12 +34,12 @@ import {
   scoreName,
   courseTotals,
   formatVsPar,
-  solutionSteps,
   type GolfRound,
   type GolfState,
   type Hole,
 } from '@quantum/golf';
 import { courseHoles } from '@quantum/golfRandom';
+import { MiniCircuit } from './MiniCircuit';
 
 const ROUNDS: readonly GolfRound[] = ['easy', 'medium', 'difficult', 'extra'];
 
@@ -175,7 +175,7 @@ export function Scorecard({
             />
           </div>
         )}
-        {holedIn && solutionFor === hole.hole && <SolutionChips p={p} hole={hole} />}
+        {holedIn && solutionFor === hole.hole && <SolutionCircuit p={p} hole={hole} />}
         <ChipStrip p={p} holes={holes} currentHole={hole.hole} best={state.best} />
       </div>
     </div>
@@ -214,20 +214,18 @@ function SolutionToggle({
 }
 
 /**
- * The revealed answer: one compact chip per gate, in board order. Pure TEXT —
- * the solution is never applied to the circuit, so looking at it cannot cost a
- * stroke (#68). The row wraps like the ket lines, so a 6-gate GHZ-5 answer never
- * pushes the card sideways.
+ * The revealed answer, DRAWN (#71): the solution as a compact circuit diagram
+ * rather than a line of text chips — a circuit is a picture, and the picture is
+ * what a player can actually read back onto the board. The drawing is inert
+ * (`MiniCircuit` is pure and pointer-transparent), so looking at it can never
+ * touch the live circuit or cost a stroke (#68), and it scales to the card's
+ * width like the ket lines rather than widening it.
  */
-function SolutionChips({ p, hole }: { p: string; hole: Hole }) {
+function SolutionCircuit({ p, hole }: { p: string; hole: Hole }) {
   if (!hole.solution) return null;
   return (
-    <div className={`${p}-golf-solution`} aria-label="solution">
-      {solutionSteps(hole.solution).map((step, i) => (
-        <span key={`${i}-${step}`} className={`${p}-golf-sol-chip`}>
-          {step}
-        </span>
-      ))}
+    <div className={`${p}-golf-solution`}>
+      <MiniCircuit circuit={hole.solution} n={hole.qubits} classPrefix={p} />
     </div>
   );
 }
