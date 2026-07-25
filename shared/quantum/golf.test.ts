@@ -113,15 +113,15 @@ describe('course definition', () => {
     ]);
   });
 
-  it('has the spec pars and a course par of 65', () => {
+  it('has the spec pars (minimum + 2) and a course par of 101', () => {
     expect(HOLES.map((h) => h.par)).toEqual([
-      1, 2, 3, 4, 5, // easy = 15
-      1, 3, 4, 5, 6, // medium = 19
-      2, 3, 4, 5, 6, // difficult = 20
-      2, 3, 6, // extra = 11
+      3, 4, 5, 6, 7, // easy = 25
+      3, 5, 6, 7, 8, // medium = 29
+      4, 5, 6, 7, 8, // difficult = 30
+      4, 5, 8, // extra = 17
     ]);
-    expect(HOLES.reduce((s, h) => s + h.par, 0)).toBe(65);
-    expect(COURSE_PAR).toBe(65);
+    expect(HOLES.reduce((s, h) => s + h.par, 0)).toBe(101);
+    expect(COURSE_PAR).toBe(101);
   });
 
   it('1-qubit holes play Bloch, the rest Q-sphere', () => {
@@ -170,10 +170,10 @@ describe('reachability — every reference path holes in', () => {
     }
   });
 
-  it('reference paths hit their par stroke count (built clean from an empty board)', () => {
+  it('reference paths hit par − 2 (the minimum; par carries a 2-stroke margin)', () => {
     for (let n = 1; n <= 18; n++) {
-      expect(evaluate(refCircuit(n), hole(n)).gateCount).toBe(hole(n).par);
-      expect(strokeDelta(empty, refCircuit(n))).toBe(hole(n).par);
+      expect(evaluate(refCircuit(n), hole(n)).gateCount).toBe(hole(n).par - 2);
+      expect(strokeDelta(empty, refCircuit(n))).toBe(hole(n).par - 2);
     }
   });
 
@@ -334,7 +334,7 @@ describe('cumulative strokes per hole (#68)', () => {
     step = golfStep(step.state, rightBell);
     expect(step.strokes).toBe(4);
     expect(step.justHoledIn).toBe(true);
-    expect(step.scoreName).toBe('HOLE IN +2'); // par 2, four strokes
+    expect(step.scoreName).toBe('PAR'); // par 4 (min 2 + 2), four strokes
     expect(step.state.best[2]).toBe(4);
   });
 
@@ -384,7 +384,7 @@ describe('cumulative strokes per hole (#68)', () => {
     step = golfStep(step.state, circuit(ghz(3)));
     expect(step.strokes).toBe(5);
     expect(step.justHoledIn).toBe(true);
-    expect(step.scoreName).toBe('HOLE IN +2');
+    expect(step.scoreName).toBe('PAR'); // par 5 (min 3 + 2), five strokes
     expect(step.state.best[3]).toBe(3); // the flicker-free run keeps the best
   });
 
@@ -414,7 +414,7 @@ describe('course totals', () => {
   it('sums best vs par across completed holes only', () => {
     // Cleared E1 (par 1) in 1, E3 (par 3) in 2 → 3 strokes, par 4 → −1.
     const t = courseTotals({ 1: 1, 3: 2 });
-    expect(t).toEqual({ completed: 2, strokes: 3, par: 4, vsPar: -1 });
+    expect(t).toEqual({ completed: 2, strokes: 3, par: 8, vsPar: -5 });
   });
 
   it('formats vs-par golf-style', () => {
@@ -431,7 +431,7 @@ describe('golfStep state machine', () => {
     let step = golfStep(state, refCircuit(1));
     expect(step.justHoledIn).toBe(true);
     expect(step.holedIn).toBe(true);
-    expect(step.scoreName).toBe('PAR');
+    expect(step.scoreName).toBe('EAGLE'); // minimum play beats the +2 par
     expect(step.state.best[1]).toBe(1);
     state = step.state;
 
@@ -475,7 +475,7 @@ describe('golfStep state machine', () => {
     for (let n = 1; n <= 18; n++) {
       const inStep = golfStep(state, refCircuit(n));
       expect(inStep.holedIn, `hole ${n} hole-in`).toBe(true);
-      expect(inStep.state.best[n]).toBe(hole(n).par);
+      expect(inStep.state.best[n]).toBe(hole(n).par - 2); // reference = minimum
       state = inStep.state;
 
       const clear = golfStep(state, empty);
@@ -490,18 +490,18 @@ describe('golfStep state machine', () => {
       }
     }
 
-    // Final total: every hole cleared at par → even.
+    // Final total: every hole cleared at the minimum → 2 under par apiece.
     const totals = courseTotals(state.best);
     expect(totals.completed).toBe(18);
-    expect(totals.strokes).toBe(COURSE_PAR);
-    expect(totals.vsPar).toBe(0);
+    expect(totals.strokes).toBe(COURSE_PAR - 36);
+    expect(totals.vsPar).toBe(-36);
 
     // On the complete screen, a board-clear restarts at hole 1 (best kept).
     const restart = golfStep(state, empty);
     expect(restart.restarted).toBe(true);
     expect(restart.state.levelIndex).toBe(0);
     expect(restart.state.complete).toBe(false);
-    expect(restart.state.best[18]).toBe(hole(18).par); // best carried over
+    expect(restart.state.best[18]).toBe(hole(18).par - 2); // best carried over
   });
 
   it('holds the complete screen while gates sit on the board', () => {

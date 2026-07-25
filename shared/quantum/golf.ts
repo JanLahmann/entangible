@@ -42,8 +42,10 @@ export type GolfView = 'bloch' | 'qsphere';
 /** The four course rounds, in play order. */
 export type GolfRound = 'easy' | 'medium' | 'difficult' | 'extra';
 
-/** Full par of the course (E 15 + M 19 + D 20 + X 11). */
-export const COURSE_PAR = 65;
+/** Full par of the course. Par is the MINIMAL stroke count + 2 per hole
+ *  (E 25 + M 29 + D 30 + X 17): optimal play scores an eagle, one extra
+ *  stroke a birdie, and a small fumble still makes par. */
+export const COURSE_PAR = 101;
 
 /** Human label + accent per round (Scorecard header). */
 export const ROUND_LABEL: Readonly<Record<GolfRound, string>> = {
@@ -292,27 +294,27 @@ interface HoleDef {
 
 const COURSE: readonly HoleDef[] = [
   // EASY
-  { round: 'easy', qubits: 1, name: 'Superposition', targetKet: '(|0⟩+|1⟩)/√2', par: 1 },
-  { round: 'easy', qubits: 2, name: 'Bell', targetKet: '(|00⟩+|11⟩)/√2', par: 2 },
-  { round: 'easy', qubits: 3, name: 'GHZ-3', targetKet: '(|000⟩+|111⟩)/√2', par: 3 },
-  { round: 'easy', qubits: 4, name: 'GHZ-4', targetKet: '(|0000⟩+|1111⟩)/√2', par: 4 },
-  { round: 'easy', qubits: 5, name: 'GHZ-5', targetKet: '(|00000⟩+|11111⟩)/√2', par: 5 },
+  { round: 'easy', qubits: 1, name: 'Superposition', targetKet: '(|0⟩+|1⟩)/√2', par: 3 },
+  { round: 'easy', qubits: 2, name: 'Bell', targetKet: '(|00⟩+|11⟩)/√2', par: 4 },
+  { round: 'easy', qubits: 3, name: 'GHZ-3', targetKet: '(|000⟩+|111⟩)/√2', par: 5 },
+  { round: 'easy', qubits: 4, name: 'GHZ-4', targetKet: '(|0000⟩+|1111⟩)/√2', par: 6 },
+  { round: 'easy', qubits: 5, name: 'GHZ-5', targetKet: '(|00000⟩+|11111⟩)/√2', par: 7 },
   // MEDIUM
-  { round: 'medium', qubits: 1, name: 'Bit flip', targetKet: '|1⟩', par: 1 },
-  { round: 'medium', qubits: 2, name: 'Ψ-plus', targetKet: '(|01⟩+|10⟩)/√2', par: 3 },
-  { round: 'medium', qubits: 3, name: 'Flipped GHZ-3', targetKet: '(|001⟩+|110⟩)/√2', par: 4 },
-  { round: 'medium', qubits: 4, name: 'Flipped GHZ-4', targetKet: '(|0001⟩+|1110⟩)/√2', par: 5 },
-  { round: 'medium', qubits: 5, name: 'Flipped GHZ-5', targetKet: '(|00001⟩+|11110⟩)/√2', par: 6 },
+  { round: 'medium', qubits: 1, name: 'Bit flip', targetKet: '|1⟩', par: 3 },
+  { round: 'medium', qubits: 2, name: 'Ψ-plus', targetKet: '(|01⟩+|10⟩)/√2', par: 5 },
+  { round: 'medium', qubits: 3, name: 'Flipped GHZ-3', targetKet: '(|001⟩+|110⟩)/√2', par: 6 },
+  { round: 'medium', qubits: 4, name: 'Flipped GHZ-4', targetKet: '(|0001⟩+|1110⟩)/√2', par: 7 },
+  { round: 'medium', qubits: 5, name: 'Flipped GHZ-5', targetKet: '(|00001⟩+|11110⟩)/√2', par: 8 },
   // DIFFICULT
-  { round: 'difficult', qubits: 1, name: 'Minus', targetKet: '(|0⟩−|1⟩)/√2', par: 2 },
-  { round: 'difficult', qubits: 2, name: 'Φ-minus', targetKet: '(|00⟩−|11⟩)/√2', par: 3 },
-  { round: 'difficult', qubits: 3, name: 'i-GHZ-3', targetKet: '(|000⟩+i|111⟩)/√2', par: 4 },
-  { round: 'difficult', qubits: 4, name: 'Minus GHZ-4', targetKet: '(|0000⟩−|1111⟩)/√2', par: 5 },
-  { round: 'difficult', qubits: 5, name: 'i-GHZ-5', targetKet: '(|00000⟩+i|11111⟩)/√2', par: 6 },
+  { round: 'difficult', qubits: 1, name: 'Minus', targetKet: '(|0⟩−|1⟩)/√2', par: 4 },
+  { round: 'difficult', qubits: 2, name: 'Φ-minus', targetKet: '(|00⟩−|11⟩)/√2', par: 5 },
+  { round: 'difficult', qubits: 3, name: 'i-GHZ-3', targetKet: '(|000⟩+i|111⟩)/√2', par: 6 },
+  { round: 'difficult', qubits: 4, name: 'Minus GHZ-4', targetKet: '(|0000⟩−|1111⟩)/√2', par: 7 },
+  { round: 'difficult', qubits: 5, name: 'i-GHZ-5', targetKet: '(|00000⟩+i|11111⟩)/√2', par: 8 },
   // EXTRA-HARD
-  { round: 'extra', qubits: 1, name: 'Magic T', targetKet: '(|0⟩+ω|1⟩)/√2', par: 2 },
-  { round: 'extra', qubits: 3, name: 'Cascade', targetKet: '(√2|000⟩+|100⟩+|111⟩)/2', par: 3 },
-  { round: 'extra', qubits: 5, name: 'Golden GHZ', targetKet: '(|00000⟩+ω|11111⟩)/√2', par: 6 },
+  { round: 'extra', qubits: 1, name: 'Magic T', targetKet: '(|0⟩+ω|1⟩)/√2', par: 4 },
+  { round: 'extra', qubits: 3, name: 'Cascade', targetKet: '(√2|000⟩+|100⟩+|111⟩)/2', par: 5 },
+  { round: 'extra', qubits: 5, name: 'Golden GHZ', targetKet: '(|00000⟩+ω|11111⟩)/√2', par: 8 },
 ];
 
 const ROUND_INITIAL: Readonly<Record<GolfRound, string>> = {
