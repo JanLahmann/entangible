@@ -1018,7 +1018,8 @@
   color: var(--muted);
 }
 
-.bo-evo-nav {
+.bo-evo-nav,
+.bo-evo-replay {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1033,7 +1034,8 @@
   cursor: pointer;
 }
 
-.bo-evo-nav:hover:not(:disabled) {
+.bo-evo-nav:hover:not(:disabled),
+.bo-evo-replay:hover {
   color: var(--text);
   border-color: var(--entangle);
 }

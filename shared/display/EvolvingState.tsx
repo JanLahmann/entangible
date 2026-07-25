@@ -11,9 +11,9 @@
  *   - Auto-play: every circuit change replays from the start column through to
  *     the final state, so at rest the view always shows the CURRENT state (the
  *     old default behaviour is preserved — the animation just lands there).
- *   - Scrubber: prev/next + step dots to replay / inspect any column, with a
- *     "start" / "after column N" label. Unobtrusive; hidden when the board is
- *     empty (a single snapshot has nothing to step through).
+ *   - Scrubber: replay + prev/next + step dots to replay / inspect any column,
+ *     with a "start" / "after column N" label. Unobtrusive; hidden when the
+ *     board is empty (a single snapshot has nothing to step through).
  *   - prefers-reduced-motion: no tweening — steps jump instantly; the scrubber
  *     still works.
  *
@@ -185,6 +185,14 @@ export function EvolvingState({ circuit, view, targets, n = 5, classPrefix }: Ev
       )}
       {showScrubber && (
         <div className={`${p}-evo-scrubber`} role="group" aria-label="State evolution steps">
+          <button
+            type="button"
+            className={`${p}-evo-replay`}
+            aria-label="Replay animation"
+            onClick={() => animateTo(lastIndex, 0)}
+          >
+            ↻
+          </button>
           <button
             type="button"
             className={`${p}-evo-nav`}

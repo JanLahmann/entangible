@@ -92,6 +92,28 @@ describe('EvolvingState scrubber', () => {
     expect((getByLabelText('Next step') as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it('replays the whole evolution from the start (#56)', () => {
+    const { container, getByText, getByLabelText } = render(
+      <EvolvingState circuit={bell} view="qsphere" classPrefix="pk" />,
+    );
+    // Park the scrubber at the start, then replay.
+    fireEvent.click(dots(container, 'pk')[0]);
+    expect(getByText('start')).toBeTruthy();
+    fireEvent.click(getByLabelText('Replay animation'));
+    // Under reduced-motion the replay jumps: it lands on the final step again.
+    const all = dots(container, 'pk');
+    expect(all[2].getAttribute('aria-current')).toBe('step');
+    expect(all[0].getAttribute('aria-current')).toBeNull();
+    expect(getByText('after column 2')).toBeTruthy();
+  });
+
+  it('hides the replay button with the rest of the scrubber on an empty board', () => {
+    const { queryByLabelText } = render(
+      <EvolvingState circuit={circuit([])} view="qsphere" classPrefix="pk" />,
+    );
+    expect(queryByLabelText('Replay animation')).toBeNull();
+  });
+
   it('renders the Bloch view for level 1 and steps through it', () => {
     const superpos = circuit([g({ type: 'H', qubit: 0, position: 0 })]);
     const { container } = render(

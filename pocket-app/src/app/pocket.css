@@ -1381,7 +1381,8 @@ body,
   color: var(--muted);
 }
 
-.pk-evo-nav {
+.pk-evo-nav,
+.pk-evo-replay {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1396,7 +1397,8 @@ body,
   cursor: pointer;
 }
 
-.pk-evo-nav:hover:not(:disabled) {
+.pk-evo-nav:hover:not(:disabled),
+.pk-evo-replay:hover {
   color: var(--text);
   border-color: var(--entangle);
 }
