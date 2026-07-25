@@ -277,13 +277,13 @@ describe('EvolvingState bra-ket line (#59)', () => {
       <EvolvingState circuit={bell} view="qsphere" classPrefix="pk" showKet />,
     );
     // Auto-play lands on the final state: the Bell pair over 5 displayed qubits.
-    expect(ket(container)).toBe('0.71|00000⟩ + 0.71|00011⟩');
+    expect(ket(container)).toBe('1/√2|00000⟩ + 1/√2|00011⟩');
 
     fireEvent.click(dots(container, 'pk')[0]);
     expect(ket(container)).toBe('|00000⟩');
 
     fireEvent.click(dots(container, 'pk')[1]);
-    expect(ket(container)).toBe('0.71|00000⟩ + 0.71|00001⟩');
+    expect(ket(container)).toBe('1/√2|00000⟩ + 1/√2|00001⟩');
   });
 
   it('renders under the Bloch view too (purified statevector)', () => {
@@ -292,7 +292,7 @@ describe('EvolvingState bra-ket line (#59)', () => {
       <EvolvingState circuit={superpos} view="bloch" classPrefix="pk" showKet />,
     );
     expect(container.querySelector('.pk-bl-svg')).not.toBeNull();
-    expect(ket(container)).toBe('0.71|00000⟩ + 0.71|00001⟩');
+    expect(ket(container)).toBe('1/√2|00000⟩ + 1/√2|00001⟩');
   });
 
   it('sits between the view and the scrubber', () => {
@@ -320,17 +320,17 @@ describe('EvolvingState bra-ket line (#59)', () => {
       // Parked at the start of the auto-play (dur = 2 × 500 ms).
       expect(ket(container)).toBe('|00000⟩');
       // Half way through column 0: eased(0.5) = 0.5, so the probabilities are
-      // 0.75 / 0.25 — magnitudes 0.87 and 0.50, a reading no snapshot produces.
+      // 0.75 / 0.25 — magnitudes √3/2 and 1/2, a reading no snapshot produces.
       act(() => {
         now = 250;
         frame?.(now);
       });
-      expect(ket(container)).toBe('0.87|00000⟩ + 0.50|00001⟩');
+      expect(ket(container)).toBe('√3/2|00000⟩ + 1/2|00001⟩');
       act(() => {
         now = 1000;
         frame?.(now);
       });
-      expect(ket(container)).toBe('0.71|00000⟩ + 0.71|00011⟩');
+      expect(ket(container)).toBe('1/√2|00000⟩ + 1/√2|00011⟩');
     } finally {
       vi.unstubAllGlobals();
       vi.restoreAllMocks();

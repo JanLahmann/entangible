@@ -9,7 +9,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { DIM, type Complex, type StateVector } from '@quantum/statevector';
-import { KetDisplay } from './KetDisplay';
+import { KetDisplay, magnitudeLabel } from './KetDisplay';
 
 afterEach(cleanup);
 
@@ -34,10 +34,43 @@ function text(sv: StateVector, n: number, props: Partial<{ maxTerms: number; min
   return container.querySelector('.pk-ket')?.textContent ?? null;
 }
 
+/**
+ * #66 — magnitudes read as the exact math where one exists. The table is
+ * deliberately closed: anything the physical gate set cannot make stays decimal.
+ */
+describe('magnitudeLabel', () => {
+  it('writes a unit coefficient by leaving it out', () => {
+    expect(magnitudeLabel(1)).toBe('');
+  });
+
+  it('typesets the exact forms the gate set produces', () => {
+    expect(magnitudeLabel(Math.SQRT1_2)).toBe('1/√2');
+    expect(magnitudeLabel(0.5)).toBe('1/2');
+    expect(magnitudeLabel(Math.sqrt(3) / 2)).toBe('√3/2');
+    expect(magnitudeLabel(1 / Math.sqrt(3))).toBe('1/√3');
+    expect(magnitudeLabel(1 / (2 * Math.SQRT2))).toBe('1/(2√2)');
+    expect(magnitudeLabel(1 / Math.sqrt(5))).toBe('1/√5');
+    expect(magnitudeLabel(2 / Math.sqrt(5))).toBe('2/√5');
+  });
+
+  it('matches within 1e-4, so an interpolated frame still reads exactly', () => {
+    expect(magnitudeLabel(0.7071)).toBe('1/√2');
+    expect(magnitudeLabel(Math.SQRT1_2 + 9e-5)).toBe('1/√2');
+  });
+
+  it('falls back to two decimals off the table', () => {
+    expect(magnitudeLabel(0.7071 + 0.01)).toBe('0.72');
+    expect(magnitudeLabel(0.3)).toBe('0.30');
+    expect(magnitudeLabel(0.9)).toBe('0.90');
+    // 1/(2√5) is NOT in the table — the seven fractions are the whole list.
+    expect(magnitudeLabel(1 / (2 * Math.sqrt(5)))).toBe('0.22');
+  });
+});
+
 describe('KetDisplay', () => {
-  it('typesets a Bell state as 0.71|00⟩ + 0.71|11⟩', () => {
+  it('typesets a Bell state as 1/√2|00⟩ + 1/√2|11⟩', () => {
     // H q0 · CNOT 0→1 populates indices 0 and 3 (little-endian amplitudes).
-    expect(text(state({ 0: c(R), 3: c(R) }), 2)).toBe('0.71|00⟩ + 0.71|11⟩');
+    expect(text(state({ 0: c(R), 3: c(R) }), 2)).toBe('1/√2|00⟩ + 1/√2|11⟩');
   });
 
   it('renders a lone basis state as a bare ket (X → |1⟩)', () => {
@@ -46,12 +79,12 @@ describe('KetDisplay', () => {
   });
 
   it('renders a π phase as a minus sign (H · Z)', () => {
-    expect(text(state({ 0: c(R), 1: c(-R) }), 1)).toBe('0.71|0⟩ − 0.71|1⟩');
+    expect(text(state({ 0: c(R), 1: c(-R) }), 1)).toBe('1/√2|0⟩ − 1/√2|1⟩');
   });
 
   it('renders ±π/2 phases as ±i (H · S and H · S†)', () => {
-    expect(text(state({ 0: c(R), 1: c(0, R) }), 1)).toBe('0.71|0⟩ + 0.71i|1⟩');
-    expect(text(state({ 0: c(R), 1: c(0, -R) }), 1)).toBe('0.71|0⟩ − 0.71i|1⟩');
+    expect(text(state({ 0: c(R), 1: c(0, R) }), 1)).toBe('1/√2|0⟩ + 1/√2i|1⟩');
+    expect(text(state({ 0: c(R), 1: c(0, -R) }), 1)).toBe('1/√2|0⟩ − 1/√2i|1⟩');
   });
 
   it('renders a general phase as a π-fraction exponent in a <sup> (H · T)', () => {
@@ -60,7 +93,7 @@ describe('KetDisplay', () => {
     );
     const sup = container.querySelector('.pk-ket sup');
     expect(sup?.textContent).toBe('i0.25π');
-    expect(container.querySelector('.pk-ket')?.textContent).toBe('0.71|0⟩ + 0.71ei0.25π|1⟩');
+    expect(container.querySelector('.pk-ket')?.textContent).toBe('1/√2|0⟩ + 1/√2ei0.25π|1⟩');
   });
 
   it('renders a negative general phase with a leading minus in the exponent', () => {
@@ -70,25 +103,32 @@ describe('KetDisplay', () => {
     expect(container.querySelector('.pk-ket sup')?.textContent).toBe('−i0.25π');
   });
 
-  it('sorts by descending probability, ties by ascending index', () => {
+  it('reads out in ascending basis-index order, not by size (#66)', () => {
     const sv = state({ 0: c(0.5), 1: c(Math.sqrt(0.5)), 2: c(0.5) });
-    // p = 0.5 (index 1) first, then the two 0.25 ties in index order.
-    expect(text(sv, 2)).toBe('0.71|01⟩ + 0.50|00⟩ + 0.50|10⟩');
+    // The dominant p = 0.5 term sits at index 1 — it must stay in the MIDDLE.
+    expect(text(sv, 2)).toBe('1/2|00⟩ + 1/√2|01⟩ + 1/2|10⟩');
   });
 
   it('keeps a stable index order for probabilities that tie within float noise', () => {
     // Equal in theory, one ULP apart in practice (as a purified Bloch state or
     // an interpolated frame can be) — the order must not depend on the noise.
     const sv = state({ 0: c(R), 1: c(R + Number.EPSILON) });
-    expect(text(sv, 1)).toBe('0.71|0⟩ + 0.71|1⟩');
+    expect(text(sv, 1)).toBe('1/√2|0⟩ + 1/√2|1⟩');
+  });
+
+  it('truncates by SIZE — a tiny low-index term never evicts a dominant one', () => {
+    // p = 0.01 at index 0, 0.495 each at indices 2 and 3. Index order alone
+    // would show the runt first; selection is by probability, display by index.
+    const sv = state({ 0: c(0.1), 2: c(Math.sqrt(0.495)), 3: c(Math.sqrt(0.495)) });
+    expect(text(sv, 2, { maxTerms: 2 })).toBe('0.70|10⟩ + 0.70|11⟩ + ⋯');
   });
 
   it('caps at maxTerms and appends an ellipsis', () => {
-    // Uniform over 8 basis states: each amplitude 1/√8, p = 0.125.
+    // Uniform over 8 basis states: each amplitude 1/√8 = 1/(2√2), p = 0.125.
     const amp = 1 / Math.sqrt(8);
     const sv = state(Object.fromEntries([0, 1, 2, 3, 4, 5, 6, 7].map((i) => [i, c(amp)])));
     const t = text(sv, 3, { maxTerms: 3 });
-    expect(t).toBe('0.35|000⟩ + 0.35|001⟩ + 0.35|010⟩ + ⋯');
+    expect(t).toBe('1/(2√2)|000⟩ + 1/(2√2)|001⟩ + 1/(2√2)|010⟩ + ⋯');
 
     // At the default cap of 6 the same state shows 6 terms + the ellipsis.
     cleanup();
@@ -124,7 +164,7 @@ describe('KetDisplay', () => {
     const plain = state({ 0: c(R), 3: c(R) });
     for (const g of [0.3, Math.PI / 2, Math.PI, -2.1]) {
       const rotated = plain.map((a) => polar(Math.hypot(a.re, a.im), Math.atan2(a.im, a.re) + g));
-      expect(text(rotated, 2)).toBe('0.71|00⟩ + 0.71|11⟩');
+      expect(text(rotated, 2)).toBe('1/√2|00⟩ + 1/√2|11⟩');
       cleanup();
     }
   });

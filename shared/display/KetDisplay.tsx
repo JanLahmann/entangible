@@ -1,7 +1,7 @@
 /**
  * KetDisplay — the live state in bra-ket notation (task #59).
  *
- * Renders the current statevector as `0.71|00⟩ + 0.71|11⟩`, sitting directly
+ * Renders the current statevector as `1/√2|00⟩ + 1/√2|11⟩`, sitting directly
  * under the golf evolution view so the MATH moves with the balls: fed the same
  * ANIMATED interpolated statevector `EvolvingState` gives the Q-sphere, every
  * frame of the roll-the-ball travel (#57) is mirrored here.
@@ -11,14 +11,25 @@
  *     state in index order), exactly as `basisVisuals` colours the nodes. That
  *     is why this is reused verbatim rather than re-derived: a global phase can
  *     never leak into the notation, so a Bell state always reads
- *     `0.71|00⟩ + 0.71|11⟩` and never a phase-decorated variant of it.
+ *     `1/√2|00⟩ + 1/√2|11⟩` and never a phase-decorated variant of it.
  *   - Kets are MSB-first bitstrings (`index.toString(2).padStart(n, '0')`), the
  *     same labels the Q-sphere nodes and the histogram counts keys carry.
  *
- * Terms are sorted by descending probability (ties: ascending index) and capped
- * at `maxTerms` with a trailing `+ ⋯`, so a spread-out state stays one readable
- * line on a phone. Structural only — `${classPrefix}-ket*` classes, styled by
- * the pocket (`pk-`) and booth (`bo-`) skins.
+ * Terms are shown in ASCENDING BASIS-INDEX order (#66) — the textbook reading
+ * `|00⟩ + |11⟩`, stable as the animation moves amplitudes around. Truncation is
+ * still by SIZE: the `maxTerms` largest-probability terms survive (ties broken by
+ * ascending index, on probabilities quantized to `TIE_EPS` so float noise cannot
+ * reshuffle them), and only then are the survivors put back in index order — a
+ * negligible term can never evict a dominant one. A cut list gets a trailing
+ * `+ ⋯`, so a spread-out state stays one readable line on a phone.
+ *
+ * Magnitudes typeset as EXACT fractions where one applies (`magnitudeLabel`):
+ * golf states are built from H/X/Y/Z/S/T/CH, so `1/√2`, `1/2`, `1/(2√2)` and the
+ * `√3/2` family cover the real cases and read as the math rather than as 0.71.
+ * Anything off the table falls back to two decimals.
+ *
+ * Structural only — `${classPrefix}-ket*` classes, styled by the pocket (`pk-`)
+ * and booth (`bo-`) skins.
  */
 import { basisVisuals } from '@quantum/qsphere';
 import type { StateVector } from '@quantum/statevector';
@@ -38,6 +49,38 @@ const TIE_EPS = 1e-9;
 
 const MINUS = '−'; // U+2212 MINUS SIGN (not a hyphen)
 
+/** How close a magnitude must be to a table value to be typeset as that exact form. */
+const FRACTION_TOL = 1e-4;
+
+/**
+ * The exact magnitudes worth a closed form, most-common first. Deliberately
+ * SHORT: every entry here is a magnitude the physical gate set (H/X/Y/Z/S/T/CH)
+ * actually produces, so a match is evidence of real structure rather than a
+ * coincidence of rounding. Everything else stays a decimal.
+ */
+const EXACT_MAGNITUDES: ReadonlyArray<readonly [number, string]> = [
+  [1, ''], // a bare coefficient: |010⟩, not 1.00|010⟩
+  [Math.SQRT1_2, '1/√2'], // H
+  [0.5, '1/2'], // H·H on two wires, √3/2's partner
+  [Math.sqrt(3) / 2, '√3/2'],
+  [1 / Math.sqrt(3), '1/√3'],
+  [1 / (2 * Math.SQRT2), '1/(2√2)'], // uniform over 8
+  [1 / Math.sqrt(5), '1/√5'],
+  [2 / Math.sqrt(5), '2/√5'],
+];
+
+/**
+ * Magnitude as display text: an exact fraction when one is within `FRACTION_TOL`,
+ * otherwise two decimals. `1` maps to the empty string — a unit coefficient is
+ * written by leaving it out. Exported for direct unit testing.
+ */
+export function magnitudeLabel(m: number): string {
+  for (const [value, label] of EXACT_MAGNITUDES) {
+    if (Math.abs(m - value) <= FRACTION_TOL) return label;
+  }
+  return m.toFixed(2);
+}
+
 export interface KetDisplayProps {
   /** The state to typeset — the ANIMATED statevector when driven by EvolvingState. */
   statevector: StateVector;
@@ -56,7 +99,7 @@ interface Term {
   index: number;
   /** Leading operator — '' for a positive first term, '+ ' / '− ' otherwise. */
   op: string;
-  /** Magnitude text, '' when the coefficient is a bare 1. */
+  /** Magnitude text — exact fraction or two decimals, '' for a bare 1. */
   coef: string;
   /** Imaginary unit suffix, '' or 'i'. */
   unit: string;
@@ -93,11 +136,14 @@ export function ketTerms(
   const count = Math.min(1 << n, statevector.length);
   // Reference-relative phases, identical to what the Q-sphere colours by.
   const visuals = basisVisuals(statevector, count).filter((v) => v.prob > minProb);
+  // Select by SIZE (so the cut drops the least significant terms)…
   const rank = (p: number) => Math.round(p / TIE_EPS);
   visuals.sort((a, b) => rank(b.prob) - rank(a.prob) || a.index - b.index);
-
   const truncated = visuals.length > maxTerms;
-  const terms = visuals.slice(0, maxTerms).map((v, i) => {
+  // …then read out in INDEX order, the way the state is written down.
+  const shown = visuals.slice(0, maxTerms).sort((a, b) => a.index - b.index);
+
+  const terms = shown.map((v, i) => {
     const mag = Math.sqrt(v.prob);
     const phase = signedRadians(v.phaseDeg);
     const abs = Math.abs(phase);
@@ -123,7 +169,7 @@ export function ketTerms(
     return {
       index: v.index,
       op,
-      coef: bare ? '' : mag.toFixed(2),
+      coef: bare ? '' : magnitudeLabel(mag),
       unit,
       exponent,
       ket: `|${v.index.toString(2).padStart(n, '0')}⟩`,
