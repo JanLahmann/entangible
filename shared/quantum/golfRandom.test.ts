@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { Circuit, Gate } from '@qamposer/react';
 import { mulberry32 } from '@shared/menu/sample';
-import { activeQubits, probOne, statevector } from './statevector';
+import { basisVisuals } from './qsphere';
+import { activeQubits, probOne, statevector, type StateVector } from './statevector';
 import {
   HOLES,
   ROUND_CLUBS,
@@ -32,6 +33,23 @@ const CONTROLLED = new Set(['CNOT', 'CX', 'CY', 'CZ', 'CH', 'CS', 'CT', 'CCX']);
 /** A comparable fingerprint of a generated circuit (ids aside). */
 const shape = (c: Circuit) =>
   c.gates.map((g) => [g.type, g.position, g.qubit, g.control, g.target].join('|')).join(',');
+
+/** The reference amplitude `basisVisuals` aligns phases to: the first populated
+ *  basis state in index order (unit-modulus, so dividing by it is a conjugate
+ *  multiply / |ref|). */
+function refAmp(sv: StateVector, k: number): { re: number; im: number } {
+  for (let i = 0; i < 1 << k; i++) {
+    const a = sv[i];
+    const p = a.re * a.re + a.im * a.im;
+    if (p >= 1e-3) return { re: a.re / Math.sqrt(p), im: a.im / Math.sqrt(p) };
+  }
+  return { re: 1, im: 0 };
+}
+
+/** `a` divided by the unit-modulus reference — the global phase taken out. */
+function align(a: { re: number; im: number }, ref: { re: number; im: number }) {
+  return { re: a.re * ref.re + a.im * ref.im, im: a.im * ref.re - a.re * ref.im };
+}
 
 /** Move a generator off qubits 0..k−1 onto `wires` (position j → wires[j]). */
 function remap(c: Circuit, wires: readonly number[]): Circuit {
@@ -148,6 +166,61 @@ describe('random course generation (#70)', () => {
     expect(e3.hole.targetKet).not.toBe('1/√2|000⟩ + 1/√2|010⟩');
     const target = statevector(e3.circuit);
     for (let q = 0; q < 3; q++) expect(probOne(target, q)).toBeGreaterThan(1e-9);
+  });
+
+  it('keeps EASY and MEDIUM targets phase-free (property loop)', () => {
+    for (let seed = 0; seed < 40; seed++) {
+      for (const { hole, circuit } of generateCourse(seed * 7907 + 11)) {
+        if (hole.round !== 'easy' && hole.round !== 'medium') continue;
+        const target = statevector(circuit);
+        // Every populated amplitude sits at 0° against the reference…
+        for (const v of basisVisuals(target, 1 << hole.level)) {
+          if (v.prob <= 1e-9) continue;
+          expect(Math.min(v.phaseDeg, 360 - v.phaseDeg)).toBeLessThanOrEqual(1e-6);
+        }
+        // …i.e. after aligning the reference out, every amplitude is real and
+        // non-negative — no minus signs, no i, nothing to compose a CZ for.
+        const ref = refAmp(target, hole.level);
+        for (let i = 0; i < 1 << hole.level; i++) {
+          const a = align(target[i], ref);
+          expect(Math.abs(a.im)).toBeLessThan(1e-9);
+          expect(a.re).toBeGreaterThan(-1e-9);
+        }
+        // The scorecard ket says the same thing: no minus, no i, no e^.
+        expect(hole.targetKet).not.toContain('−');
+        expect(hole.targetKet).not.toContain('i');
+        expect(hole.targetKet).not.toContain('e^');
+      }
+    }
+  });
+
+  it('leaves DIFFICULT and EXTRA free to carry phases — the rule does not leak', () => {
+    let phased = 0;
+    let total = 0;
+    for (let seed = 0; seed < 30; seed++) {
+      for (const { hole, circuit } of generateCourse(seed * 31 + 5)) {
+        if (hole.round === 'easy' || hole.round === 'medium') continue;
+        total += 1;
+        const visuals = basisVisuals(statevector(circuit), 1 << hole.level);
+        const hasPhase = visuals.some(
+          (v) => v.prob > 1e-9 && Math.min(v.phaseDeg, 360 - v.phaseDeg) > 1e-6,
+        );
+        if (hasPhase) phased += 1;
+      }
+    }
+    expect(total).toBe(30 * 8); // 5 difficult + 3 extra holes per course
+    // Phase IS the D/X lesson, so a large fraction of them must carry one.
+    expect(phased).toBeGreaterThan(total / 5);
+
+    // Anchored on one shipped seed: the new rule cost M4 its minus sign, while
+    // D4 and X1 — same base seed, untouched slot seeds — still carry theirs.
+    const course = generateCourse(20260725);
+    expect(course[8].hole.code).toBe('M4');
+    expect(course[8].hole.targetKet).not.toContain('−');
+    expect(course[13].hole.code).toBe('D4');
+    expect(course[13].hole.targetKet).toContain('−');
+    expect(course[15].hole.code).toBe('X1');
+    expect(course[15].hole.targetKet).toContain('−');
   });
 
   it('still accepts honest PRODUCT targets — every wire busy is enough', () => {

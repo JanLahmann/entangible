@@ -24,9 +24,13 @@
  * their control/target drawn distinct. A candidate is rejected, and the draw
  * retried at the next seed offset, unless:
  *
- *   (a) the target is not |0…0⟩ — an empty board would otherwise hole in; and
+ *   (a) the target is not |0…0⟩ — an empty board would otherwise hole in;
  *   (b) no qubit is DEAD: every wire 0..k−1 carries real |1⟩ population in the
- *       target, i.e. some amplitude with that bit set is non-negligible.
+ *       target, i.e. some amplitude with that bit set is non-negligible; and
+ *   (c) on the EASY and MEDIUM rounds only, the target is PHASE-FREE — every
+ *       populated amplitude is real and non-negative once aligned to the
+ *       reference amplitude (the same convention the Q-sphere colours and the
+ *       bra-ket line typeset by).
  *
  * (b) is checked on the STATE, not on the circuit, and is strictly stronger than
  * "the generator touched every qubit": an untouched wire is exactly |0⟩, but so
@@ -36,6 +40,13 @@
  * targets are deliberately still legal: H⊗H⊗H is a fine thing to ask for,
  * because every wire is doing something. (a) is then implied by (b) but kept
  * explicit — "an empty board must never hole in" is the invariant that matters.
+ *
+ * (c) keeps the difficulty ladder honest, and mirrors the classic course, where
+ * relative phases first appear in DIFFICULT. A phased easy target can demand a
+ * genuinely advanced move — Jan drew an E3 that could only be answered by
+ * composing a CZ out of H and CX, which is a difficult-round insight sitting in
+ * the easy round. So E and M targets must read as plain positive superpositions;
+ * D and X stay unconstrained, because phase IS their lesson.
  *
  * Everything is derived from one 32-bit base seed: the slot at index `i` uses
  * `baseSeed + i * 1000`, and a rejected draw retries at `+1` (capped far below
@@ -58,6 +69,7 @@
 import type { Circuit, Gate, GateType } from '@qamposer/react';
 import { ketTerms } from '@shared/display/KetDisplay';
 import { mulberry32, cryptoRng, type Rng } from '@shared/menu/sample';
+import { basisVisuals } from './qsphere';
 import { statevector, DIM, NUM_QUBITS, type StateVector } from './statevector';
 import {
   HOLES,
@@ -81,10 +93,11 @@ export const ROUND_BONUS: Readonly<Record<GolfRound, number>> = {
 const SLOT_STRIDE = 1000;
 /**
  * Seed offsets tried before the deterministic fallback, sized for the tightest
- * slots. Keeping all five wires alive on a 7-gate draw is genuinely demanding:
- * D5 and X5 accept ~1 draw in 56 (measured over 3000 seeds; their worst
- * observed run was ~440 rejects), while E1/M1 accept almost immediately. At 900
- * the chance of falling through to the fallback is ~1e-7 per hole, and the
+ * slots. Keeping five wires alive on a 7-gate draw is genuinely demanding, and
+ * the phase-free rule tightens the wide EASY/MEDIUM slots further. Measured
+ * acceptance over 4000 seeds per slot: D5 1.8%, X5 1.8%, M5 3.5%, E5 2.9% —
+ * everything else far looser (M1 82%, E2 31%). At 900 attempts even the worst
+ * slot falls through to the fallback with probability ~1e-7 per hole, and the
  * budget still fits inside `SLOT_STRIDE`, so slot seed ranges cannot collide.
  */
 const MAX_ATTEMPTS = 900;
@@ -92,6 +105,10 @@ const MAX_ATTEMPTS = 900;
 const TRIVIAL_EPS = 1e-9;
 /** Below this probability an amplitude is not evidence that a qubit is alive. */
 const LIVE_EPS = 1e-9;
+/** How far a reference-relative phase may stray from 0° and still read as none. */
+const PHASE_TOL_DEG = 1e-6;
+/** Rounds whose targets must be phase-free (see constraint (c) in the header). */
+const PHASE_FREE_ROUNDS: ReadonlySet<GolfRound> = new Set<GolfRound>(['easy', 'medium']);
 /** Terms shown in a generated hole's scorecard ket (the rest elide to "+ ⋯"). */
 const KET_TERMS = 4;
 
@@ -162,9 +179,27 @@ function everyQubitLives(target: StateVector, k: number): boolean {
 }
 
 /**
- * A hand-built circuit satisfying both constraints, used only if the retry
- * budget is somehow exhausted: an H on every wire (touching all of them and
- * leaving |0…0⟩ far behind), padded to `n` gates on q0 with another club.
+ * Constraint (c): the target carries no relative phase — every populated
+ * amplitude sits at 0° once aligned to the reference amplitude. Phases are read
+ * with `basisVisuals`, the SAME machinery the Q-sphere colours nodes by and the
+ * bra-ket line typesets from, so "phase-free" here means exactly "nothing on
+ * screen shows a phase". Degrees live in [0, 360), so a hair below zero wraps to
+ * just under 360 and both ends must be accepted.
+ */
+function isPhaseFree(target: StateVector, k: number): boolean {
+  for (const v of basisVisuals(target, 1 << k)) {
+    if (v.prob <= LIVE_EPS) continue;
+    if (Math.min(v.phaseDeg, 360 - v.phaseDeg) > PHASE_TOL_DEG) return false;
+  }
+  return true;
+}
+
+/**
+ * A hand-built circuit satisfying ALL the constraints, used only if the retry
+ * budget is somehow exhausted: an H on every wire (leaving every qubit alive
+ * and |0…0⟩ far behind, with a uniformly positive — hence phase-free —
+ * amplitude), padded to `n` gates on q0 with another club, which for every
+ * round's club list is X and therefore leaves |+⟩ untouched.
  */
 function fallbackGates(types: readonly GateType[], k: number, n: number): Gate[] {
   const single = types.filter((t) => !CONTROLLED.has(t));
@@ -219,6 +254,7 @@ export function generateHole(slot: Slot, seed: number): GeneratedHole {
   const types = gateTypesForClubs(clubs);
   const k = slot.level;
   const size = k + ROUND_BONUS[slot.round];
+  const phaseFree = PHASE_FREE_ROUNDS.has(slot.round);
 
   let gates: Gate[] | null = null;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -226,6 +262,7 @@ export function generateHole(slot: Slot, seed: number): GeneratedHole {
     const target = statevector({ qubits: NUM_QUBITS, gates: candidate });
     if (!isNonTrivial(target)) continue;
     if (!everyQubitLives(target, k)) continue;
+    if (phaseFree && !isPhaseFree(target, k)) continue;
     gates = candidate;
     break;
   }
