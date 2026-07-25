@@ -1080,6 +1080,11 @@
 }
 
 /* ---- live bra-ket notation under the evolution view (#59) ------------- */
+.bo-ket-term--diff {
+  color: var(--entangle);
+  font-weight: 600;
+}
+
 .bo-ket-label {
   margin-right: 0.5em;
   font-size: 0.85em;

@@ -90,6 +90,9 @@ export interface KetDisplayProps {
   classPrefix: string;
   /** Optional leading label, e.g. "State" / "Target" (golf shows both lines). */
   label?: string;
+  /** Basis indices whose term renders emphasized (golf: target terms the live
+   *  state doesn't match yet — the missed − sign problem). */
+  highlight?: ReadonlySet<number>;
   /** Maximum terms shown before eliding with `+ ⋯`. */
   maxTerms?: number;
   /** Below this probability a basis state is not a term. */
@@ -201,6 +204,7 @@ export function KetDisplay({
   n,
   classPrefix,
   label,
+  highlight,
   maxTerms = 6,
   minProb = 0.005,
 }: KetDisplayProps) {
@@ -216,7 +220,10 @@ export function KetDisplay({
     >
       {label && <span className={`${p}-ket-label`}>{label}</span>}
       {terms.map((t) => (
-        <span key={t.index} className={`${p}-ket-term`}>
+        <span
+          key={t.index}
+          className={`${p}-ket-term${highlight?.has(t.index) ? ` ${p}-ket-term--diff` : ''}`}
+        >
           {t.op}
           <span className={`${p}-ket-coef`}>
             {t.coef}

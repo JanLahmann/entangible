@@ -295,6 +295,31 @@ describe('EvolvingState bra-ket line (#59)', () => {
     expect(ket(container)).toBe('1/√2|00000⟩ + 1/√2|00001⟩');
   });
 
+  it('highlights target terms the live state does not match (the missed − sign)', () => {
+    // Live: Bell (+|00..0⟩ +|11..1⟩ terms, both positive). Target: same
+    // magnitudes but a − on the second term → exactly that term must carry the
+    // --diff class; the matching first term must not.
+    const target: StateVector = Array.from({ length: 32 }, (_, i) =>
+      i === 0 ? { re: Math.SQRT1_2, im: 0 } : i === 3 ? { re: -Math.SQRT1_2, im: 0 } : { re: 0, im: 0 },
+    );
+    const { container } = render(
+      <EvolvingState
+        circuit={bell}
+        view="qsphere"
+        classPrefix="pk"
+        showKet
+        targetState={target}
+      />,
+    );
+    const targetLine = Array.from(container.querySelectorAll('.pk-ket')).find((el) =>
+      el.textContent?.startsWith('Target'),
+    ) as HTMLElement;
+    expect(targetLine).toBeTruthy();
+    const diff = Array.from(targetLine.querySelectorAll('.pk-ket-term--diff'));
+    expect(diff.map((el) => el.textContent)).toEqual([' − 1/√2|00011⟩']);
+    // A target equal to the live final state highlights nothing once settled.
+  });
+
   it('sits between the view and the scrubber', () => {
     const { container } = render(
       <EvolvingState circuit={bell} view="qsphere" classPrefix="pk" showKet />,

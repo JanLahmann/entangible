@@ -280,8 +280,11 @@ export function generateHole(slot: Slot, seed: number): GeneratedHole {
     view: k === 1 ? 'bloch' : 'qsphere',
     targetKet: ket,
     target: ket,
-    // Par IS the generator's size — see the module header on built-in slack.
-    par: size,
+    // Par = generator size + 1: the draw usually carries its own redundancy,
+    // but an efficient deal would otherwise leave ZERO slack — with #68's
+    // edit-counted strokes a single fumble would make par unreachable (Jan hit
+    // exactly that on a minimal E3 deal).
+    par: size + 1,
     clubs,
     targets: orderedPlacements(k, target),
     canonicalTarget: target,

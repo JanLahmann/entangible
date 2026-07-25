@@ -91,14 +91,14 @@ describe('random course generation (#70)', () => {
     for (const h of course) expect(h.clubs).toEqual(ROUND_CLUBS[h.round]);
   });
 
-  it('par IS the generator gate count (level + the round bonus, no +2)', () => {
+  it('par is the generator gate count + 1 slack (level + round bonus + 1)', () => {
     for (const { hole, circuit } of generateCourse(99)) {
-      expect(hole.par).toBe(circuit.gates.length);
-      expect(hole.par).toBe(hole.level + ROUND_BONUS[hole.round]);
+      expect(hole.par).toBe(circuit.gates.length + 1);
+      expect(hole.par).toBe(hole.level + ROUND_BONUS[hole.round] + 1);
     }
     // …and therefore a random course's par is its own sum, not COURSE_PAR.
     expect(coursePar(randomCourse(99))).toBe(
-      HOLES.reduce((s, h) => s + h.level + ROUND_BONUS[h.round], 0),
+      HOLES.reduce((s, h) => s + h.level + ROUND_BONUS[h.round] + 1, 0),
     );
   });
 
@@ -251,7 +251,7 @@ describe('random course generation (#70)', () => {
       const ev = evaluate(circuit, hole);
       expect(ev.fidelity).toBeGreaterThan(1 - 1e-9);
       expect(ev.holedIn).toBe(true);
-      expect(ev.gateCount).toBe(hole.par);
+      expect(ev.gateCount).toBe(hole.par - 1); // generator = par − 1 slack
     }
     // The ordered-placement machinery (as on the Cascade hole) means the same
     // answer built on other rows, reversed, scores identically.
@@ -318,10 +318,10 @@ describe('course selection', () => {
     let step = golfStep(state, course[0].circuit, holes);
     expect(step.hole.name).toBe('Random E1');
     expect(step.holedIn).toBe(true);
-    expect(step.strokes).toBe(holes[0].par);
-    expect(step.scoreName).toBe('PAR');
+    expect(step.strokes).toBe(holes[0].par - 1);
+    expect(step.scoreName).toBe('BIRDIE'); // generator play beats par by the slack stroke
     state = step.state;
-    expect(state.best[1]).toBe(holes[0].par);
+    expect(state.best[1]).toBe(holes[0].par - 1);
 
     // Clear → advance to the generated hole 2.
     step = golfStep(state, empty, holes);
@@ -331,7 +331,7 @@ describe('course selection', () => {
 
     // The running total is measured against the GENERATED pars.
     expect(courseTotals(step.state.best, holes).par).toBe(holes[0].par);
-    expect(courseTotals(step.state.best, holes).vsPar).toBe(0);
+    expect(courseTotals(step.state.best, holes).vsPar).toBe(-1);
   });
 
   it('keeps random bests off the device card (session-only by policy)', () => {

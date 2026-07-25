@@ -37,6 +37,7 @@ import { layout, type Vec3 } from '@quantum/qsphere';
 import { bestBlochQubit, blochVector, type BlochVector } from '@quantum/bloch';
 import type { StateVector } from '@quantum/statevector';
 import { KetDisplay } from './KetDisplay';
+import { basisVisuals } from '@quantum/qsphere';
 import {
   easeInOutCubic,
   interpolateStatevector,
@@ -246,6 +247,26 @@ export function EvolvingState({
     [view, targetState],
   );
 
+  // Which TARGET terms the live state does not match yet — magnitude off, or
+  // (the killer that hides in plain sight) a differing relative phase like a
+  // missed − sign. Reference-aligned via basisVisuals so global phase never
+  // trips it. Cheap (2·2^n entries) and re-derived per animation frame.
+  const ketDiff = useMemo<ReadonlySet<number> | undefined>(() => {
+    if (!showKet || !targetState) return undefined;
+    const dim = 1 << n;
+    const live = basisVisuals(sv, dim);
+    const goal = basisVisuals(targetState, dim);
+    const out = new Set<number>();
+    for (let i = 0; i < dim; i++) {
+      const tp = goal[i]?.prob ?? 0;
+      if (tp <= 1e-6) continue; // only terms the target line shows
+      const lp = live[i]?.prob ?? 0;
+      const dPhase = Math.abs((((goal[i].phaseDeg - (live[i]?.phaseDeg ?? 0)) % 360) + 540) % 360 - 180);
+      if (Math.abs(tp - lp) > 0.01 || (lp > 1e-6 && dPhase > 10)) out.add(i);
+    }
+    return out;
+  }, [showKet, targetState, sv, n]);
+
   const showScrubber = lastIndex > 0;
 
   return (
@@ -269,7 +290,13 @@ export function EvolvingState({
       {/* The goal, clearly labelled right under the live state (Jan: the target
           must be readable next to the actual state, not only as sphere ghosts). */}
       {showKet && targetState && (
-        <KetDisplay statevector={targetState} n={n} classPrefix={p} label="Target" />
+        <KetDisplay
+          statevector={targetState}
+          n={n}
+          classPrefix={p}
+          label="Target"
+          highlight={ketDiff}
+        />
       )}
       {showScrubber && (
         <div className={`${p}-evo-scrubber`} role="group" aria-label="State evolution steps">

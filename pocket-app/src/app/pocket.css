@@ -1443,6 +1443,11 @@ body,
 }
 
 /* ---- live bra-ket notation under the evolution view (#59) ------------- */
+.pk-ket-term--diff {
+  color: var(--entangle);
+  font-weight: 600;
+}
+
 .pk-ket-label {
   margin-right: 0.5em;
   font-size: 0.85em;
