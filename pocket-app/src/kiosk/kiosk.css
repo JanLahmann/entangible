@@ -1351,6 +1351,15 @@
   margin-top: 0.45rem;
 }
 
+/* Names a drawing when the optimal search has something to say (#72): the
+   stored one becomes "Solution — optimal", or a shorter one appears below it. */
+.bo-golf-sol-label {
+  margin-bottom: 0.18rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
 /* Scales to the card like the ket lines — it must never widen it. */
 .bo-mini-circ {
   display: block;

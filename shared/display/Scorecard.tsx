@@ -17,6 +17,14 @@
  * never applied to the board — so a reveal cannot cost a stroke, and it is
  * scoped to the hole it was opened on, so the next hole starts hidden again.
  *
+ * The first reveal of a hole also starts an OPTIMAL search (#72, `@quantum/
+ * optimal`) in the background. If it finds something shorter than the stored
+ * answer, a second drawing appears under it, labelled "Optimal (N gates)"; if it
+ * proves nothing shorter exists, the stored one is labelled "Solution —
+ * optimal" instead. If it runs out of budget, nothing is said — an unproven
+ * hole looks exactly as it did before. The search is async, chunked and cached
+ * per (course, seed, hole), so it runs once and never blocks a paint.
+ *
  * The card is course-agnostic (#70): the hole list comes from `courseHoles`, so
  * a RANDOM round renders its generated holes (names, kets and generator-sized
  * pars) through the same layout, plus a "Random round" chip in the header.
@@ -24,13 +32,15 @@
  * `monoKet` toggles the one pre-SC2 difference: pocket adds `pk-mono` to the
  * target-ket span; the booth does not tint its ket.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Circuit } from '@qamposer/react';
 import {
   ROUND_LABEL,
   COURSE_PAR,
   coursePar,
+  clubGateTypes,
   evaluate,
+  holeTargetState,
   scoreName,
   courseTotals,
   formatVsPar,
@@ -39,9 +49,65 @@ import {
   type Hole,
 } from '@quantum/golf';
 import { courseHoles } from '@quantum/golfRandom';
+import { findOptimalAsync, type OptimalResult } from '@quantum/optimal';
 import { MiniCircuit } from './MiniCircuit';
 
 const ROUNDS: readonly GolfRound[] = ['easy', 'medium', 'difficult', 'extra'];
+
+/**
+ * Finished optimal searches, and the ones still running (#72). A module memo,
+ * not component state: the answer for a hole does not change while an app is
+ * open, and re-mounting the card (or opening the reveal a second time) must not
+ * pay for the search again. Keyed by course + seed + hole, because hole 3 of one
+ * random deal has nothing to do with hole 3 of another.
+ */
+const OPTIMAL_CACHE = new Map<string, OptimalResult>();
+const OPTIMAL_RUNNING = new Map<string, Promise<OptimalResult>>();
+
+function optimalKey(state: GolfState, hole: Hole): string {
+  return `${state.course}:${state.randomSeed}:${hole.hole}`;
+}
+
+/**
+ * The optimal search for `hole`, started on the first reveal and cached
+ * thereafter; `null` while it is still running (or before it starts).
+ *
+ * `maxDepth` is the stored solution's length − 1: the only question worth
+ * asking is whether something SHORTER exists, and bounding the depth is what
+ * makes "no, the stored one is optimal" a cheap answer rather than an infinite
+ * one. A search that outruns its state budget resolves to `'unknown'` and the
+ * card simply says nothing.
+ */
+function useOptimal(state: GolfState, hole: Hole, enabled: boolean): OptimalResult | null {
+  const key = optimalKey(state, hole);
+  const [, bump] = useState(0);
+  const solution = hole.solution;
+
+  useEffect(() => {
+    if (!enabled || !solution || OPTIMAL_CACHE.has(key)) return;
+    let live = true;
+    let run = OPTIMAL_RUNNING.get(key);
+    if (!run) {
+      run = findOptimalAsync(holeTargetState(hole), clubGateTypes(hole), hole.qubits, {
+        maxDepth: solution.gates.length - 1,
+      });
+      OPTIMAL_RUNNING.set(key, run);
+      // Registered first, so the cache is written before any waiter re-renders.
+      void run.then((result) => {
+        OPTIMAL_CACHE.set(key, result);
+        OPTIMAL_RUNNING.delete(key);
+      });
+    }
+    void run.then(() => {
+      if (live) bump((n) => n + 1);
+    });
+    return () => {
+      live = false; // the search runs on; only this card stops listening
+    };
+  }, [enabled, key, hole, solution]);
+
+  return OPTIMAL_CACHE.get(key) ?? null;
+}
 
 /** The "you are not on the fixed course" marker (#70) — rendered only when a
  *  generated round is in play, so the classic card is unchanged. */
@@ -78,6 +144,10 @@ export function Scorecard({
   // The course in play: the fixed 18, or this session's generated ones (#70).
   const holes = courseHoles(state);
   const hole = holes[state.levelIndex];
+  // The optimal search starts with the reveal and outlives it (#72). Declared
+  // before the course-complete return, because hooks may not be conditional.
+  const revealed = state.holedIn && !state.complete && solutionFor === hole.hole;
+  const optimal = useOptimal(state, hole, revealed);
   const totals = courseTotals(state.best, holes);
   const totalLabel = totals.completed > 0 ? formatVsPar(totals.vsPar) : 'E';
   // A generated course sums its own pars; the fixed one keeps the constant.
@@ -175,7 +245,7 @@ export function Scorecard({
             />
           </div>
         )}
-        {holedIn && solutionFor === hole.hole && <SolutionCircuit p={p} hole={hole} />}
+        {revealed && <Solutions p={p} state={state} hole={hole} optimal={optimal} />}
         <ChipStrip p={p} holes={holes} currentHole={hole.hole} best={state.best} />
       </div>
     </div>
@@ -221,12 +291,74 @@ function SolutionToggle({
  * touch the live circuit or cost a stroke (#68), and it scales to the card's
  * width like the ket lines rather than widening it.
  */
-function SolutionCircuit({ p, hole }: { p: string; hole: Hole }) {
-  if (!hole.solution) return null;
+function SolutionCircuit({
+  p,
+  circuit,
+  n,
+  label,
+}: {
+  p: string;
+  circuit: Circuit;
+  n: number;
+  label: string | null;
+}) {
   return (
     <div className={`${p}-golf-solution`}>
-      <MiniCircuit circuit={hole.solution} n={hole.qubits} classPrefix={p} />
+      {label && <div className={`${p}-golf-sol-label`}>{label}</div>}
+      <MiniCircuit circuit={circuit} n={n} classPrefix={p} />
     </div>
+  );
+}
+
+/**
+ * The reveal: the stored solution, and — once the background search has
+ * something to say (#72) — either a shorter one drawn beneath it, or a label
+ * promoting the stored one to optimal.
+ *
+ * While the search runs, and if it runs out of budget, the block says nothing
+ * extra: an unproven hole must look exactly like it did before, never like a
+ * claim we cannot back. "Dealt solution" names the random course's answer for
+ * what it is — the circuit that dealt the hole, not an attempt at a good one.
+ */
+function Solutions({
+  p,
+  state,
+  hole,
+  optimal,
+}: {
+  p: string;
+  state: GolfState;
+  hole: Hole;
+  optimal: OptimalResult | null;
+}) {
+  if (!hole.solution) return null;
+  const storedLabel =
+    optimal?.status === 'minimal'
+      ? 'Solution — optimal'
+      : optimal?.status === 'shorter'
+        ? state.course === 'random'
+          ? 'Dealt solution'
+          : 'Solution'
+        : null;
+  return (
+    <>
+      <SolutionCircuit
+        p={p}
+        circuit={hole.solution}
+        n={hole.qubits}
+        label={storedLabel}
+      />
+      {optimal?.status === 'shorter' && (
+        <SolutionCircuit
+          p={p}
+          circuit={{ qubits: hole.qubits, gates: optimal.gates }}
+          n={hole.qubits}
+          label={`Optimal (${optimal.gates.length} ${
+            optimal.gates.length === 1 ? 'gate' : 'gates'
+          })`}
+        />
+      )}
+    </>
   );
 }
 

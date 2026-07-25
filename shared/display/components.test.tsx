@@ -8,7 +8,7 @@
  * booth vs pocket) is honoured. Runs once, in the pocket suite (jsdom pragma).
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, cleanup, fireEvent } from '@testing-library/react';
+import { render, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import type { Circuit, Gate } from '@qamposer/react';
 import { Histogram } from './Histogram';
 import { StatePanel } from './StatePanel';
@@ -317,7 +317,7 @@ describe('Scorecard (shared)', () => {
     }
   });
 
-  it('draws a generated hole’s generator on the random course (#71)', () => {
+  it('draws a generated hole’s generator on the random course (#71)', async () => {
     const state = { ...initialGolfState({}, 'random', 4242), holedIn: true, strokes: 9 };
     const generated = randomCourse(4242)[0];
     const { container } = render(<Scorecard state={state} circuit={bell} classPrefix="pk" />);
@@ -330,6 +330,9 @@ describe('Scorecard (shared)', () => {
     expect(svg?.querySelectorAll('.pk-mini-circ-box').length).toBe(
       generated.solution!.gates.length,
     );
+    // Let the optimal search (#72) settle before the card unmounts, so its
+    // re-render lands inside the test rather than after it.
+    await waitFor(() => expect(container.querySelector('.pk-golf-sol-label')).not.toBeNull());
   });
 
   it('the reveal is inert: it cannot touch the board or the score (#68)', () => {
@@ -344,6 +347,54 @@ describe('Scorecard (shared)', () => {
       'none',
     );
     expect(state.strokes).toBe(7);
+  });
+
+  it('promotes a minimal stored solution to "Solution — optimal" (#72)', async () => {
+    // E2 (Bell) really is minimal in two gates, and proving it is instant.
+    const state = { ...initialGolfState(), levelIndex: 1, holedIn: true, strokes: 4 };
+    const { container } = render(<Scorecard state={state} circuit={bell} classPrefix="pk" />);
+    fireEvent.click(container.querySelector('.pk-golf-solution-btn') as HTMLButtonElement);
+    await waitFor(() =>
+      expect(container.querySelector('.pk-golf-sol-label')?.textContent).toBe(
+        'Solution — optimal',
+      ),
+    );
+    // One drawing only: there is nothing shorter to show.
+    expect(container.querySelectorAll('.pk-golf-solution').length).toBe(1);
+  });
+
+  it('draws a shorter answer under the dealt one when it finds one (#72)', async () => {
+    // A generated hole's answer is its generator, which is essentially never
+    // minimal — this is where the search earns its keep.
+    const state = { ...initialGolfState({}, 'random', 4242), holedIn: true, strokes: 9 };
+    const dealt = randomCourse(4242)[0];
+    const { container } = render(<Scorecard state={state} circuit={bell} classPrefix="pk" />);
+    fireEvent.click(container.querySelector('.pk-golf-solution-btn') as HTMLButtonElement);
+    await waitFor(() => expect(container.querySelectorAll('.pk-golf-solution').length).toBe(2));
+
+    const labels = Array.from(container.querySelectorAll('.pk-golf-sol-label')).map(
+      (n) => n.textContent,
+    );
+    expect(labels[0]).toBe('Dealt solution');
+    expect(labels[1]).toMatch(/^Optimal \(\d+ gates?\)$/);
+
+    // The optimal drawing really is shorter than the dealt one.
+    const boxes = (i: number) =>
+      container.querySelectorAll('.pk-golf-solution')[i].querySelectorAll('.pk-mini-circ-box')
+        .length;
+    expect(boxes(1)).toBeLessThan(dealt.solution!.gates.length);
+    expect(boxes(1)).toBeGreaterThan(0);
+  });
+
+  it('says nothing when the search cannot decide, and never blocks the reveal', () => {
+    // Before any result lands, the card looks exactly as it did pre-#72: the
+    // stored solution, unlabelled. An exhausted budget leaves it that way.
+    const state = { ...initialGolfState(), levelIndex: 17, holedIn: true, strokes: 12 };
+    const { container } = render(<Scorecard state={state} circuit={bell} classPrefix="pk" />);
+    fireEvent.click(container.querySelector('.pk-golf-solution-btn') as HTMLButtonElement);
+    expect(container.querySelectorAll('.pk-golf-solution').length).toBe(1);
+    expect(container.querySelector('.pk-golf-sol-label')).toBeNull();
+    expect(container.querySelector('.pk-mini-circ')).not.toBeNull();
   });
 
   it('hides the reveal on the completed-course summary (no hole is in play)', () => {
