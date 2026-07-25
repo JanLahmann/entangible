@@ -7,7 +7,7 @@
  * land on the final state, scrubber still steps instantly.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, cleanup, fireEvent } from '@testing-library/react';
+import { render, cleanup, fireEvent, act } from '@testing-library/react';
 import type { Circuit, Gate } from '@qamposer/react';
 import { EvolvingState } from './EvolvingState';
 
@@ -139,5 +139,119 @@ describe('EvolvingState scrubber', () => {
     );
     expect(container.querySelector('.bo-evo')).not.toBeNull();
     expect(container.querySelector('.bo-evo-scrubber')).not.toBeNull();
+  });
+
+  it('draws NO travelers under reduced motion (#57)', () => {
+    const { container } = render(
+      <EvolvingState circuit={bell} view="qsphere" classPrefix="pk" />,
+    );
+    expect(container.querySelectorAll('.pk-qs-traveler')).toHaveLength(0);
+    // …and none at any scrubbed step either: reduced motion never tweens.
+    fireEvent.click(dots(container, 'pk')[1]);
+    expect(container.querySelectorAll('.pk-qs-traveler')).toHaveLength(0);
+  });
+});
+
+/**
+ * Roll-the-ball (#57) needs a RUNNING animation, so this block turns
+ * reduced-motion off and drives the rAF clock by hand: each `frame(now)` call
+ * advances the tween to a chosen position, making mid-segment assertions exact.
+ * Auto-play spans the whole circuit, so `dur = PER_STEP_MS · lastIndex`.
+ */
+describe('EvolvingState travelers (#57)', () => {
+  let frame: FrameRequestCallback | null = null;
+  let now = 0;
+
+  beforeEach(() => {
+    mockReducedMotion(false);
+    frame = null;
+    now = 0;
+    vi.stubGlobal('requestAnimationFrame', (f: FrameRequestCallback) => {
+      frame = f;
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  const advance = (ms: number) =>
+    act(() => {
+      now = ms;
+      frame?.(now);
+    });
+
+  const balls = (root: HTMLElement) =>
+    Array.from(root.querySelectorAll('.pk-qs-traveler')) as SVGCircleElement[];
+
+  it('carries mass only mid-segment — nothing at the segment ends', () => {
+    const { container } = render(
+      <EvolvingState circuit={bell} view="qsphere" classPrefix="pk" />,
+    );
+    // t = 0 (auto-play parked at the start): no ball has left yet.
+    expect(balls(container)).toHaveLength(0);
+
+    // Half way through column 0 (H on q0): the |00000⟩ ball is on its way to
+    // |00001⟩. Weight 0.5 ⇒ the node radius mapping at p = 0.5.
+    advance(250); // pos 0.5 of 2 columns (dur = 1000 ms)
+    const mid = balls(container);
+    expect(mid).toHaveLength(1);
+    expect(Number(mid[0].getAttribute('r'))).toBeCloseTo(2.5 + 10.5 * 0.5, 6);
+    expect(Number(mid[0].getAttribute('fill-opacity'))).toBeCloseTo(1, 6); // sin(π/2)
+
+    // Landing exactly on column 1: the ball has arrived, the node owns the mass.
+    advance(500); // pos 1.0
+    expect(balls(container)).toHaveLength(0);
+
+    // Half way through column 1 (CNOT 0→1): |00001⟩ travels to |00011⟩.
+    advance(750); // pos 1.5
+    expect(balls(container)).toHaveLength(1);
+
+    // The final state: no balls in flight.
+    advance(1000);
+    expect(balls(container)).toHaveLength(0);
+  });
+
+  it('splits one ball into several when a column spreads the mass', () => {
+    // H on q0 AND H on q1 in the SAME column: |00000⟩ spreads over four basis
+    // states — three of them are somewhere else, so three balls travel.
+    const spread = circuit([
+      g({ type: 'H', qubit: 0, position: 0 }),
+      g({ type: 'H', qubit: 1, position: 0 }),
+    ]);
+    const { container } = render(
+      <EvolvingState circuit={spread} view="qsphere" classPrefix="pk" />,
+    );
+    advance(250); // one column ⇒ dur = 500 ms, so pos 0.5
+    const flying = balls(container);
+    expect(flying).toHaveLength(3);
+    // Each carries a quarter of the probability.
+    for (const b of flying) expect(Number(b.getAttribute('r'))).toBeCloseTo(2.5 + 10.5 * 0.25, 6);
+  });
+
+  it('fades in and out across a segment (never double-drawn on a node)', () => {
+    const { container } = render(
+      <EvolvingState circuit={bell} view="qsphere" classPrefix="pk" />,
+    );
+    advance(60); // early in column 0
+    const early = Number(balls(container)[0].getAttribute('fill-opacity'));
+    advance(250); // half way
+    const middle = Number(balls(container)[0].getAttribute('fill-opacity'));
+    expect(early).toBeGreaterThan(0);
+    expect(early).toBeLessThan(middle);
+    expect(middle).toBeCloseTo(1, 6);
+  });
+
+  it('leaves the Bloch view alone (level 1 is unchanged)', () => {
+    const superpos = circuit([g({ type: 'H', qubit: 0, position: 0 })]);
+    const { container } = render(
+      <EvolvingState circuit={superpos} view="bloch" classPrefix="pk" />,
+    );
+    advance(250);
+    expect(container.querySelectorAll('.pk-qs-traveler')).toHaveLength(0);
+    expect(container.querySelector('.pk-bl-svg')).not.toBeNull();
   });
 });

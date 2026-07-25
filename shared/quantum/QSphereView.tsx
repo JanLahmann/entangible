@@ -22,11 +22,17 @@
  *     outward so it never covers a stem. The whole 2^n lattice is NOT labelled.
  *   - The view auto-faces the action: a home orientation aimed at the weighted
  *     centroid of the target + live probability mass (see `useSphereRotation`).
+ *
+ * Roll-the-ball layer (#57): the optional `travelers` prop draws balls of
+ * probability mass in transit across the surface. This view stays DUMB — it
+ * renders exactly what it is handed (unit position, radius, hue, opacity);
+ * `EvolvingState` owns the physics and the animation clock.
  */
 import { useMemo } from 'react';
 import type { Circuit } from '@qamposer/react';
 import {
   DEFAULT_QUBITS,
+  PROB_EPS,
   basisVisuals,
   faceOrientation,
   layout,
@@ -52,6 +58,28 @@ const LABEL_GAP = 4; // px between the node/ghost edge and its label
 const TICK_LEN = 4; // phase-tick length outside the ghost ring
 const HOME_MIN_NORM = 0.15; // below this the mass is too symmetric to face
 
+/**
+ * A ball of probability mass in transit across the sphere (#57). Position is a
+ * UNIT model-space vector (same frame as the lattice nodes); `hue` is degrees
+ * on the phase wheel, matching the node fill convention.
+ */
+export interface QTraveler {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly radius: number;
+  readonly hue: number;
+  readonly opacity: number;
+}
+
+/**
+ * The node radius for a probability — the single source of the probability →
+ * radius mapping, so travelers are sized on exactly the scale the nodes use.
+ */
+export function nodeRadius(prob: number): number {
+  return prob < PROB_EPS ? FAINT_NODE : MIN_NODE + (MAX_NODE - MIN_NODE) * prob;
+}
+
 export interface QSphereViewProps {
   /** Provide a circuit (simulated) or a precomputed statevector. */
   circuit?: Circuit;
@@ -63,6 +91,8 @@ export interface QSphereViewProps {
   /** The goal state: drawn as ghost rings + phase ticks, and outlined like
    *  `targets` (so a caller can pass this alone). */
   targetState?: StateVector;
+  /** Balls of probability mass in transit (#57) — rendered as given. */
+  travelers?: readonly QTraveler[];
   /** SVG viewBox size (square). */
   size?: number;
   /** Class prefix for CSS hooks, e.g. 'bo' or 'pk'. */
@@ -95,6 +125,7 @@ export function QSphereView({
   n = DEFAULT_QUBITS,
   targets,
   targetState,
+  travelers,
   size = 220,
   classPrefix,
   title = 'Q-sphere state projection',
@@ -152,7 +183,7 @@ export function QSphereView({
   const draws = useMemo<NodeDraw[]>(() => {
     const out: NodeDraw[] = projected.map((pr) => {
       const v = liveVisuals[pr.index];
-      const radius = v.faint ? FAINT_NODE : MIN_NODE + (MAX_NODE - MIN_NODE) * v.prob;
+      const radius = nodeRadius(v.prob);
       const tv = targetVisuals?.[pr.index];
       const targetProb = tv && tv.prob > TARGET_EPS ? tv.prob : 0;
       return {
@@ -193,6 +224,35 @@ export function QSphereView({
 
   const near = draws.filter((d) => d.depth >= 0);
   const far = draws.filter((d) => d.depth < 0);
+
+  // Travelers: same projection + painter's ordering as the nodes, so a ball
+  // rolling round the back really does pass behind the sphere disc.
+  const travelerDraws = useMemo(() => {
+    return (travelers ?? [])
+      .map((t, i) => {
+        const pr = projectPoint({ x: t.x, y: t.y, z: t.z }, yaw, pitch);
+        return { id: i, t, sx: toScreenX(pr.x), sy: toScreenY(pr.y), depth: pr.depth };
+      })
+      .sort((a, b) => a.depth - b.depth);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [travelers, yaw, pitch, size]);
+  const nearTravelers = travelerDraws.filter((d) => d.depth >= 0);
+  const farTravelers = travelerDraws.filter((d) => d.depth < 0);
+
+  const renderTraveler = (d: (typeof travelerDraws)[number]) => (
+    <circle
+      key={`traveler-${d.id}`}
+      className={`${p}-qs-traveler`}
+      cx={d.sx}
+      cy={d.sy}
+      r={d.t.radius}
+      fill={`hsl(${d.t.hue.toFixed(0)}, 70%, 60%)`}
+      // Far-side balls dim exactly like far-side nodes, on top of their own
+      // travel fade — depth stays readable while the ball crosses the horizon.
+      fillOpacity={d.t.opacity * (d.depth < 0 ? FAR_OPACITY : 1)}
+      pointerEvents="none"
+    />
+  );
 
   const renderNode = (d: NodeDraw) => {
     const dim = d.depth < 0;
@@ -302,12 +362,14 @@ export function QSphereView({
         {/* far hemisphere (dimmed, behind the disc) */}
         {far.map(renderNode)}
         {far.map(renderGhost)}
+        {farTravelers.map(renderTraveler)}
         {far.map(renderLabel)}
         {/* translucent sphere disc separates the hemispheres */}
         <circle className={`${p}-qs-disc`} cx={cx} cy={cy} r={R} />
         {/* near hemisphere (on top) */}
         {near.map(renderNode)}
         {near.map(renderGhost)}
+        {nearTravelers.map(renderTraveler)}
         {near.map(renderLabel)}
       </svg>
       <div className={`${p}-qs-legend-wrap`}>

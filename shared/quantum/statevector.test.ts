@@ -2,12 +2,14 @@ import { describe, it, expect } from 'vitest';
 import type { Circuit, Gate } from '@qamposer/react';
 import {
   activeQubits,
+  applyGatesTo,
   bellState,
   DIM,
   fidelity,
   ghzState,
   probOne,
   statevector,
+  zeroState,
 } from './statevector';
 
 let seq = 0;
@@ -179,5 +181,30 @@ describe('generic controlled-U (task #51)', () => {
     expect(sv[0].re).toBeCloseTo(0.5, 12);
     expect(sv[1].re).toBeCloseTo(0.5, 12);
     expect(sv[2].re).toBeCloseTo(0.5, 12);
+  });
+});
+
+describe('applyGatesTo (#57)', () => {
+  it('evolves an arbitrary start state, without mutating it', () => {
+    // Start from |00001⟩ (q0 set) and apply X on q0 → back to |00000⟩.
+    const start = zeroState();
+    start[0] = { re: 0, im: 0 };
+    start[1] = { re: 1, im: 0 };
+    const out = applyGatesTo(start, [g({ type: 'X', qubit: 0, position: 0 })]);
+    expect(out[0].re).toBeCloseTo(1, 12);
+    expect(out[1].re).toBeCloseTo(0, 12);
+    // The input is untouched — callers push many basis vectors through a column.
+    expect(start[1].re).toBe(1);
+    expect(start[0].re).toBe(0);
+  });
+
+  it('is exactly the path `statevector` takes from |0…0⟩', () => {
+    const c = circuit([H(0), CNOT(0, 1, 1), g({ type: 'RZ', qubit: 1, parameter: 0.7, position: 2 })]);
+    const viaHelper = applyGatesTo(zeroState(), c.gates);
+    const direct = statevector(c);
+    for (let i = 0; i < DIM; i++) {
+      expect(viaHelper[i].re).toBe(direct[i].re);
+      expect(viaHelper[i].im).toBe(direct[i].im);
+    }
   });
 });

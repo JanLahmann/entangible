@@ -281,33 +281,47 @@ export function gateUnitary(g: Gate): GateUnitary | null {
 // Public API
 // ---------------------------------------------------------------------------
 
-/** Compute the 32-amplitude statevector for a (≤5-qubit) circuit. */
-export function statevector(circuit: Circuit): StateVector {
-  const state = zeroState();
-  // Apply gates in circuit (column) order; ties broken stably.
-  const gates = [...circuit.gates].sort((a, b) => a.position - b.position);
-  for (const g of gates) {
+/**
+ * Apply `gates` to a copy of `state` and return the result (the input is never
+ * mutated). Gates run in circuit (column) order, ties broken stably — exactly
+ * the order `statevector` uses, because `statevector` IS this function applied
+ * to |0…0⟩. Malformed / out-of-range gates are skipped, as before.
+ *
+ * Exported for callers that need to evolve something other than the ground
+ * state through part of a circuit — e.g. the roll-the-ball transport map (#57)
+ * pushes single basis vectors through ONE column to learn where mass travels.
+ * Reusing this path is what keeps those maps consistent with the snapshots.
+ */
+export function applyGatesTo(state: StateVector, gates: readonly Gate[]): StateVector {
+  const out = state.slice();
+  const sorted = [...gates].sort((a, b) => a.position - b.position);
+  for (const g of sorted) {
     const t = g.type as string;
     if (t === 'CNOT' || t === 'CX') {
       if (g.control == null || g.target == null) continue;
       if (g.control >= NUM_QUBITS || g.target >= NUM_QUBITS) continue;
-      applyCnot(state, g.control, g.target);
+      applyCnot(out, g.control, g.target);
     } else {
       const cu = controlledTargetOp(t);
       if (cu) {
         const controls = controlsOf(g);
         if (controls == null || g.target == null) continue;
         if (controls.some((c) => c >= NUM_QUBITS) || g.target >= NUM_QUBITS) continue;
-        applyControlled(state, controls, g.target, cu);
+        applyControlled(out, controls, g.target, cu);
         continue;
       }
       const q = g.qubit;
       if (q == null || q >= NUM_QUBITS) continue;
       const m = singleQubitUnitary(g);
-      if (m) applySingle(state, q, m);
+      if (m) applySingle(out, q, m);
     }
   }
-  return state;
+  return out;
+}
+
+/** Compute the 32-amplitude statevector for a (≤5-qubit) circuit. */
+export function statevector(circuit: Circuit): StateVector {
+  return applyGatesTo(zeroState(), circuit.gates);
 }
 
 /** Qubits touched by any gate, ascending. */

@@ -90,6 +90,46 @@ describe('QSphereView target ghosts (#58)', () => {
   });
 });
 
+describe('QSphereView travelers (#57)', () => {
+  // Pole-symmetric mass ⇒ no auto-face ⇒ the default home (yaw 0), whose camera
+  // sits on +y: a traveler at y = +1 is on the NEAR hemisphere, y = -1 far.
+  const ghz5 = ghzState([0, 1, 2, 3, 4]);
+  const near = { x: 0, y: 1, z: 0, radius: 6, hue: 200, opacity: 0.5 };
+  const far = { x: 0, y: -1, z: 0, radius: 4, hue: 20, opacity: 1 };
+
+  it('renders one circle per traveler, sized/coloured as given', () => {
+    const { container } = render(
+      <QSphereView statevector={ghz5} travelers={[near]} classPrefix="pk" />,
+    );
+    const balls = Array.from(container.querySelectorAll('.pk-qs-traveler')) as SVGCircleElement[];
+    expect(balls).toHaveLength(1);
+    expect(Number(balls[0].getAttribute('r'))).toBe(6);
+    expect(balls[0].getAttribute('fill')).toBe('hsl(200, 70%, 60%)');
+    // Near hemisphere: the given opacity, undimmed. Never a pointer target.
+    expect(Number(balls[0].getAttribute('fill-opacity'))).toBeCloseTo(0.5, 6);
+    expect(balls[0].getAttribute('pointer-events')).toBe('none');
+  });
+
+  it('draws far travelers behind the disc and dims them like far nodes', () => {
+    const { container } = render(
+      <QSphereView statevector={ghz5} travelers={[far, near]} classPrefix="pk" />,
+    );
+    const kids = Array.from(container.querySelector('.pk-qs-svg')!.children);
+    const disc = kids.findIndex((e) => e.classList.contains('pk-qs-disc'));
+    const balls = kids.filter((e) => e.classList.contains('pk-qs-traveler'));
+    expect(balls).toHaveLength(2);
+    expect(kids.indexOf(balls[0])).toBeLessThan(disc); // the far one
+    expect(kids.indexOf(balls[1])).toBeGreaterThan(disc); // the near one
+    // FAR_OPACITY (0.32) multiplies the traveler's own fade.
+    expect(Number(balls[0].getAttribute('fill-opacity'))).toBeCloseTo(0.32, 6);
+  });
+
+  it('renders none when the prop is absent (unchanged default view)', () => {
+    const { container } = render(<QSphereView statevector={ghz5} classPrefix="bo" />);
+    expect(container.querySelectorAll('.bo-qs-traveler')).toHaveLength(0);
+  });
+});
+
 describe('QSphereView ket labels (#58)', () => {
   const labels = (root: HTMLElement) =>
     Array.from(root.querySelectorAll('.pk-qs-label')).map((e) => e.textContent);

@@ -1529,6 +1529,14 @@ body,
   pointer-events: none;
 }
 
+/* roll-the-ball travelers (#57) — probability mass crossing the surface */
+.pk-qs-traveler {
+  pointer-events: none;
+  stroke: var(--bg);
+  stroke-width: 0.75;
+  stroke-opacity: 0.5;
+}
+
 .pk-bl-axis {
   stroke: var(--border);
   stroke-width: 1;

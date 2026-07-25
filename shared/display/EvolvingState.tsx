@@ -15,7 +15,12 @@
  *     with a "start" / "after column N" label. Unobtrusive; hidden when the
  *     board is empty (a single snapshot has nothing to step through).
  *   - prefers-reduced-motion: no tweening — steps jump instantly; the scrubber
- *     still works.
+ *     still works, and no travelers are drawn.
+ *   - Roll-the-ball (#57, Q-sphere only): on top of the cross-fade, balls of
+ *     probability mass TRAVEL the surface between basis nodes — one ball splits
+ *     into two when a gate creates superposition, balls arrive together when
+ *     paths merge. The transport map comes from `@quantum/evolution`; this
+ *     component only places the balls for the current (segment, fraction).
  *
  * Structural only: every element carries a `${classPrefix}-evo-*` class so the
  * pocket (`pk-`) and booth (`bo-`) skins style it, exactly like the other shared
@@ -23,9 +28,10 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Circuit } from '@qamposer/react';
-import { QSphereView } from '@quantum/QSphereView';
+import { QSphereView, nodeRadius, type QTraveler } from '@quantum/QSphereView';
 import { BlochView } from '@quantum/BlochView';
-import { evolutionSteps } from '@quantum/evolution';
+import { evolutionSteps, lerpHue, surfacePath, transportEdges } from '@quantum/evolution';
+import { layout, type Vec3 } from '@quantum/qsphere';
 import { bestBlochQubit, blochVector, type BlochVector } from '@quantum/bloch';
 import type { StateVector } from '@quantum/statevector';
 import {
@@ -37,6 +43,8 @@ import {
 
 /** Per-column transition duration (ms) — within the 400–600 ms spec window. */
 const PER_STEP_MS = 500;
+/** Traveler opacity below which a ball is not worth drawing (#57). */
+const FADE_EPS = 1e-3;
 
 export interface EvolvingStateProps {
   /** The live golf circuit. */
@@ -183,6 +191,47 @@ export function EvolvingState({
     return interpolateStatevector(steps[seg], steps[seg + 1], eased);
   }, [view, steps, blochStepVectors, blochQubit, seg, eased, lastIndex]);
 
+  // ---- roll-the-ball travelers (#57) -------------------------------------
+  // The transport map is computed ONCE per circuit (all segments), never per
+  // frame; only the cheap placement below runs on every rAF tick.
+  const qsphere = view === 'qsphere';
+  const edgesBySegment = useMemo(
+    () => (qsphere && !reduced && lastIndex > 0 ? transportEdges(circuit, steps) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [circuitKey, qsphere, reduced, lastIndex],
+  );
+  const nodePos = useMemo(() => {
+    const m = new Map<number, Vec3>();
+    for (const node of layout(n)) m.set(node.index, node.pos);
+    return m;
+  }, [n]);
+
+  const travelers = useMemo<QTraveler[]>(() => {
+    // sin(π·t): a ball fades in as it leaves and out as it lands, so it never
+    // double-draws with the source/destination node it overlaps at the ends.
+    // Below FADE_EPS nothing is visible — and at rest (eased exactly 0 or 1,
+    // where sin() is 0 up to float noise) no traveler is emitted at all.
+    const fade = Math.sin(Math.PI * eased);
+    const edges = edgesBySegment[seg];
+    if (!edges || fade <= FADE_EPS) return [];
+    const out: QTraveler[] = [];
+    for (const e of edges) {
+      // Mass that stays put is already the base node cross-fade's job.
+      if (e.from === e.to) continue;
+      const a = nodePos.get(e.from);
+      const b = nodePos.get(e.to);
+      if (!a || !b) continue; // outside the displayed 2^n lattice
+      const pos = surfacePath(a, b, eased);
+      out.push({
+        ...pos,
+        radius: nodeRadius(e.weight),
+        hue: lerpHue(e.fromHue, e.toHue, eased),
+        opacity: fade,
+      });
+    }
+    return out;
+  }, [edgesBySegment, seg, eased, nodePos]);
+
   const showScrubber = lastIndex > 0;
 
   return (
@@ -194,6 +243,7 @@ export function EvolvingState({
           statevector={sv}
           targets={targets}
           targetState={targetState}
+          travelers={travelers}
           n={n}
           classPrefix={p}
         />
