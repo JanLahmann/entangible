@@ -66,6 +66,17 @@ Suggested order: PR 1 and PR 2 are independent; PR 3 stacks on PR 1.
 > (● + gate = controlled gate) already produce these circuit-JSON shapes; this
 > makes the library render and simulate them first-class.
 
+## PR 4 — `feat/palette-filter` → `main` (stacked on PR 3)
+
+**Title:** feat: Operations gateTypes filter prop
+
+> Adds an optional `gateTypes?: GateType[]` to `Operations` (threaded through
+> the `Qamposer`/`QamposerMicro` presets): embedders can restrict the visible
+> palette — sections whose filtered list is empty disappear, library order
+> wins, unknown entries are ignored, and the placed-gate editor is unaffected.
+> Motivation: Entangible's golf mode unlocks gates round by round (easy = X/H/CX
+> only) and tutorial-style embeddings generally want a reduced palette.
+
 ---
 
 ## Follow-ups after any of these merge upstream
