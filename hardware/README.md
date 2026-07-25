@@ -190,6 +190,31 @@ the raised white rim masks the edge for a clean line.
   36 mm marker would otherwise cast an oblique-camera shadow deep enough to hurt
   detection. `plates.md`'s colour table says which colour belongs in each well.
 
+**Painting guide** (acrylic paint pens on PLA):
+
+1. **Pens:** acrylic paint markers (POSCA, edding 5100/5200, Molotow ONE4ALL).
+   Two tips cover everything: **1–2 mm** round for marker cells and outlines,
+   **2–4 mm** for larger wells (accent ring, cube side letters).
+2. **Prep:** wipe the faces with isopropyl alcohol and let them dry — finger
+   grease makes acrylic bead up.
+3. **Fill:** prime the pen on paper, then fill each well in **two thin coats**
+   rather than one heavy one; the vertical well walls guide the tip like a
+   colouring book.
+4. **Clean edges for free:** ignore small overruns onto the raised surface.
+   Once dry, sand the face **flat** with 240–400 grit on a block — the paint
+   sits 0.5 mm below the surface, so sanding restores clean white around
+   knife-sharp painted edges. This is the point of the recessed form.
+5. **The marker is the critical part:** **matte** black, fully opaque, cells
+   painted into their corners — detection reads only the ArUco marker. Glossy
+   black glares under venue lighting and can break detection. Accent hues are
+   for humans only; close enough is fine.
+6. **Optional sealing:** a **matte** acrylic clear coat makes pieces
+   booth-proof against handling — never gloss, and re-test detection once
+   after sealing.
+7. **Validate one piece first:** paint a single cube/tile (H is a good pick),
+   point the app's camera at it, and confirm detection before painting the
+   whole kit — same ritual as the laser-cut kit.
+
 ### (c) Raised + filament swap (two-colour, any printer)
 
 `--mono` also adds **`<slug>-mono-raised.stl`**: the inverse — all art stands a
