@@ -948,6 +948,7 @@ export function App() {
             view={currentLevel.view}
             targets={golfTargets}
             targetState={golfTargetState}
+            showKet
             classPrefix="pk"
           />
         </div>

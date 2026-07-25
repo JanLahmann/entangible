@@ -255,3 +255,85 @@ describe('EvolvingState travelers (#57)', () => {
     expect(container.querySelector('.pk-bl-svg')).not.toBeNull();
   });
 });
+
+/**
+ * The bra-ket line (#59) must be fed the ANIMATED statevector, so it moves with
+ * the balls rather than snapping to the final state. Reduced-motion cases below
+ * check opt-in + scrubber tracking; the last case drives the rAF clock to assert
+ * a genuinely MID-TWEEN reading.
+ */
+describe('EvolvingState bra-ket line (#59)', () => {
+  const ket = (root: HTMLElement) => root.querySelector('.pk-ket')?.textContent ?? null;
+
+  it('is opt-in — nothing is rendered without showKet', () => {
+    const { container } = render(
+      <EvolvingState circuit={bell} view="qsphere" classPrefix="pk" />,
+    );
+    expect(container.querySelector('.pk-ket')).toBeNull();
+  });
+
+  it('shows the current state and tracks the scrubber', () => {
+    const { container } = render(
+      <EvolvingState circuit={bell} view="qsphere" classPrefix="pk" showKet />,
+    );
+    // Auto-play lands on the final state: the Bell pair over 5 displayed qubits.
+    expect(ket(container)).toBe('0.71|00000⟩ + 0.71|00011⟩');
+
+    fireEvent.click(dots(container, 'pk')[0]);
+    expect(ket(container)).toBe('|00000⟩');
+
+    fireEvent.click(dots(container, 'pk')[1]);
+    expect(ket(container)).toBe('0.71|00000⟩ + 0.71|00001⟩');
+  });
+
+  it('renders under the Bloch view too (purified statevector)', () => {
+    const superpos = circuit([g({ type: 'H', qubit: 0, position: 0 })]);
+    const { container } = render(
+      <EvolvingState circuit={superpos} view="bloch" classPrefix="pk" showKet />,
+    );
+    expect(container.querySelector('.pk-bl-svg')).not.toBeNull();
+    expect(ket(container)).toBe('0.71|00000⟩ + 0.71|00001⟩');
+  });
+
+  it('sits between the view and the scrubber', () => {
+    const { container } = render(
+      <EvolvingState circuit={bell} view="qsphere" classPrefix="pk" showKet />,
+    );
+    const kids = Array.from((container.querySelector('.pk-evo') as HTMLElement).children);
+    expect(kids.map((el) => el.className)).toEqual(['pk-qsphere', 'pk-ket', 'pk-evo-scrubber']);
+  });
+
+  it('follows the animation mid-tween (the math moves with the balls)', () => {
+    mockReducedMotion(false);
+    let frame: FrameRequestCallback | null = null;
+    let now = 0;
+    vi.stubGlobal('requestAnimationFrame', (f: FrameRequestCallback) => {
+      frame = f;
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    try {
+      const { container } = render(
+        <EvolvingState circuit={bell} view="qsphere" classPrefix="pk" showKet />,
+      );
+      // Parked at the start of the auto-play (dur = 2 × 500 ms).
+      expect(ket(container)).toBe('|00000⟩');
+      // Half way through column 0: eased(0.5) = 0.5, so the probabilities are
+      // 0.75 / 0.25 — magnitudes 0.87 and 0.50, a reading no snapshot produces.
+      act(() => {
+        now = 250;
+        frame?.(now);
+      });
+      expect(ket(container)).toBe('0.87|00000⟩ + 0.50|00001⟩');
+      act(() => {
+        now = 1000;
+        frame?.(now);
+      });
+      expect(ket(container)).toBe('0.71|00000⟩ + 0.71|00011⟩');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    }
+  });
+});

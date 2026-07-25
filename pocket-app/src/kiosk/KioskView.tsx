@@ -403,6 +403,7 @@ export function KioskView() {
             view={currentLevel.view}
             targets={golfTargets}
             targetState={golfTargetState}
+            showKet
             classPrefix="bo"
           />
         </div>

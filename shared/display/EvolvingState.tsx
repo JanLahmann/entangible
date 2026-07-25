@@ -21,6 +21,8 @@
  *     into two when a gate creates superposition, balls arrive together when
  *     paths merge. The transport map comes from `@quantum/evolution`; this
  *     component only places the balls for the current (segment, fraction).
+ *   - Bra-ket line (#59, opt-in via `showKet`): `KetDisplay` typesets the SAME
+ *     animated statevector under the view, so the notation moves with the balls.
  *
  * Structural only: every element carries a `${classPrefix}-evo-*` class so the
  * pocket (`pk-`) and booth (`bo-`) skins style it, exactly like the other shared
@@ -34,6 +36,7 @@ import { evolutionSteps, lerpHue, surfacePath, transportEdges } from '@quantum/e
 import { layout, type Vec3 } from '@quantum/qsphere';
 import { bestBlochQubit, blochVector, type BlochVector } from '@quantum/bloch';
 import type { StateVector } from '@quantum/statevector';
+import { KetDisplay } from './KetDisplay';
 import {
   easeInOutCubic,
   interpolateStatevector,
@@ -57,6 +60,8 @@ export interface EvolvingStateProps {
   targetState?: StateVector;
   /** Qubit count of the displayed space (Q-sphere). */
   n?: number;
+  /** Show the live bra-ket notation under the view (#59). */
+  showKet?: boolean;
   /** CSS class prefix, e.g. 'pk' or 'bo'. */
   classPrefix: string;
 }
@@ -88,6 +93,7 @@ export function EvolvingState({
   targets,
   targetState,
   n = 5,
+  showKet = false,
   classPrefix,
 }: EvolvingStateProps) {
   const p = classPrefix;
@@ -248,6 +254,8 @@ export function EvolvingState({
           classPrefix={p}
         />
       )}
+      {/* The notation is fed the ANIMATED `sv`, so it moves with the balls. */}
+      {showKet && <KetDisplay statevector={sv} n={n} classPrefix={p} />}
       {showScrubber && (
         <div className={`${p}-evo-scrubber`} role="group" aria-label="State evolution steps">
           <button
