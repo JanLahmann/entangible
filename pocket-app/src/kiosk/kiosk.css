@@ -1080,6 +1080,14 @@
 }
 
 /* ---- live bra-ket notation under the evolution view (#59) ------------- */
+.bo-ket-label {
+  margin-right: 0.5em;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.65;
+}
+
 .bo-ket {
   font-family: var(--mono);
   font-size: 1.35vh;

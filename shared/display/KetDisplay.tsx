@@ -88,6 +88,8 @@ export interface KetDisplayProps {
   n: number;
   /** CSS class prefix, e.g. 'pk' or 'bo'. */
   classPrefix: string;
+  /** Optional leading label, e.g. "State" / "Target" (golf shows both lines). */
+  label?: string;
   /** Maximum terms shown before eliding with `+ ⋯`. */
   maxTerms?: number;
   /** Below this probability a basis state is not a term. */
@@ -198,6 +200,7 @@ export function KetDisplay({
   statevector,
   n,
   classPrefix,
+  label,
   maxTerms = 6,
   minProb = 0.005,
 }: KetDisplayProps) {
@@ -207,7 +210,11 @@ export function KetDisplay({
   if (terms.length === 0) return null;
 
   return (
-    <div className={`${p}-ket`} aria-label="Current state in bra-ket notation">
+    <div
+      className={`${p}-ket`}
+      aria-label={label ? `${label} in bra-ket notation` : 'Current state in bra-ket notation'}
+    >
+      {label && <span className={`${p}-ket-label`}>{label}</span>}
       {terms.map((t) => (
         <span key={t.index} className={`${p}-ket-term`}>
           {t.op}

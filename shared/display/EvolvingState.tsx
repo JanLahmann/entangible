@@ -263,7 +263,14 @@ export function EvolvingState({
         />
       )}
       {/* The notation is fed the ANIMATED `sv`, so it moves with the balls. */}
-      {showKet && <KetDisplay statevector={sv} n={n} classPrefix={p} />}
+      {showKet && (
+        <KetDisplay statevector={sv} n={n} classPrefix={p} label={targetState ? 'State' : undefined} />
+      )}
+      {/* The goal, clearly labelled right under the live state (Jan: the target
+          must be readable next to the actual state, not only as sphere ghosts). */}
+      {showKet && targetState && (
+        <KetDisplay statevector={targetState} n={n} classPrefix={p} label="Target" />
+      )}
       {showScrubber && (
         <div className={`${p}-evo-scrubber`} role="group" aria-label="State evolution steps">
           <button
