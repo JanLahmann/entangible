@@ -34,7 +34,6 @@ import {
   DEFAULT_QUBITS,
   PROB_EPS,
   basisVisuals,
-  faceOrientation,
   layout,
   project,
   projectPoint,
@@ -56,7 +55,6 @@ const TARGET_EPS = 1e-6; // target amplitudes below this get no ghost
 const LABEL_PROB = 0.02; // populated enough to earn a ket label
 const LABEL_GAP = 4; // px between the node/ghost edge and its label
 const TICK_LEN = 4; // phase-tick length outside the ghost ring
-const HOME_MIN_NORM = 0.15; // below this the mass is too symmetric to face
 
 /**
  * A ball of probability mass in transit across the sphere (#57). Position is a
@@ -144,33 +142,12 @@ export function QSphereView({
     [targetState, n],
   );
 
-  // Auto-face: point the camera at the weighted centroid of the interesting
-  // mass. With a goal (`targetState`) the camera faces the GOAL only — the
-  // target is stable per hole, so the view holds still while the evolution
-  // animation plays instead of chasing the tweened state. Without a goal it
-  // faces the live probability mass. A near-zero centroid means the state is
-  // symmetric (or empty) and no direction is more informative than the default.
-  const home = useMemo(() => {
-    const weights = targetVisuals ?? liveVisuals;
-    let x = 0;
-    let y = 0;
-    let z = 0;
-    let total = 0;
-    for (const node of nodes) {
-      const w = weights[node.index]?.prob ?? 0;
-      if (w <= 0) continue;
-      x += w * node.pos.x;
-      y += w * node.pos.y;
-      z += w * node.pos.z;
-      total += w;
-    }
-    if (total <= 0) return undefined;
-    const len = Math.hypot(x, y, z) / total;
-    if (len < HOME_MIN_NORM) return undefined;
-    return faceOrientation({ x, y, z });
-  }, [nodes, liveVisuals, targetVisuals]);
-
-  const { yaw, pitch, dragging, reset, handlers } = useSphereRotation({ home });
+  // The sphere always OPENS neutral — |0…0⟩ pole up (the lattice's canonical
+  // orientation) — and reset returns there. The #58 auto-face experiment
+  // (camera chasing the target/populated centroid) confused more than it
+  // helped: a stable, predictable frame beats a clever one. Ghost rings and
+  // ket labels carry the "where is the target" job instead.
+  const { yaw, pitch, dragging, reset, handlers } = useSphereRotation();
 
   const cx = size / 2;
   const cy = size / 2;

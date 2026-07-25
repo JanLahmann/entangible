@@ -178,4 +178,19 @@ describe('QSphereView ket labels (#58)', () => {
     // |00000⟩ carries no probability, only the goal — it must stay legible.
     expect(opacityByText(container).get('|00000⟩')).toBe(1);
   });
+
+  it('always opens neutral — a lopsided target must not steer the camera (#75)', () => {
+    // Same live state, wildly different targets: every node must project to
+    // identical screen positions, i.e. the initial orientation ignores both
+    // the target and the populated mass (the #58 auto-face is retired).
+    const dots = (c: HTMLElement) =>
+      Array.from(c.querySelectorAll('.pk-qs-dot'))
+        .map((el) => `${el.getAttribute('cx')},${el.getAttribute('cy')}`)
+        .join('|');
+    const a = render(
+      <QSphereView statevector={basisState(5)} targetState={basisState(9)} classPrefix="pk" />,
+    );
+    const b = render(<QSphereView statevector={basisState(5)} classPrefix="pk" />);
+    expect(dots(a.container)).toBe(dots(b.container));
+  });
 });

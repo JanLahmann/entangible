@@ -200,7 +200,9 @@ describe('EvolvingState travelers (#57)', () => {
     const mid = balls(container);
     expect(mid).toHaveLength(1);
     expect(Number(mid[0].getAttribute('r'))).toBeCloseTo(2.5 + 10.5 * 0.5, 6);
-    expect(Number(mid[0].getAttribute('fill-opacity'))).toBeCloseTo(1, 6); // sin(π/2)
+    // sin(π/2) · FAR_OPACITY: under the neutral camera (#75) this arc's
+    // midpoint sits on the far hemisphere, so the depth dim applies.
+    expect(Number(mid[0].getAttribute('fill-opacity'))).toBeCloseTo(0.32, 6);
 
     // Landing exactly on column 1: the ball has arrived, the node owns the mass.
     advance(500); // pos 1.0
@@ -242,7 +244,8 @@ describe('EvolvingState travelers (#57)', () => {
     const middle = Number(balls(container)[0].getAttribute('fill-opacity'));
     expect(early).toBeGreaterThan(0);
     expect(early).toBeLessThan(middle);
-    expect(middle).toBeCloseTo(1, 6);
+    // Far-hemisphere midpoint under the neutral camera (#75): peak = FAR_OPACITY.
+    expect(middle).toBeCloseTo(0.32, 6);
   });
 
   it('leaves the Bloch view alone (level 1 is unchanged)', () => {
