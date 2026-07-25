@@ -8,6 +8,9 @@ which slicers open directly as a multi-material object.
 
 from __future__ import annotations
 
+import datetime as _datetime
+import functools
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -48,11 +51,76 @@ __all__ = [
     "export_single_batches",
     "export_double_batches",
     "write_batch_plates_md",
+    "provenance",
 ]
 
 #: Named filament slots that are constant across every plate.
 WHITE_HEX = "#ffffff"
 BLACK_HEX = "#000000"
+
+
+# --------------------------------------------------------------------------- #
+# Provenance — which checkout produced this file
+# --------------------------------------------------------------------------- #
+
+#: Repo root, from this module's location (…/hardware/src/qamposer_hardware/).
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+@functools.lru_cache(maxsize=1)
+def provenance() -> str:
+    """Repo commit + date this artifact was generated from, e.g. ``a7611f0 · 2026-07-25``.
+
+    Stamped into every generated ``.md`` and 3MF so a user slicing a file found
+    on disk can tell *which checkout* built it — a week-old 3MF may predate a
+    geometry or palette fix. The commit is ``unknown`` outside a git checkout.
+
+    Cached, so one generator run stamps every one of its outputs identically.
+    """
+    return f"{_git_short_head()} · {_datetime.date.today().isoformat()}"
+
+
+def _git_short_head() -> str:
+    try:
+        done = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:  # no git binary
+        return "unknown"
+    head = done.stdout.strip()
+    return head if done.returncode == 0 and head else "unknown"
+
+
+def _md_stamp() -> str:
+    """The one-line provenance note that sits under every generated md's H1."""
+    commit, _, date = provenance().partition(" · ")
+    return (
+        f"> Generated from `{commit}` on {date} — regenerate with the matching "
+        "checkout before printing."
+    )
+
+
+def _stamp_3mf(mesher: Mesher, stem: str) -> None:
+    """Stamp a 3MF's model-level metadata with the generating commit + date.
+
+    lib3mf exposes model metadata via ``model.GetMetaDataGroup()``, whose
+    ``AddMetaData(NameSpace, Name, Value, Type, MustPreserve)`` writes a
+    ``<metadata name="…">`` element. ``Title``/``Description`` are core 3MF
+    names, so they take the **default** namespace (``""``) — a custom namespace
+    would prefix them and slicers would stop recognising them.
+    """
+    commit, _, date = provenance().partition(" · ")
+    group = mesher.model.GetMetaDataGroup()
+    group.AddMetaData(
+        "", "Title", f"{stem} — Entangible {commit}", "xs:string", False
+    )
+    group.AddMetaData(
+        "", "Description", f"Generated from {commit} on {date}", "xs:string", False
+    )
 
 
 def _angle_slug(param: float) -> str:
@@ -201,6 +269,7 @@ def export_tile_3mf(parts: TileParts, out_dir: Path) -> Path | None:
                 _part_color_hex(role, parts.layout),
                 f"{slug}-{role}-{color_name}",
             )
+        _stamp_3mf(mesher, slug)
         mesher.write(str(path))
     except (RuntimeError, ValueError):
         # lib3mf rejects a mesh it considers non-manifold; the per-colour STLs
@@ -236,6 +305,7 @@ def export_double_tile_3mf(parts: DoubleTileParts, out_dir: Path) -> Path | None
         for role, color_name, hexc, solid in parts.named_parts():
             mesher.add_shape(solid)
             palette.apply(hexc, f"{slug}-{role}-{color_name}")
+        _stamp_3mf(mesher, slug)
         mesher.write(str(path))
     except (RuntimeError, ValueError):
         if path.exists():
@@ -304,6 +374,8 @@ def write_mono_md(
     cube = height > params.tall_body_min_height
     lines: list[str] = [
         "# Single-colour (mono) variants — printers without an MMU",
+        "",
+        _md_stamp(),
         "",
         "Two extra STLs per piece let a single-material printer make a usable "
         "tile. They carry **no colour** (STL is geometry only); which colour goes "
@@ -402,6 +474,8 @@ def write_plates_md(config: AssetsConfig, out_dir: Path) -> Path:
 
     lines: list[str] = [
         "# MMU plate groupings — Entangible gate tiles",
+        "",
+        _md_stamp(),
         "",
         "Prusa Core One MMU has 5 filament slots. Every plate reserves slot 1",
         "for **white** (bodies) and slot 2 for **black** (markers), leaving 3",
@@ -515,6 +589,8 @@ def write_double_plates_md(
 
     lines: list[str] = [
         "# MMU plate groupings — double-faced Entangible pieces",
+        "",
+        _md_stamp(),
         "",
         f"The double-faced kit has **{total} pieces**. Each piece carries two "
         "gate faces (flip to switch); a cross-family piece (mixed H/X/Y/Z) needs "
@@ -722,6 +798,7 @@ def _write_batch_3mf(
         for part in piece.parts:
             mesher.add_shape(Pos(dx, dy, 0.0) * part.solid)
             n_obj += palette.apply(part.hex, part.name)
+    _stamp_3mf(mesher, path.stem)
     mesher.write(str(path))
     return n_obj
 
@@ -870,6 +947,9 @@ def write_batch_plates_md(
     ``base_md`` is the plate-grouping ``plates.md`` already written by
     :func:`write_plates_md` / :func:`write_double_plates_md`; this adds one entry
     per batch 3MF. Returns ``base_md``.
+
+    No provenance stamp here — the base writer already put one under the H1, and
+    a second one mid-document would just be a contradictory-looking duplicate.
     """
     cols = infos[0].cols if infos else 0
     rows = infos[0].rows if infos else 0
