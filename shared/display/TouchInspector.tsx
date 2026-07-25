@@ -91,6 +91,7 @@ export function TouchInspector({
   circuit,
   classPrefix,
   enabled = true,
+  inspectGates = true,
   aboveThreshold,
   halfMaxCap,
   edgeOffset,
@@ -99,6 +100,13 @@ export function TouchInspector({
   circuit: Circuit;
   classPrefix: string;
   enabled?: boolean;
+  /**
+   * Whether taps on editor gates pop an inspect sentence. The pocket turns this
+   * OFF in manual (build-on-screen) mode: there the editor is live, and a gate
+   * tap must reach the editor's own selection toolbar (edit/delete) without an
+   * info popover landing on top of it. Outcome-column popovers stay on.
+   */
+  inspectGates?: boolean;
   aboveThreshold: number;
   halfMaxCap: number;
   edgeOffset: number;
@@ -142,7 +150,7 @@ export function TouchInspector({
       const target = e.target as Element | null;
       if (!target) return;
 
-      const gateEl = target.closest(GATE_ELEMENT_SELECTOR);
+      const gateEl = inspectGates ? target.closest(GATE_ELEMENT_SELECTOR) : null;
       if (gateEl) {
         const text = gateFromElement(gateEl, circuitRef.current);
         if (text) {
@@ -176,7 +184,7 @@ export function TouchInspector({
       document.removeEventListener('click', onClick);
       clearTimer();
     };
-  }, [enabled, p, aboveThreshold, dismissGuard]);
+  }, [enabled, inspectGates, p, aboveThreshold, dismissGuard]);
 
   if (!popover) return null;
 

@@ -1228,8 +1228,11 @@ export function App() {
       />
 
       {/* Tap-to-inspect: always on (a phone is a touch device). Reads the live
-          5-qubit circuit; its gates array is identical to the displayed one. */}
-      <TouchInspector circuit={circuit} />
+          5-qubit circuit; its gates array is identical to the displayed one.
+          In manual (build-on-screen) mode gate taps skip the popover so they
+          reach the editor's own selection toolbar (edit/delete) uncontested;
+          histogram-outcome popovers stay on everywhere. */}
+      <TouchInspector circuit={circuit} inspectGates={!manual} />
 
       {/* The Guide renders as an overlay over the still-mounted app, so an active
           camera stream keeps running while it is open (docs/pocket.md). */}

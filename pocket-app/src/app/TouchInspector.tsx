@@ -13,11 +13,19 @@ import { TouchInspector as SharedTouchInspector } from '@shared/display/TouchIns
 
 export { gateInspectAt, outcomeInspectFromAttrs } from '@shared/display/TouchInspector';
 
-export function TouchInspector({ circuit }: { circuit: Circuit }) {
+export function TouchInspector({
+  circuit,
+  inspectGates,
+}: {
+  circuit: Circuit;
+  /** Off in manual mode: gate taps belong to the live editor's own toolbar. */
+  inspectGates?: boolean;
+}) {
   return (
     <SharedTouchInspector
       circuit={circuit}
       classPrefix="pk"
+      inspectGates={inspectGates}
       aboveThreshold={120}
       halfMaxCap={180}
       edgeOffset={10}
