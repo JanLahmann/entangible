@@ -11,6 +11,12 @@
  * still comes from evaluating the live circuit.
  * When the course is finished it shows the final total-vs-par summary.
  *
+ * Once a hole is holed in, the score line also offers "Show solution" (#71): a
+ * toggle that prints the hole's `solution` as compact per-gate chips ("H q0",
+ * "CX q0→q1"). It is read-only text — nothing is applied to the board, so a
+ * reveal cannot cost a stroke — and it is scoped to the hole it was opened on,
+ * so the next hole starts hidden again.
+ *
  * The card is course-agnostic (#70): the hole list comes from `courseHoles`, so
  * a RANDOM round renders its generated holes (names, kets and generator-sized
  * pars) through the same layout, plus a "Random round" chip in the header.
@@ -18,6 +24,7 @@
  * `monoKet` toggles the one pre-SC2 difference: pocket adds `pk-mono` to the
  * target-ket span; the booth does not tint its ket.
  */
+import { useState } from 'react';
 import type { Circuit } from '@qamposer/react';
 import {
   ROUND_LABEL,
@@ -27,6 +34,7 @@ import {
   scoreName,
   courseTotals,
   formatVsPar,
+  solutionSteps,
   type GolfRound,
   type GolfState,
   type Hole,
@@ -63,6 +71,10 @@ export function Scorecard({
   onNextLevel?: () => void;
 }) {
   const p = classPrefix;
+  // Which hole's solution is currently revealed (#71). Keyed by hole NUMBER
+  // rather than a boolean, so the reveal is scoped to the hole it was asked for
+  // and the next hole starts hidden again without an effect to reset it.
+  const [solutionFor, setSolutionFor] = useState<number | null>(null);
   // The course in play: the fixed 18, or this session's generated ones (#70).
   const holes = courseHoles(state);
   const hole = holes[state.levelIndex];
@@ -155,10 +167,67 @@ export function Scorecard({
             ) : (
               'clear the board for the next hole'
             )}
+            <SolutionToggle
+              p={p}
+              hole={hole}
+              shown={solutionFor === hole.hole}
+              onToggle={() => setSolutionFor(solutionFor === hole.hole ? null : hole.hole)}
+            />
           </div>
         )}
+        {holedIn && solutionFor === hole.hole && <SolutionChips p={p} hole={hole} />}
         <ChipStrip p={p} holes={holes} currentHole={hole.hole} best={state.best} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * "Show solution" (#71) — the reveal offered next to the score line once the
+ * hole is holed in. Pedagogy: a player who fumbled to +4 has earned the sight of
+ * a clean path, and the ball is already in, so nothing is given away. Renders
+ * nothing for a hole with no solution (defensive — every hole on both courses
+ * carries one).
+ */
+function SolutionToggle({
+  p,
+  hole,
+  shown,
+  onToggle,
+}: {
+  p: string;
+  hole: Hole;
+  shown: boolean;
+  onToggle: () => void;
+}) {
+  if (!hole.solution) return null;
+  return (
+    <button
+      type="button"
+      className={`${p}-golf-solution-btn`}
+      aria-expanded={shown}
+      onClick={onToggle}
+    >
+      {shown ? 'Hide solution' : 'Show solution'}
+    </button>
+  );
+}
+
+/**
+ * The revealed answer: one compact chip per gate, in board order. Pure TEXT —
+ * the solution is never applied to the circuit, so looking at it cannot cost a
+ * stroke (#68). The row wraps like the ket lines, so a 6-gate GHZ-5 answer never
+ * pushes the card sideways.
+ */
+function SolutionChips({ p, hole }: { p: string; hole: Hole }) {
+  if (!hole.solution) return null;
+  return (
+    <div className={`${p}-golf-solution`} aria-label="solution">
+      {solutionSteps(hole.solution).map((step, i) => (
+        <span key={`${i}-${step}`} className={`${p}-golf-sol-chip`}>
+          {step}
+        </span>
+      ))}
     </div>
   );
 }

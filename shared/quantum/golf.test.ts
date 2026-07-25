@@ -9,6 +9,9 @@ import {
   clubGateTypes,
   bestFidelity,
   evaluate,
+  holeSolution,
+  gateStep,
+  solutionSteps,
   strokeDelta,
   scoreName,
   golfStep,
@@ -41,56 +44,17 @@ function ghz(k: number, base = 0): Gate[] {
   return gates;
 }
 
-/** A circuit that follows each hole's reference path from the course spec. */
+/**
+ * Each hole's reference path — the PROD solution the card reveals after a
+ * hole-in (#71). Deliberately not a second copy: these circuits used to live
+ * here, and the assertions below (holes in, costs par − 2) are exactly what
+ * makes them trustworthy to show a player, so they must run against the data
+ * the player actually sees.
+ */
 function refCircuit(n: number): Circuit {
-  switch (n) {
-    // EASY — GHZ family.
-    case 1:
-      return circuit([g('H', 0, { qubit: 0 })]);
-    case 2:
-      return circuit(ghz(2));
-    case 3:
-      return circuit(ghz(3));
-    case 4:
-      return circuit(ghz(4));
-    case 5:
-      return circuit(ghz(5));
-    // MEDIUM — bit-flip variants.
-    case 6: // M1 |1⟩
-      return circuit([g('X', 0, { qubit: 0 })]);
-    case 7: // M2 Ψ-plus = Bell + X
-      return circuit([...ghz(2), g('X', 2, { qubit: 0 })]);
-    case 8: // M3 flipped GHZ-3 = GHZ-3 + X
-      return circuit([...ghz(3), g('X', 3, { qubit: 2 })]);
-    case 9: // M4 flipped GHZ-4 = GHZ-4 + X
-      return circuit([...ghz(4), g('X', 4, { qubit: 3 })]);
-    case 10: // M5 flipped GHZ-5 = GHZ-5 + X
-      return circuit([...ghz(5), g('X', 5, { qubit: 4 })]);
-    // DIFFICULT — relative-phase.
-    case 11: // D1 minus = H·Z
-      return circuit([g('H', 0, { qubit: 0 }), g('Z', 1, { qubit: 0 })]);
-    case 12: // D2 Φ-minus = Bell + Z
-      return circuit([...ghz(2), g('Z', 2, { qubit: 0 })]);
-    case 13: // D3 i-GHZ-3 = GHZ-3 + S (S tile)
-      return circuit([...ghz(3), g('S', 3, { qubit: 0 })]);
-    case 14: // D4 minus GHZ-4 = GHZ-4 + Z
-      return circuit([...ghz(4), g('Z', 4, { qubit: 0 })]);
-    case 15: // D5 i-GHZ-5 = GHZ-5 + S
-      return circuit([...ghz(5), g('S', 5, { qubit: 0 })]);
-    // EXTRA-HARD.
-    case 16: // X1 magic-T = H·T (T tile)
-      return circuit([g('H', 0, { qubit: 0 }), g('T', 1, { qubit: 0 })]);
-    case 17: // X3 Cascade = H q0; CH q0→q1; CX q1→q2
-      return circuit([
-        g('H', 0, { qubit: 0 }),
-        g('CH', 1, { control: 0, target: 1 }),
-        g('CNOT', 2, { control: 1, target: 2 }),
-      ]);
-    case 18: // X5 golden GHZ = GHZ-5 + T
-      return circuit([...ghz(5), g('T', 5, { qubit: 0 })]);
-    default:
-      throw new Error(`no reference for hole ${n}`);
-  }
+  const solution = hole(n).solution;
+  if (!solution) throw new Error(`no solution for hole ${n}`);
+  return solution;
 }
 
 describe('course definition', () => {
@@ -160,7 +124,15 @@ describe('course definition', () => {
   });
 });
 
-describe('reachability — every reference path holes in', () => {
+describe('reachability — every published solution holes in', () => {
+  it('every hole publishes a solution, and it is the one holeSolution names', () => {
+    for (let n = 1; n <= 18; n++) {
+      expect(hole(n).solution, `hole ${n} (${hole(n).code})`).toBeDefined();
+      expect(hole(n).solution).toEqual(holeSolution(n));
+    }
+    expect(() => holeSolution(19)).toThrow();
+  });
+
   it('the spec reference path clears its hole (fidelity ≥ 0.99)', () => {
     for (let n = 1; n <= 18; n++) {
       const h = hole(n);
@@ -175,6 +147,18 @@ describe('reachability — every reference path holes in', () => {
       expect(evaluate(refCircuit(n), hole(n)).gateCount).toBe(hole(n).par - 2);
       expect(strokeDelta(empty, refCircuit(n))).toBe(hole(n).par - 2);
     }
+  });
+
+  it('showing a solution is read-only: it never touches the board or the score (#68)', () => {
+    // The reveal renders `solutionSteps(hole.solution)` and nothing else — the
+    // player's circuit and their strokes are untouched by looking at it.
+    const state = { ...initialGolfState(), levelIndex: 1, strokes: 7 };
+    const board = circuit([g('H', 0, { qubit: 0 })]);
+    const before = golfStep(state, board);
+    solutionSteps(hole(2).solution!);
+    const after = golfStep(state, board);
+    expect(after).toEqual(before);
+    expect(hole(2).solution).toEqual(holeSolution(2));
   });
 
   it('S and T tiles are equivalent to RZ(π/2)/RZ(π/4) (normalized)', () => {
@@ -251,6 +235,33 @@ describe('holeHighlight', () => {
     expect(holeHighlight(hole(6))).toEqual(new Set([1])); // |1⟩ on q0
     expect(holeHighlight(hole(7))).toEqual(new Set([1, 2])); // Ψ-plus |01⟩,|10⟩
     expect(holeHighlight(hole(17))).toEqual(new Set([0, 1, 7])); // Cascade
+  });
+});
+
+describe('solution chips (#71)', () => {
+  it('names single-qubit, controlled and rotation gates', () => {
+    expect(gateStep(g('H', 0, { qubit: 0 }))).toBe('H q0');
+    expect(gateStep(g('X', 1, { qubit: 3 }))).toBe('X q3');
+    // The controlled-NOT prints under its CLUB name, not the library's 'CNOT'.
+    expect(gateStep(g('CNOT', 0, { control: 0, target: 1 }))).toBe('CX q0→q1');
+    expect(gateStep(g('CH', 0, { control: 2, target: 4 }))).toBe('CH q2→q4');
+    expect(gateStep(g('CCX', 0, { control: 0, control2: 1, target: 2 }))).toBe('CCX q0,q1→q2');
+    expect(gateStep(g('RZ', 0, { qubit: 1, parameter: Math.PI / 2 }))).toBe('RZ 0.50π q1');
+  });
+
+  it('reads a solution left to right, whatever order its gates are stored in', () => {
+    expect(solutionSteps(holeSolution(3))).toEqual(['H q0', 'CX q0→q1', 'CX q0→q2']);
+    expect(solutionSteps(holeSolution(17))).toEqual(['H q0', 'CH q0→q1', 'CX q1→q2']);
+    const shuffled = circuit([g('X', 2, { qubit: 1 }), g('H', 0, { qubit: 0 })]);
+    expect(solutionSteps(shuffled)).toEqual(['H q0', 'X q1']);
+  });
+
+  it('gives every hole one chip per gate — a par-beating answer', () => {
+    for (let n = 1; n <= 18; n++) {
+      const steps = solutionSteps(hole(n).solution!);
+      expect(steps.length, `hole ${n}`).toBe(hole(n).par - 2);
+      for (const s of steps) expect(s.length, `hole ${n}: "${s}"`).toBeLessThan(14);
+    }
   });
 });
 

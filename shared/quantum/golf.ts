@@ -31,11 +31,18 @@
  * (defaulting to `HOLES`), a generated hole carries its own target placements,
  * and `GolfState.course`/`randomSeed` say which course a state is playing.
  *
+ * Every hole also carries a `solution` (#71): a gate sequence that prepares its
+ * target, revealed on request once the hole is holed in. Classic holes use the
+ * reference paths their pars were derived from (`holeSolution`, par − 2 long);
+ * generated holes use their own generator. It is display data only — read-only
+ * text, never applied to the board, so it can never touch strokes (#68).
+ *
  * Bit convention: leftmost ket bit = first arrangement qubit, matching
  * shared/display/outcomes.ts. Internally targets live in the little-endian
  * statevector basis (index i has qubit q set when (i >> q) & 1).
  */
 import type { Circuit, Gate, GateType } from '@qamposer/react';
+import { formatAngle } from './inspectCopy';
 import { fidelity, statevector, DIM, NUM_QUBITS, type Complex, type StateVector } from './statevector';
 
 export const HOLE_IN_THRESHOLD = 0.99;
@@ -99,6 +106,15 @@ export interface Hole {
   readonly targets?: readonly StateVector[];
   /** GENERATED holes only: the target built on qubits 0..k−1 (see `holeTargetState`). */
   readonly canonicalTarget?: StateVector;
+  /**
+   * A worked answer for this hole (#71) — a gate sequence that prepares the
+   * target, shown on request AFTER the hole is holed in ("Show solution"). It is
+   * par−2 long on the classic course (the minimum; see `holeSolution`) and the
+   * generator itself on the random one, so it always beats par. Optional
+   * because it is display data: nothing in the engine reads it, and a hole
+   * without one simply offers no reveal.
+   */
+  readonly solution?: Circuit;
 }
 
 /**
@@ -325,6 +341,118 @@ function holeSpec(hole: number, k: number): TargetSpec {
 }
 
 // ---------------------------------------------------------------------------
+// Solutions — the worked answer offered after a hole-in (#71)
+// ---------------------------------------------------------------------------
+
+/**
+ * One gate of a solution. `position` is the column it occupies, so the sequence
+ * reads left to right exactly as it would sit on the board.
+ */
+function sg(type: GateType, position: number, extra: Partial<Gate>): Gate {
+  return {
+    id: `sol-${type}-${position}-${extra.qubit ?? extra.control ?? 0}`,
+    type,
+    position,
+    ...extra,
+  };
+}
+
+/** GHZ-k on q0..q(k−1): H on q0, then a fan of CNOTs out of q0. */
+function ghzGates(k: number, base = 0): Gate[] {
+  const gates: Gate[] = [sg('H', base, { qubit: 0 })];
+  for (let t = 1; t < k; t++) gates.push(sg('CNOT', base + t, { control: 0, target: t }));
+  return gates;
+}
+
+const solCircuit = (gates: Gate[]): Circuit => ({ qubits: NUM_QUBITS, gates });
+
+/**
+ * The reference answer for classic hole `n` — the MINIMAL preparation of its
+ * target, i.e. exactly `par − 2` gates (#69 sets par at the minimum + 2), so a
+ * player who fumbled to +4 can see the clean path.
+ *
+ * These are the course's own reference paths: they are what the pars were
+ * derived from, and `golf.test.ts` asserts against this very data that each one
+ * still holes in and still costs par − 2. The S/T holes use the native S/T
+ * clubs; the printed tiles' RZ(π/2)/RZ(π/4) spelling holes in just as well
+ * (`bestFidelity` applies both), it is simply not what we print.
+ */
+export function holeSolution(n: number): Circuit {
+  switch (n) {
+    // EASY — the GHZ family.
+    case 1: // E1 superposition
+      return solCircuit([sg('H', 0, { qubit: 0 })]);
+    case 2: // E2 Bell
+      return solCircuit(ghzGates(2));
+    case 3: // E3 GHZ-3
+      return solCircuit(ghzGates(3));
+    case 4: // E4 GHZ-4
+      return solCircuit(ghzGates(4));
+    case 5: // E5 GHZ-5
+      return solCircuit(ghzGates(5));
+    // MEDIUM — bit-flip variants.
+    case 6: // M1 |1⟩
+      return solCircuit([sg('X', 0, { qubit: 0 })]);
+    case 7: // M2 Ψ-plus = Bell + X
+      return solCircuit([...ghzGates(2), sg('X', 2, { qubit: 0 })]);
+    case 8: // M3 flipped GHZ-3 = GHZ-3 + X
+      return solCircuit([...ghzGates(3), sg('X', 3, { qubit: 2 })]);
+    case 9: // M4 flipped GHZ-4 = GHZ-4 + X
+      return solCircuit([...ghzGates(4), sg('X', 4, { qubit: 3 })]);
+    case 10: // M5 flipped GHZ-5 = GHZ-5 + X
+      return solCircuit([...ghzGates(5), sg('X', 5, { qubit: 4 })]);
+    // DIFFICULT — relative phase.
+    case 11: // D1 minus = H·Z
+      return solCircuit([sg('H', 0, { qubit: 0 }), sg('Z', 1, { qubit: 0 })]);
+    case 12: // D2 Φ-minus = Bell + Z
+      return solCircuit([...ghzGates(2), sg('Z', 2, { qubit: 0 })]);
+    case 13: // D3 i-GHZ-3 = GHZ-3 + S
+      return solCircuit([...ghzGates(3), sg('S', 3, { qubit: 0 })]);
+    case 14: // D4 minus GHZ-4 = GHZ-4 + Z
+      return solCircuit([...ghzGates(4), sg('Z', 4, { qubit: 0 })]);
+    case 15: // D5 i-GHZ-5 = GHZ-5 + S
+      return solCircuit([...ghzGates(5), sg('S', 5, { qubit: 0 })]);
+    // EXTRA.
+    case 16: // X1 magic-T = H·T
+      return solCircuit([sg('H', 0, { qubit: 0 }), sg('T', 1, { qubit: 0 })]);
+    case 17: // X3 Cascade = H q0; CH q0→q1; CX q1→q2
+      return solCircuit([
+        sg('H', 0, { qubit: 0 }),
+        sg('CH', 1, { control: 0, target: 1 }),
+        sg('CNOT', 2, { control: 1, target: 2 }),
+      ]);
+    case 18: // X5 golden GHZ = GHZ-5 + T
+      return solCircuit([...ghzGates(5), sg('T', 5, { qubit: 0 })]);
+    default:
+      throw new Error(`no solution for hole ${n}`);
+  }
+}
+
+/**
+ * A solution gate as one compact chip of text: `H q0`, `CX q0→q1`,
+ * `CCX q0,q1→q2`, `RZ 0.50π q0`. The controlled-NOT prints under its CLUB name
+ * `CX` (what the scorecard's clubs hint and the printed tile call it), not the
+ * library's `CNOT`. Angles are typeset by the same `formatAngle` the tap-to-
+ * inspect popovers use, so one rotation notation runs through the whole app.
+ */
+export function gateStep(gate: Gate): string {
+  const name = gate.type === 'CNOT' ? 'CX' : gate.type;
+  const angle = gate.parameter === undefined ? '' : ` ${formatAngle(gate.parameter)}`;
+  if (gate.control !== undefined && gate.target !== undefined) {
+    const controls =
+      gate.control2 === undefined ? `q${gate.control}` : `q${gate.control},q${gate.control2}`;
+    return `${name}${angle} ${controls}→q${gate.target}`;
+  }
+  return `${name}${angle} q${gate.qubit ?? 0}`;
+}
+
+/** A solution as its gate chips, in board order (left to right). Read-only:
+ *  showing a solution never touches the player's circuit or their strokes (#68). */
+export function solutionSteps(solution: Circuit): string[] {
+  return [...solution.gates].sort((a, b) => a.position - b.position).map(gateStep);
+}
+
+// ---------------------------------------------------------------------------
 // The course
 // ---------------------------------------------------------------------------
 
@@ -386,6 +514,7 @@ export const HOLES: readonly Hole[] = (() => {
       target: d.targetKet,
       par: d.par,
       clubs: ROUND_CLUBS[d.round],
+      solution: holeSolution(i + 1),
     } as Hole;
   });
 })();

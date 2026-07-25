@@ -1721,6 +1721,47 @@ body,
   filter: brightness(1.15);
 }
 
+/* "Show solution" (#71) — a quiet, secondary sibling of the Next-hole button:
+   the ball is already in, so the reveal must never compete with advancing. */
+.pk-golf-solution-btn {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pk-golf-solution-btn:active {
+  color: var(--text);
+  border-color: var(--entangle);
+}
+
+/* The revealed answer: one chip per gate, wrapping like the ket lines. */
+.pk-golf-solution {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+}
+
+.pk-golf-sol-chip {
+  padding: 0.12rem 0.4rem;
+  border-radius: 5px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 /* Full 18-hole strip, one row per round (E/M/D/X). */
 .pk-golf-course {
   display: flex;

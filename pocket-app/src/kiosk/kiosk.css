@@ -1324,6 +1324,48 @@
   color: var(--entangle-text);
 }
 
+/* "Show solution" (#71) — the booth has no Next-hole button (clearing the table
+   is the ritual), so this is the score line's only control: quiet, but big
+   enough to hit from across a table. */
+.bo-golf-solution-btn {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.22rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bo-golf-solution-btn:active {
+  color: var(--text);
+  border-color: var(--entangle);
+}
+
+/* The revealed answer: one chip per gate, wrapping like the ket lines. */
+.bo-golf-solution {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+  margin-top: 0.4rem;
+}
+
+.bo-golf-sol-chip {
+  padding: 0.14rem 0.45rem;
+  border-radius: 5px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 /* Full 18-hole strip, one row per round (E/M/D/X). */
 .bo-golf-course {
   display: flex;

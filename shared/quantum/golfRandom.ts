@@ -73,6 +73,13 @@
  * wires in any order. Fidelity, the hole-in threshold and stroke counting (#68)
  * are entirely unchanged.
  *
+ * ## Solution (#71)
+ * A generated hole hands its GENERATOR back as `hole.solution`, so the "Show
+ * solution" reveal on the scorecard works on the random course exactly as it
+ * does on the classic one. There is nothing to derive: the circuit that made the
+ * target is by construction an answer to it, and at `size` gates against a par
+ * of `size + 1` it beats par.
+ *
  * This module depends on `@quantum/golf`, never the reverse: `golfStep` takes
  * the course as an optional parameter and defaults to the fixed `HOLES`, so the
  * engine stays free of the generator.
@@ -281,7 +288,9 @@ const SLOTS: readonly Slot[] = HOLES.map((h) => ({
 /** A generated hole together with the circuit that defines it (the "answer"). */
 export interface GeneratedHole {
   readonly hole: Hole;
-  /** The generator — a par-length solution, useful to tests and tooling. */
+  /** The generator — a par-beating solution, useful to tests and tooling. Also
+   *  carried on the hole itself as `hole.solution`, which is what the scorecard
+   *  reveals after a hole-in (#71). */
   readonly circuit: Circuit;
 }
 
@@ -326,6 +335,11 @@ export function generateHole(slot: Slot, seed: number): GeneratedHole {
     clubs,
     targets: orderedPlacements(k, target),
     canonicalTarget: target,
+    // The generator IS a worked answer (#71): it built this target, and at
+    // `size` gates it beats the hole's par of `size + 1`. Carrying it on the
+    // hole is what lets `courseHoles` hand the scorecard a random round whose
+    // "Show solution" works exactly like the classic one's.
+    solution: circuit,
   };
   return { hole, circuit };
 }

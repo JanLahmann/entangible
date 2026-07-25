@@ -8,7 +8,7 @@
  * booth vs pocket) is honoured. Runs once, in the pocket suite (jsdom pragma).
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, cleanup } from '@testing-library/react';
+import { render, cleanup, fireEvent } from '@testing-library/react';
 import type { Circuit, Gate } from '@qamposer/react';
 import { Histogram } from './Histogram';
 import { StatePanel } from './StatePanel';
@@ -16,7 +16,7 @@ import { QasmPanel } from './QasmPanel';
 import { MessageStrip } from './MessageStrip';
 import { Scorecard } from './Scorecard';
 import { Celebrations } from './Celebrations';
-import { initialGolfState } from '@quantum/golf';
+import { initialGolfState, solutionSteps } from '@quantum/golf';
 import { randomCourse } from '@quantum/golfRandom';
 
 afterEach(cleanup);
@@ -276,6 +276,58 @@ describe('Scorecard (shared)', () => {
     expect(stats).toContain(`par ${hole.par}`);
     // Same 18-chip strip — the structure is shared with the classic course.
     expect(container.querySelectorAll('.pk-golf-chip').length).toBe(18);
+  });
+
+  it('reveals the hole’s solution only after a hole-in, and only on request (#71)', () => {
+    for (const p of ['bo', 'pk'] as const) {
+      // Mid-hole: nothing to reveal, because the hole is not in yet.
+      const playing = render(
+        <Scorecard state={initialGolfState()} circuit={bell} classPrefix={p} />,
+      );
+      expect(playing.container.querySelector(`.${p}-golf-solution-btn`)).toBeNull();
+      cleanup();
+
+      // Holed in on E2 (Bell): the toggle appears, collapsed.
+      const state = { ...initialGolfState(), levelIndex: 1, holedIn: true, strokes: 4 };
+      const { container } = render(<Scorecard state={state} circuit={bell} classPrefix={p} />);
+      const btn = container.querySelector(`.${p}-golf-solution-btn`) as HTMLButtonElement;
+      expect(btn.textContent).toBe('Show solution');
+      expect(btn.getAttribute('aria-expanded')).toBe('false');
+      expect(container.querySelector(`.${p}-golf-solution`)).toBeNull();
+
+      // Expanded: one chip per gate of the reference path, in board order.
+      fireEvent.click(btn);
+      const chips = Array.from(
+        container.querySelectorAll(`.${p}-golf-solution .${p}-golf-sol-chip`),
+      ).map((n) => n.textContent);
+      expect(chips).toEqual(['H q0', 'CX q0→q1']);
+      expect(btn.textContent).toBe('Hide solution');
+      // The 18-hole strip is untouched — solution chips are their own class.
+      expect(container.querySelectorAll(`.${p}-golf-chip`).length).toBe(18);
+
+      // Collapses again on the next tap.
+      fireEvent.click(btn);
+      expect(container.querySelector(`.${p}-golf-solution`)).toBeNull();
+      cleanup();
+    }
+  });
+
+  it('reveals a generated hole’s generator on the random course (#71)', () => {
+    const state = { ...initialGolfState({}, 'random', 4242), holedIn: true, strokes: 9 };
+    const generated = randomCourse(4242)[0];
+    const { container } = render(<Scorecard state={state} circuit={bell} classPrefix="pk" />);
+    fireEvent.click(container.querySelector('.pk-golf-solution-btn') as HTMLButtonElement);
+    const chips = Array.from(container.querySelectorAll('.pk-golf-sol-chip')).map(
+      (n) => n.textContent,
+    );
+    expect(chips).toEqual(solutionSteps(generated.solution!));
+    expect(chips.length).toBe(generated.par - 1); // the generator beats par by one
+  });
+
+  it('hides the reveal on the completed-course summary (no hole is in play)', () => {
+    const state = { ...initialGolfState(), levelIndex: 17, complete: true };
+    const { container } = render(<Scorecard state={state} circuit={bell} classPrefix="pk" />);
+    expect(container.querySelector('.pk-golf-solution-btn')).toBeNull();
   });
 
   it('leaves the classic card free of any course chip', () => {

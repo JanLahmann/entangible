@@ -304,6 +304,9 @@ describe('random course generation (#70)', () => {
       expect(ev.fidelity).toBeGreaterThan(1 - 1e-9);
       expect(ev.holedIn).toBe(true);
       expect(ev.gateCount).toBe(hole.par - 1); // generator = par − 1 slack
+      // …which is exactly the answer the card reveals after a hole-in (#71):
+      // the hole carries its generator, so the reveal inherits this proof.
+      expect(hole.solution).toBe(circuit);
     }
     // The ordered-placement machinery (as on the Cascade hole) means the same
     // answer built on other rows, reversed, scores identically.
