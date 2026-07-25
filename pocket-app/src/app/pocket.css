@@ -1457,6 +1457,10 @@ body,
 }
 
 .pk-ket {
+  /* Never widen the column: wrap between terms, clamp to the panel. */
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-family: var(--mono);
   font-size: 0.72rem;
   line-height: 1.5;

@@ -219,12 +219,17 @@ export function KetDisplay({
       aria-label={label ? `${label} in bra-ket notation` : 'Current state in bra-ket notation'}
     >
       {label && <span className={`${p}-ket-label`}>{label}</span>}
-      {terms.map((t) => (
-        <span
-          key={t.index}
-          className={`${p}-ket-term${highlight?.has(t.index) ? ` ${p}-ket-term--diff` : ''}`}
-        >
-          {t.op}
+      {terms.map((t, i) => (
+        // The join space lives OUTSIDE the nowrap term span — it is the ONLY
+        // wrap point, so long lines break between terms and can never widen
+        // the panel (a 4-qubit random target once shoved the sphere offscreen).
+        // The +/− sign stays inside, glued to (and highlighted with) its term.
+        <span key={t.index}>
+          {i > 0 && ' '}
+          <span
+            className={`${p}-ket-term${highlight?.has(t.index) ? ` ${p}-ket-term--diff` : ''}`}
+          >
+          {t.op.trim() ? `${t.op.trim()} ` : ''}
           <span className={`${p}-ket-coef`}>
             {t.coef}
             {t.exponent !== null && (
@@ -235,6 +240,7 @@ export function KetDisplay({
             {t.unit}
           </span>
           {t.ket}
+          </span>
         </span>
       ))}
       {truncated && <span className={`${p}-ket-more`}> + ⋯</span>}

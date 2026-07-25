@@ -316,7 +316,7 @@ describe('EvolvingState bra-ket line (#59)', () => {
     ) as HTMLElement;
     expect(targetLine).toBeTruthy();
     const diff = Array.from(targetLine.querySelectorAll('.pk-ket-term--diff'));
-    expect(diff.map((el) => el.textContent)).toEqual([' − 1/√2|00011⟩']);
+    expect(diff.map((el) => el.textContent)).toEqual(['− 1/√2|00011⟩']);
     // A target equal to the live final state highlights nothing once settled.
   });
 
