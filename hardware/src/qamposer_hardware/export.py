@@ -709,6 +709,7 @@ def _export_batches(
     *,
     plate_accents: list[list[str]] | None = None,
     name_accent=accent_color_name,
+    max_per_bed: int | None = None,
 ) -> list[BatchInfo]:
     """Shared driver: build each filament plate's pieces, pack, write batch 3MFs.
 
@@ -723,7 +724,9 @@ def _export_batches(
     for pi, members in enumerate(plate_pieces, start=1):
         accents = plate_accents[pi - 1] if plate_accents is not None else None
         pieces = [build_pieces(m) for m in members]
-        batches = plan_batches(len(pieces), bed, FOOTPRINT, spacing)
+        batches = plan_batches(
+            len(pieces), bed, FOOTPRINT, spacing, max_per_bed=max_per_bed
+        )
         idx = 0
         for bi, positions in enumerate(batches, start=1):
             take = len(positions)
@@ -757,6 +760,7 @@ def export_single_batches(
     spacing: float,
     out_dir: Path,
     params: HardwareParams | None = None,
+    max_per_bed: int | None = None,
 ) -> list[BatchInfo]:
     """Write bed-ready batch 3MFs for the single-faced kit."""
     params = params or HardwareParams()
@@ -769,6 +773,7 @@ def export_single_batches(
         out_dir,
         plate_accents=[g["accents"] for g in groups],
         name_accent=accent_color_name,
+        max_per_bed=max_per_bed,
     )
 
 
@@ -782,6 +787,7 @@ def export_double_batches(
     spacing: float,
     out_dir: Path,
     params: HardwareParams | None = None,
+    max_per_bed: int | None = None,
 ) -> list[BatchInfo]:
     """Write bed-ready batch 3MFs for the double-faced kit."""
     params = params or HardwareParams()
@@ -794,6 +800,7 @@ def export_double_batches(
         out_dir,
         plate_accents=[g["families"] for g in groups],
         name_accent=double_color_name,
+        max_per_bed=max_per_bed,
     )
 
 
@@ -824,6 +831,7 @@ def write_batch_plates_md(
     spacing: float,
     faces: str,
     variant: str,
+    max_per_bed: int | None = None,
 ) -> Path:
     """Append a **Print jobs** section (batch files + ASCII layouts) to ``base_md``.
 
@@ -848,6 +856,14 @@ def write_batch_plates_md(
         f"filaments). {len(infos)} batch file(s), {total_pieces} pieces total.",
         "",
     ]
+    if max_per_bed is not None and max_per_bed < cols * rows:
+        lines.append(
+            f"> **Wipe tower:** batches are capped at **{max_per_bed}** pieces "
+            "and the grid is anchored in the front-left corner, so all free "
+            "bed area is one connected region at the rear/right — drop the "
+            "MMU wipe tower there in the slicer."
+        )
+        lines.append("")
     if variant == "cube":
         lines.append(
             "> **Cube kit:** pieces are 60 mm tall — a tall, long print. "

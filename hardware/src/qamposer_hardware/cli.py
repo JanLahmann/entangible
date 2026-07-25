@@ -251,6 +251,7 @@ def _plates(
     variant: str,
     bed_text: str,
     spacing: float,
+    max_per_plate: int,
     out_root: Path,
 ) -> int:
     """Generate bed-ready multi-piece batch 3MFs + a Print jobs plates.md."""
@@ -261,26 +262,29 @@ def _plates(
     vdir.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
 
+    cap = max_per_plate if max_per_plate > 0 else None
+    cap_note = f"  cap {cap}/plate (wipe tower)" if cap else ""
     print(
         f"[{subdir}] bed {bed.width:g}x{bed.height:g} mm  spacing {spacing:g} mm  "
-        f"height {height:g} mm -> {vdir}"
+        f"height {height:g} mm{cap_note} -> {vdir}"
     )
 
     if faces == "double":
         base_md = write_double_plates_md(config, DOUBLE_FACED_KIT, vdir)
         infos = export_double_batches(
             config, DOUBLE_FACED_KIT, variant=variant, height=height,
-            bed=bed, spacing=spacing, out_dir=vdir,
+            bed=bed, spacing=spacing, out_dir=vdir, max_per_bed=cap,
         )
     else:
         base_md = write_plates_md(config, vdir)
         infos = export_single_batches(
             config, variant=variant, height=height,
-            bed=bed, spacing=spacing, out_dir=vdir,
+            bed=bed, spacing=spacing, out_dir=vdir, max_per_bed=cap,
         )
 
     write_batch_plates_md(
-        base_md, infos, bed=bed, spacing=spacing, faces=faces, variant=variant
+        base_md, infos, bed=bed, spacing=spacing, faces=faces, variant=variant,
+        max_per_bed=cap,
     )
 
     total_bytes = 0
@@ -355,6 +359,11 @@ def main(argv: list[str] | None = None) -> int:
         help="gap between pieces in mm (default: 8)",
     )
     plates.add_argument(
+        "--max-per-plate", default=8, type=int, dest="max_per_plate",
+        help="max pieces per plate, leaving bed space for the MMU wipe tower "
+             "(default: 8; 0 = fill the bed)",
+    )
+    plates.add_argument(
         "--out", default=str(_DEFAULT_OUT), type=Path,
         help=f"output root (default: {_DEFAULT_OUT})",
     )
@@ -378,6 +387,7 @@ def main(argv: list[str] | None = None) -> int:
             variant=args.variant,
             bed_text=args.bed,
             spacing=args.spacing,
+            max_per_plate=args.max_per_plate,
             out_root=args.out,
         )
     parser.error("unknown command")

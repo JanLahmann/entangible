@@ -28,6 +28,7 @@ from qamposer_hardware.export import (
     single_plate_groups,
 )
 from qamposer_hardware.pack import (
+    EDGE_MARGIN,
     FOOTPRINT,
     Bed,
     bed_capacity,
@@ -57,14 +58,15 @@ def test_parse_bed():
 
 def test_capacity_default_bed_is_3x3():
     assert bed_capacity(BED, FOOTPRINT, SPACING) == (3, 3)
-    # exactly-fits and one-short boundaries: 3 pieces need 3*60+2*8 = 196 mm.
-    assert bed_capacity(Bed(196.0, 196.0), FOOTPRINT, SPACING) == (3, 3)
-    assert bed_capacity(Bed(195.9, 195.9), FOOTPRINT, SPACING) == (2, 2)
+    # exactly-fits and one-short boundaries: 3 pieces need the 5 mm edge margin
+    # + 3*60 + 2*8 = 201 mm.
+    assert bed_capacity(Bed(201.0, 201.0), FOOTPRINT, SPACING) == (3, 3)
+    assert bed_capacity(Bed(200.9, 200.9), FOOTPRINT, SPACING) == (2, 2)
 
 
 def test_capacity_scales_with_bed():
-    assert bed_capacity(Bed(60.0, 60.0), FOOTPRINT, SPACING) == (1, 1)
-    assert bed_capacity(Bed(59.0, 500.0), FOOTPRINT, SPACING) == (0, 7)
+    assert bed_capacity(Bed(65.0, 65.0), FOOTPRINT, SPACING) == (1, 1)
+    assert bed_capacity(Bed(64.0, 500.0), FOOTPRINT, SPACING) == (0, 7)
 
 
 def test_plan_batches_splits_by_capacity():
@@ -117,27 +119,43 @@ def test_spacing_is_exact_between_neighbours():
     # row 0 = indices 0,1,2 → adjacent x gap == pitch; column gap (0 vs 3) == pitch
     assert pos[1][0] - pos[0][0] == pytest.approx(PITCH)
     assert pos[2][0] - pos[1][0] == pytest.approx(PITCH)
-    assert pos[0][1] - pos[3][1] == pytest.approx(PITCH)  # first row above second
+    assert pos[3][1] - pos[0][1] == pytest.approx(PITCH)  # row 1 rearwards of row 0
 
 
-def test_full_grid_centred_on_bed():
+def test_grid_anchored_front_left():
+    # Corner anchoring consolidates free bed area at the rear/right (wipe tower).
     pos = pack_positions(9, BED, FOOTPRINT, SPACING)
     xs = [p[0] for p in pos]
     ys = [p[1] for p in pos]
-    assert (min(xs) + max(xs)) / 2 == pytest.approx(BED.width / 2)
-    assert (min(ys) + max(ys)) / 2 == pytest.approx(BED.height / 2)
+    assert min(xs) == pytest.approx(EDGE_MARGIN + FOOTPRINT / 2)
+    assert min(ys) == pytest.approx(EDGE_MARGIN + FOOTPRINT / 2)
 
 
-def test_single_piece_centred():
+def test_single_piece_anchored():
     (cx, cy), = pack_positions(1, BED, FOOTPRINT, SPACING)
-    assert cx == pytest.approx(BED.width / 2)
-    assert cy == pytest.approx(BED.height / 2)
+    assert cx == pytest.approx(EDGE_MARGIN + FOOTPRINT / 2)
+    assert cy == pytest.approx(EDGE_MARGIN + FOOTPRINT / 2)
 
 
-def test_partial_last_row_is_centred():
-    # 7 pieces = rows [3, 3, 1]; the lone piece in row 2 is horizontally centred.
+def test_every_row_left_aligned():
+    # 7 pieces = rows [3, 3, 1]; the lone rear-row piece sits under column 0.
     pos = pack_positions(7, BED, FOOTPRINT, SPACING)
-    assert pos[6][0] == pytest.approx(BED.width / 2)
+    assert pos[6][0] == pytest.approx(pos[0][0])
+    assert pos[6][1] == pytest.approx(pos[0][1] + 2 * PITCH)
+
+
+def test_plan_batches_max_per_bed_cap():
+    # Wipe-tower cap: 8 per bed on a 3x3 bed → 20 pieces split 8, 8, 4.
+    batches = plan_batches(20, BED, FOOTPRINT, SPACING, max_per_bed=8)
+    assert [len(b) for b in batches] == [8, 8, 4]
+    # The freed cell is the rear-right grid cell: no piece occupies it.
+    first = batches[0]
+    rear_right = (EDGE_MARGIN + FOOTPRINT / 2 + 2 * PITCH,) * 2
+    assert all((cx, cy) != rear_right for cx, cy in first)
+    # A cap at/above capacity changes nothing.
+    assert [len(b) for b in plan_batches(10, BED, FOOTPRINT, SPACING, max_per_bed=9)] == [9, 1]
+    with pytest.raises(ValueError):
+        plan_batches(1, BED, FOOTPRINT, SPACING, max_per_bed=0)
 
 
 # --------------------------------------------------------------------------- #
@@ -255,7 +273,7 @@ def test_export_batches_splits_and_names(config, tmp_path):
     exercised while only 6 tiles are built (fast).
     """
     params = HardwareParams()
-    tiny = Bed(60.0, 140.0)  # 1 col x 2 rows = 2 pieces per bed
+    tiny = Bed(65.0, 145.0)  # 1 col x 2 rows = 2 pieces per bed
     infos = _export_batches(
         lambda mid: _single_piece(mid, config, "tile", 6.0, params),
         [[10, 11, 12, 13], [40, 41]],  # plate1: 4 tiles → 2 batches; plate2: 1 batch
@@ -344,7 +362,7 @@ def test_batch_palette_carries_full_plate_and_keeps_slots(config, tmp_path):
     accents in the same slots, so magenta is slot 5 in *both* — the drift the fix
     removes.
     """
-    tiny = Bed(60.0, 140.0)  # 1 col x 2 rows = 2 pieces/bed
+    tiny = Bed(65.0, 145.0)  # 1 col x 2 rows = 2 pieces/bed
     accents = ["#fa4d56", "#002d9c", "#9f1853"]
     infos = _export_batches(
         lambda mid: _single_piece(mid, config, "tile", 6.0, HardwareParams()),
