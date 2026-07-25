@@ -1511,6 +1511,24 @@ body,
   stroke-width: 1;
 }
 
+/* target ghosts + ket labels (#58) */
+.pk-qs-target-ring {
+  stroke-width: 1.5;
+  stroke-dasharray: 3 2;
+}
+
+.pk-qs-target-tick {
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.pk-qs-label {
+  fill: var(--muted);
+  font-family: var(--mono);
+  font-size: 8px;
+  pointer-events: none;
+}
+
 .pk-bl-axis {
   stroke: var(--border);
   stroke-width: 1;

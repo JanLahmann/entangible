@@ -148,6 +148,24 @@ export function project(nodes: readonly QNode[], yaw: number, pitch: number): Pr
   });
 }
 
+/**
+ * Inverse of `project`'s convention: the camera angles that turn a model
+ * direction `d` toward the viewer. `projectPoint(d, ...faceOrientation(d))`
+ * lands at screen (0, 0) with maximal depth.
+ *
+ * Solving `Rx(pitch)·Rz(yaw)·d = (0, 1, 0)` (the +y camera axis):
+ *   screenX = 0  ⇒  cos(yaw + atan2(d.y, d.x)) = 0  ⇒  yaw = π/2 − atan2(d.y, d.x)
+ *   screenY = 0  ⇒  pitch = atan2(−d.z, hypot(d.x, d.y))
+ * The pitch is clamped to the interactive range, so a pole direction is
+ * approached (±80°) rather than reached — matching what a drag can do.
+ */
+export function faceOrientation(d: Vec3): { yaw: number; pitch: number } {
+  return {
+    yaw: Math.PI / 2 - Math.atan2(d.y, d.x),
+    pitch: clampPitch(Math.atan2(-d.z, Math.hypot(d.x, d.y))),
+  };
+}
+
 /** Clamp a pitch angle to the interactive range (±80°, per the golf spec). */
 export const MAX_PITCH = (80 * Math.PI) / 180;
 export function clampPitch(pitch: number): number {

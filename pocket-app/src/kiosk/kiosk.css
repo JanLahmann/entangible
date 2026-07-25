@@ -1157,6 +1157,24 @@
   stroke-width: 1;
 }
 
+/* target ghosts + ket labels (#58) */
+.bo-qs-target-ring {
+  stroke-width: 1.5;
+  stroke-dasharray: 3 2;
+}
+
+.bo-qs-target-tick {
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.bo-qs-label {
+  fill: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 8px;
+  pointer-events: none;
+}
+
 .bo-bl-axis {
   stroke: var(--border);
   stroke-width: 1;

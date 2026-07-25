@@ -67,7 +67,14 @@ import { isTouchEnabled } from './touch';
 import { displayCircuit } from '@shared/display/displayWires';
 import { HINTS, HINT_ROTATE_MS } from '@shared/display/hints';
 import { EvolvingState } from '@shared/display/EvolvingState';
-import { golfStep, initialGolfState, HOLES, holeHighlight, type GolfState } from '@quantum/golf';
+import {
+  golfStep,
+  initialGolfState,
+  HOLES,
+  holeHighlight,
+  holeTargetState,
+  type GolfState,
+} from '@quantum/golf';
 import { QasmPanel as SharedQasmPanel } from '@shared/display/QasmPanel';
 import { StatePanel } from '@shared/display/StatePanel';
 import './kiosk.css';
@@ -384,6 +391,7 @@ export function KioskView() {
   // 'bloch' names are absorbed here to avoid duplication.
   const currentLevel = HOLES[golfState.levelIndex];
   const golfTargets = useMemo(() => holeHighlight(currentLevel), [currentLevel]);
+  const golfTargetState = useMemo(() => holeTargetState(currentLevel), [currentLevel]);
   const GOLF_STRUCTURAL = new Set(['scorecard', 'minicircuit', 'qsphere', 'bloch']);
   const golfSidebar = (
     <>
@@ -394,6 +402,7 @@ export function KioskView() {
             circuit={liveCircuit}
             view={currentLevel.view}
             targets={golfTargets}
+            targetState={golfTargetState}
             classPrefix="bo"
           />
         </div>

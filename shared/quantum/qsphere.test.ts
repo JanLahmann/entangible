@@ -6,6 +6,7 @@ import {
   viewMatrix,
   ringLatitudes,
   clampPitch,
+  faceOrientation,
   MAX_PITCH,
   basisVisuals,
 } from './qsphere';
@@ -151,5 +152,35 @@ describe('basisVisuals (probability radius + reference phase)', () => {
     const v = basisVisuals(amps);
     expect(v[0].phaseDeg).toBeCloseTo(0);
     expect(v[1].phaseDeg).toBeCloseTo(0);
+  });
+});
+
+describe('faceOrientation (#58)', () => {
+  const dirs = [
+    { x: 0.6, y: 0.8, z: 0 },
+    { x: -0.3, y: 0.4, z: 0.866 },
+    { x: 0.5, y: -0.5, z: -0.707 },
+  ];
+
+  it('brings a direction to screen centre facing the viewer', () => {
+    for (const d of dirs) {
+      const { yaw, pitch } = faceOrientation(d);
+      const pr = projectPoint(d, yaw, pitch);
+      expect(pr.x).toBeCloseTo(0, 6);
+      expect(pr.y).toBeCloseTo(0, 6);
+      expect(pr.depth).toBeGreaterThan(0.99);
+    }
+  });
+
+  it('only uses the direction, not the magnitude', () => {
+    const a = faceOrientation({ x: 0.6, y: 0.8, z: 0 });
+    const b = faceOrientation({ x: 6, y: 8, z: 0 });
+    expect(b.yaw).toBeCloseTo(a.yaw);
+    expect(b.pitch).toBeCloseTo(a.pitch);
+  });
+
+  it('clamps a pole direction to the interactive pitch range', () => {
+    expect(faceOrientation({ x: 0, y: 0, z: 1 }).pitch).toBeCloseTo(-MAX_PITCH);
+    expect(faceOrientation({ x: 0, y: 0, z: -1 }).pitch).toBeCloseTo(MAX_PITCH);
   });
 });

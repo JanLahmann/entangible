@@ -68,6 +68,7 @@ import {
   saveBest,
   HOLES,
   holeHighlight,
+  holeTargetState,
   type GolfState,
 } from '@quantum/golf';
 import {
@@ -878,6 +879,7 @@ export function App() {
   const streamPill = cameraStreamPill(streamStatus);
   const currentLevel = HOLES[golfState.levelIndex];
   const golfTargets = useMemo(() => holeHighlight(currentLevel), [currentLevel]);
+  const golfTargetState = useMemo(() => holeTargetState(currentLevel), [currentLevel]);
 
   // In-browser noise model (composer only — golf stays ideal). Memoized on
   // (circuit, preset, mode): the density-matrix sim is ~ms but must not re-run
@@ -945,6 +947,7 @@ export function App() {
             circuit={circuit}
             view={currentLevel.view}
             targets={golfTargets}
+            targetState={golfTargetState}
             classPrefix="pk"
           />
         </div>

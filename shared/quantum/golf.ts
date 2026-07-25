@@ -333,14 +333,21 @@ const TARGETS: Map<number, StateVector[]> = new Map(
   HOLES.map((h) => [h.hole, buildTargets(h.qubits, holeSpec(h.hole, h.qubits))]),
 );
 
-/** The canonical target's nonzero basis indices (built on the lowest qubits),
- *  for the Q-sphere / Bloch "target" outline. */
-export function holeHighlight(hole: Hole): Set<number> {
+/** The hole's canonical target statevector (built on the lowest qubits) — the
+ *  one the Q-sphere ghosts (#58) and the target outline are drawn from. Fidelity
+ *  scoring still accepts every placement (see `bestFidelity`). */
+export function holeTargetState(hole: Hole): StateVector {
   const spec = holeSpec(hole.hole, hole.qubits);
-  const canonical = buildTarget(
+  return buildTarget(
     Array.from({ length: hole.qubits }, (_, i) => i),
     spec.families[0],
   );
+}
+
+/** The canonical target's nonzero basis indices (built on the lowest qubits),
+ *  for the Q-sphere / Bloch "target" outline. */
+export function holeHighlight(hole: Hole): Set<number> {
+  const canonical = holeTargetState(hole);
   const out = new Set<number>();
   for (let i = 0; i < DIM; i++) {
     const a = canonical[i];

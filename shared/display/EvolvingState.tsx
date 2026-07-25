@@ -45,6 +45,8 @@ export interface EvolvingStateProps {
   view: 'bloch' | 'qsphere';
   /** Basis indices to outline as targets (Q-sphere golf). */
   targets?: ReadonlySet<number>;
+  /** The hole's target statevector — drawn as Q-sphere ghost rings (#58). */
+  targetState?: StateVector;
   /** Qubit count of the displayed space (Q-sphere). */
   n?: number;
   /** CSS class prefix, e.g. 'pk' or 'bo'. */
@@ -72,7 +74,14 @@ function stepLabel(i: number): string {
   return i <= 0 ? 'start' : `after column ${i}`;
 }
 
-export function EvolvingState({ circuit, view, targets, n = 5, classPrefix }: EvolvingStateProps) {
+export function EvolvingState({
+  circuit,
+  view,
+  targets,
+  targetState,
+  n = 5,
+  classPrefix,
+}: EvolvingStateProps) {
   const p = classPrefix;
   const reduced = usePrefersReducedMotion();
 
@@ -181,7 +190,13 @@ export function EvolvingState({ circuit, view, targets, n = 5, classPrefix }: Ev
       {view === 'bloch' ? (
         <BlochView statevector={sv} qubit={blochQubit} classPrefix={p} />
       ) : (
-        <QSphereView statevector={sv} targets={targets} n={n} classPrefix={p} />
+        <QSphereView
+          statevector={sv}
+          targets={targets}
+          targetState={targetState}
+          n={n}
+          classPrefix={p}
+        />
       )}
       {showScrubber && (
         <div className={`${p}-evo-scrubber`} role="group" aria-label="State evolution steps">
