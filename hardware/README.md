@@ -28,6 +28,9 @@ CNOT control/target, RX/RY/RZ × {π/4, π/2, π, −π/2}, S, T; board corners 
     caption standing white inside it.
 - White body below the face. The **cube** variant is hollowed (3 mm walls, no
   top/bottom perforation) to save filament; the **tile** variant is solid.
+- On the **cube** only: the gate's name inlaid into all four **vertical side
+  faces** in the gate colour — see [Gate name on the cube's
+  sides](#gate-name-on-the-cubes-sides).
 - A 0.4 mm bottom chamfer (elephant-foot relief).
 - Optional magnet pockets (`--magnets`).
 
@@ -50,12 +53,53 @@ Output per variant lands in `out/hardware/<variant>/`:
 
 - `<gate>-body-white.stl`, `<gate>-marker-black.stl`, `<gate>-accent-<colour>.stl`
   — the three colour parts in one shared coordinate frame.
+- `cube` only: `<gate>-side-{front,right,back,left}-<colour>.stl` — the side-face
+  gate name, same colour as the accent (see below).
 - `<gate>.3mf` — the same parts bundled with their gate colours baked in.
 - `plates.md` — the MMU plate groupings (see below).
 
 The band caption reads white on the gate colour because the glyphs are cut out of
 the accent part and left standing in the white body; there is **no** separate
 glyph part.
+
+## Gate name on the cube's sides
+
+A flat tile is read from above; a **cube** is mostly seen from the side. So every
+60 mm cube carries its gate's name on **all four vertical faces**, inlaid
+**flush** into a 1 mm-deep pocket in the **same accent colour its top face uses**
+— red H, dark-blue X, and so on. It is a separate colour part per face
+(`h-side-front-red.stl`, `…-side-right-…`, `…-side-back-…`, `…-side-left-…`), but
+never a new *colour*: the 3MF palette dedupes it into the gate's existing slot,
+so a cube plate needs exactly the same filaments as the equivalent tile plate.
+
+- **What it says** — the family only: `H` `X` `Y` `Z` `S` `T`, and `RX` `RY` `RZ`
+  for every rotation variant. The *angle* stays top-face information (band
+  caption + tactile notches); a dial cube likewise shows only its axis, because
+  its angle is set by turning it. CNOT and SWAP show the same **vector** `●`,
+  `⊕` and `×` glyphs the printed face uses — never a font glyph, which would
+  tofu.
+- **Size** — cap height targets 45 % of the cube (27 mm) and auto-shrinks to keep
+  **8 mm** clear of every edge of the flat side face. Two-glyph labels (`RX`) hit
+  the width limit first and settle around 20 mm.
+- **Orientation** — upright on every face with the marker face up.
+- **Tactile notches** — on a cube the rotation notch is confined to a 6 mm band
+  at the marker face it documents instead of grooving the whole side face. 6 mm
+  is inside the 8 mm label margin, so a notch and a side name can never meet.
+- **`--magnets`** — the pockets are a base feature (bottom 2.1 mm) and sit
+  ≥ 11 mm in from any side face, so they are nowhere near the inlays.
+
+For a **double-faced** cube each side face splits horizontally: the **upper**
+half carries the gate that is currently facing **up** (face A), upright; the
+**lower** half carries face B rotated **180°**, each in its own accent colour
+(both are already on the plate). Flip the cube and B's label comes up upright in
+the new upper half — the physical flip acts on every vertical face as a 180°
+in-plane spin, so the upside-down half is exactly what rights itself.
+
+> **MMU purge:** because the accent colour is now in play across most of the
+> 60 mm rather than only the top 0.8 mm, a cube plate purges noticeably more
+> into the wipe tower than a tile plate. The 8-piece-per-bed cap (see
+> [Bed-ready print plates](#bed-ready-print-plates)) already leaves the whole
+> rear/right corner free for a correspondingly taller tower.
 
 ## Printing on a Prusa Core One + MMU
 
@@ -170,6 +214,11 @@ writes `mono.md` (the recessed recipe + raised swap-Z heights). The mono STLs
 carry **no colour** — geometry only — which is exactly what a single-material
 printer wants.
 
+On a **cube**, the side-face gate names are **recessed 0.5 mm paint wells in both
+mono forms**, raised included: a filament swap changes whole layers and therefore
+cannot colour a vertical face, but an acrylic pen can. Leaving them unpainted is
+fine too — the recess alone reads.
+
 ## Double-faced pieces
 
 A **double-faced** piece carries a gate on *both* sides: face A on top, face B on
@@ -185,9 +234,11 @@ uv run qamposer-hardware generate --faces double --variant all
 
 Double output lands in `out/hardware/<variant>-double/`. The **tile** variant is
 **8 mm** tall: 0.8 mm colour (face A) + 6.4 mm white core + 0.8 mm colour
-(face B). The **cube** stays 60 mm (top + bottom faces, hollow core). Piece
-filenames pair both gates, e.g. `cnot-ctrl+cnot-tgt-body-white.stl`,
-`rx-p2+rx-m2.3mf`, `h+x-accent-red.stl`.
+(face B). The **cube** stays 60 mm (top + bottom faces, hollow core) and splits
+each side face between the two gates — see [Gate name on the cube's
+sides](#gate-name-on-the-cubes-sides). Piece filenames pair both gates, e.g.
+`cnot-ctrl+cnot-tgt-body-white.stl`, `rx-p2+rx-m2.3mf`, `h+x-accent-red.stl`,
+`h+x-side-front-a-red.stl`.
 
 ### The kit (24 pieces)
 
@@ -273,6 +324,12 @@ by hand, the bottom band edge carries small notches encoding the angle:
 The count is the angle's index in `qamposer_vision.markers.ROTATION_ANGLES`.
 Non-rotation tiles have no notches. The notches are shallow slots in the band
 edge and do not affect the 60 × 60 footprint bounding box.
+
+On a **tile** the slot runs through the whole 6/8 mm thickness. On a **cube** it
+is confined to a **6 mm band** at the marker face it belongs to — otherwise the
+same 2D profile would extrude into a full-height groove down a side face, both
+unlike the printed "slot in the band edge" and straight through the side-face
+gate name. Feel for it at the top edge of a cube, at the bottom edge of a tile.
 
 On a **double-faced** rotation piece both faces carry notches, so they are split
 to opposite halves to stay legible by touch: **face A's** notches sit on the

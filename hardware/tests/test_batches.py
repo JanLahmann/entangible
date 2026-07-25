@@ -186,17 +186,17 @@ def double_pieces(config):
 
 
 def _read_colored(path) -> list[tuple[str, str]]:
-    """Read back a 3MF → ``[(label, '#rrggbb'), ...]`` for every *coloured* object.
+    """Read back a 3MF → ``[(label, '#rrggbb'), ...]`` for every object.
 
-    build123d emits an extra, un-coloured component-wrapper mesh for any part
-    whose geometry is disconnected (a double piece's marker spans two faces, so
-    it is a Compound). Those wrappers carry no object-level colour and an empty
-    label; the real per-colour objects are the ones we assert on.
+    ``Mesher.add_shape`` writes **one 3MF object per solid**, so a colour part
+    made of several islands (a caption counter, a double piece's two markers, a
+    two-glyph cube side label) becomes several objects — every one of which must
+    carry a colour. An un-coloured object would print on slot 1 (white); the
+    caller asserts none exists.
     """
     out = []
     for s in Mesher().read(str(path)):
-        if s.color is None:
-            continue
+        assert s.color is not None, f"un-coloured object {s.label!r} in {path.name}"
         r, g, b, _a = tuple(s.color)
         hexc = "#%02x%02x%02x" % (round(r * 255), round(g * 255), round(b * 255))
         out.append((s.label, hexc))
@@ -221,16 +221,25 @@ def test_single_batch_roundtrip(single_pieces, tmp_path):
 
 
 def test_double_batch_roundtrip(double_pieces, tmp_path):
-    """A same-family + a cross-family double piece: 3 + 4 = 7 coloured objects."""
+    """A same-family + a cross-family double piece: 3 + 4 parts, 19 objects.
+
+    Objects are counted per *solid*, not per part: the CNOT piece is 1 body +
+    2 markers (top/bottom faces) + 11 accent islands (two band rings, the
+    ``CONTROL``/``TARGET`` counters and the four quadrants inside the ``⊕``) =
+    14; ``h+x`` is 1 + 2 + 1 + 1 = 5. Every one of the 19 must be coloured.
+    """
     cnot, hx = double_pieces
     assert len(cnot.parts) == 3 and len(hx.parts) == 4
+    cnot_solids = sum(len(p.solid.solids()) for p in cnot.parts)
+    hx_solids = sum(len(p.solid.solids()) for p in hx.parts)
+    assert (cnot_solids, hx_solids) == (14, 5)
     positions = pack_positions(len(double_pieces), BED, FOOTPRINT, SPACING)
     path = tmp_path / "plate1-batch1.3mf"
     n_obj = _write_batch_3mf(list(double_pieces), positions, path)
 
-    assert n_obj == 7
-    back = _read_colored(path)
-    assert len(back) == 7  # coloured-object count round-trips (wrappers filtered)
+    assert n_obj == 19
+    back = _read_colored(path)  # asserts every object carries a colour
+    assert len(back) == 19  # object count round-trips
     hexes = {h for _lbl, h in back}
     assert hexes == {"#ffffff", "#000000", "#002d9c", "#fa4d56"}
 
@@ -375,6 +384,40 @@ def test_batch_palette_carries_full_plate_and_keeps_slots(config, tmp_path):
     assert [i.path.name for i in infos] == ["plate1-batch1.3mf", "plate1-batch2.3mf"]
     for info in infos:
         _assert_canonical(_palette(info.path), accents)
+
+
+def test_cube_batch_keeps_the_tile_palette_and_adds_side_objects(config, tmp_path):
+    """Cube side names reuse the gate accent: same slots, four more objects each.
+
+    The 3MF palette (= the filament-slot list PrusaSlicer sees) must be
+    *identical* to the flat tiles' — a cube adds geometry, never a filament. Only
+    the object count grows, by one per side-label solid.
+    """
+    params = HardwareParams()
+    positions = pack_positions(2, BED, FOOTPRINT, SPACING)
+    accents = ["#fa4d56", "#002d9c"]  # H = red, X = dark blue
+
+    tiles = [_single_piece(m, config, "tile", 6.0, params) for m in (10, 11)]
+    tile_path = tmp_path / "tiles.3mf"
+    tile_n = _write_batch_3mf(tiles, positions, tile_path, accents=accents)
+
+    cubes = [_single_piece(m, config, "cube", 60.0, params) for m in (10, 11)]
+    cube_path = tmp_path / "cubes.3mf"
+    cube_n = _write_batch_3mf(cubes, positions, cube_path, accents=accents)
+
+    # Same filament slots, in the same order — the whole point of the dedupe.
+    assert _palette(cube_path) == _palette(tile_path)
+    _assert_canonical(_palette(cube_path), accents)
+
+    # H and X are single-glyph labels → one solid per face → +4 objects per cube.
+    assert [len(p.parts) for p in cubes] == [7, 7]  # 3 + four side names
+    assert cube_n == tile_n + 2 * 4 == 14
+    back = _read_colored(cube_path)  # asserts every object carries a colour
+    assert len(back) == cube_n
+    assert {lbl for lbl, _h in back} >= {"h-side-front-red", "x-side-left-blue"}
+    # every side-name object took its gate's accent hex, never a new colour
+    sides = {h for lbl, h in back if "-side-" in lbl}
+    assert sides == set(accents)
 
 
 def test_double_batch_palette_distinguishes_blues(config, double_pieces, tmp_path):

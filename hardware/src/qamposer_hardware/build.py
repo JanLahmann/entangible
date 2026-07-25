@@ -9,11 +9,17 @@ mm of height), which is what per-layer MMU colour needs.
 The band's caption glyphs are cut out of the accent part and left standing in
 the white body, so they read white-on-colour exactly like the 2D face — there
 is no separate glyph part.
+
+A **cube**-height body additionally carries the gate's name on all four vertical
+side faces as a flush colour inlay in the gate's own accent colour (see
+:func:`side_label_solids`), so a cube is identifiable from across a table
+without looking down at it.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
 
 from build123d import (
     Align,
@@ -33,11 +39,13 @@ from build123d import (
     chamfer,
     extrude,
     mirror,
+    scale,
 )
 from qamposer_assets.config import AssetsConfig
 
 from .face import (
     FaceLayout,
+    Rect,
     double_color_name,
     double_notch_rects,
     face_layout,
@@ -47,9 +55,14 @@ from .params import HardwareParams
 __all__ = [
     "TileParts",
     "DoubleTileParts",
+    "SideLabel",
     "build_tile",
     "build_double_tile",
     "footprint_area",
+    "has_side_labels",
+    "side_label_solids",
+    "double_side_label_solids",
+    "side_face_planes",
     "build_mono_recessed",
     "build_mono_raised",
     "build_double_mono_recessed",
@@ -62,6 +75,23 @@ _FONT = "Helvetica"
 _CAP_TO_EM = 1.0 / 0.72
 
 
+@dataclass(frozen=True, slots=True)
+class SideLabel:
+    """One gate-name inlay on a cube's vertical side face.
+
+    ``solid`` is the flush colour plug that fills the pocket cut into the body;
+    ``hex`` is the gate's accent colour (never a new one), so a plate's filament
+    slot count is unchanged. ``role`` is the part role used in file names, e.g.
+    ``side-front`` (single-faced) or ``side-front-a`` (double-faced).
+    """
+
+    face: str  # front | right | back | left
+    role: str
+    color_name: str
+    hex: str
+    solid: Solid
+
+
 @dataclass(slots=True)
 class TileParts:
     """The three colour solids of one tile plus the layout that produced them."""
@@ -72,14 +102,17 @@ class TileParts:
     body: Solid  # white
     marker: Solid  # black
     accent: Solid  # gate colour
+    side_labels: list[SideLabel] = field(default_factory=list)  # cube only
 
     def named_parts(self) -> list[tuple[str, str, Solid]]:
         """``(role, colour_name, solid)`` for each part, in print order."""
-        return [
+        parts = [
             ("body", "white", self.body),
             ("marker", "black", self.marker),
             ("accent", self.layout.accent_name, self.accent),
         ]
+        parts += [(sl.role, sl.color_name, sl.solid) for sl in self.side_labels]
+        return parts
 
 
 # --------------------------------------------------------------------------- #
@@ -153,6 +186,54 @@ def _fit_text(label: str, cap: float, max_w: float, max_h: float):
     return Pos(-c.X, -c.Y) * sk
 
 
+def _fit_sketch(sk, max_w: float, max_h: float):
+    """Scale a vector glyph sketch down to fit ``max_w`` x ``max_h``, recentred.
+
+    The text path uses :func:`_fit_text` (which re-renders at a smaller font
+    size); vector glyphs have no font, so they are simply scaled.
+    """
+    bb = sk.bounding_box()
+    factor = 1.0
+    if bb.size.X > 0:
+        factor = min(factor, max_w / bb.size.X)
+    if bb.size.Y > 0:
+        factor = min(factor, max_h / bb.size.Y)
+    if factor < 1.0:
+        sk = scale(sk, by=factor)
+    c = sk.bounding_box().center()
+    return Pos(-c.X, -c.Y) * sk
+
+
+def _control_dot_sketch(radius: float):
+    """CNOT control ``●`` — a filled disc, origin-centred."""
+    return Circle(radius)
+
+
+def _target_cross_sketch(radius: float):
+    """CNOT target ``⊕`` — an open ring with a centred cross, origin-centred."""
+    stroke = 0.12 * (2.0 * radius)
+    ring = Circle(radius) - Circle(radius - stroke)
+    horiz = Rectangle(2.0 * radius, stroke)
+    vert = Rectangle(stroke, 2.0 * radius)
+    return ring + horiz + vert
+
+
+def _swap_cross_sketch(radius: float):
+    """SWAP ``×`` — two round-capped diagonals spanning a 2·radius box.
+
+    Mirrors :func:`qamposer_assets.symbols.swap_cross`: stroke = 18 % of the
+    glyph height, endpoints at the box corners, round caps (drawn here as a disc
+    at each endpoint since a sketch has no stroke-linecap).
+    """
+    stroke = 0.18 * (2.0 * radius)
+    bar = Rectangle(2.0 * radius * math.sqrt(2.0), stroke)
+    sk = bar.rotate(Axis.Z, 45.0) + bar.rotate(Axis.Z, -45.0)
+    for sx in (-radius, radius):
+        for sy in (-radius, radius):
+            sk = sk + Pos(sx, sy) * Circle(stroke / 2.0)
+    return sk
+
+
 def _glyph_sketch(layout: FaceLayout, config: AssetsConfig):
     """Band caption as a face sketch (letters, or CNOT glyph + word); or None."""
     spec = layout.spec
@@ -166,13 +247,9 @@ def _glyph_sketch(layout: FaceLayout, config: AssetsConfig):
         word = "CONTROL" if spec.role == "control" else "TARGET"
         word_x = size * 0.60
         if spec.role == "control":
-            glyph = Pos(glyph_cx, band_cy) * Circle(glyph_r)
+            glyph = Pos(glyph_cx, band_cy) * _control_dot_sketch(glyph_r)
         else:
-            stroke = 0.12 * (2.0 * glyph_r)
-            ring = Circle(glyph_r) - Circle(glyph_r - stroke)
-            horiz = Rectangle(2.0 * glyph_r, stroke)
-            vert = Rectangle(stroke, 2.0 * glyph_r)
-            glyph = Pos(glyph_cx, band_cy) * (ring + horiz + vert)
+            glyph = Pos(glyph_cx, band_cy) * _target_cross_sketch(glyph_r)
         word_sk = Pos(word_x, band_cy) * _fit_text(
             word, cap * 0.72, size * 0.46, layout.band_height - 2.0
         )
@@ -260,6 +337,233 @@ def _magnet_pockets(body: Solid, layout: FaceLayout, params: HardwareParams) -> 
 
 
 # --------------------------------------------------------------------------- #
+# Tall bodies: tactile notches stay a *band-edge* feature
+# --------------------------------------------------------------------------- #
+#
+# A notch is drawn in the 2D footprint (a slot cut into the band edge) and the
+# footprint is extruded through the whole body. On a 6/8 mm tile that is exactly
+# the intended feature. On a 60 mm cube the same profile becomes a full-height
+# groove running down the middle of a side face — which is both not what the
+# printed face documents ("shallow slots in the band edge") and squarely in the
+# way of the side-face gate name. So on a tall body the slot is *refilled* below
+# (or above, for a double piece's underside face) a ``notch_span`` band, leaving
+# the slot only on the ``notch_span`` mm nearest the face it belongs to.
+
+
+def has_side_labels(height: float, params: HardwareParams) -> bool:
+    """True for a body tall enough to carry side-face gate names (the cube).
+
+    The same predicate gates the band-limited notch, so the 6 mm / 8 mm flat
+    tiles are untouched by both features.
+    """
+    return height > params.tall_body_min_height
+
+
+def _notch_fill(
+    layout: FaceLayout, rects: tuple[Rect, ...], z0: float, thickness: float
+) -> Solid | None:
+    """Solid that plugs ``rects``' slots over ``z ∈ [z0, z0+thickness]``, or None."""
+    if not rects or thickness <= 1e-9:
+        return None
+    full = Pos(layout.size / 2.0, layout.size / 2.0) * RectangleRounded(
+        layout.size, layout.size, layout.corner_radius
+    )
+    sketch = None
+    for nr in rects:
+        piece = full & (Pos(nr.cx, nr.cy) * Rectangle(nr.w, nr.h))
+        sketch = piece if sketch is None else sketch + piece
+    return Pos(0.0, 0.0, z0) * extrude(sketch, amount=thickness)
+
+
+# --------------------------------------------------------------------------- #
+# Cube side faces: the gate's name as a flush colour inlay
+# --------------------------------------------------------------------------- #
+#
+# Frame convention (see face.py): the footprint sits in the first quadrant,
+# +z up, the marker face at z = height. The four vertical faces are therefore
+# y = 0 (front, the band edge), x = size (right), y = size (back) and x = 0
+# (left). Each gets a plane whose local +x is the direction the label *reads*
+# for a viewer standing in front of that face and whose local +y is +z (world
+# up), so a label placed at the plane origin is upright with the cube in play
+# orientation. A label is extruded ``-depth`` (into the body) and the identical
+# prism is cut out of the body, so the colour plug is exactly flush.
+
+_Vec3 = tuple[float, float, float]
+
+#: ``(name, local x_dir, outward normal)`` for the four vertical faces.
+_SIDE_FACES: tuple[tuple[str, _Vec3, _Vec3], ...] = (
+    ("front", (1.0, 0.0, 0.0), (0.0, -1.0, 0.0)),
+    ("right", (0.0, 1.0, 0.0), (1.0, 0.0, 0.0)),
+    ("back", (-1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+    ("left", (0.0, -1.0, 0.0), (-1.0, 0.0, 0.0)),
+)
+
+
+def side_face_planes(size: float, height: float) -> list[tuple[str, Plane]]:
+    """``(face_name, plane)`` for each vertical face, origin at the face centre.
+
+    The plane's local ``+y`` is world ``+z`` on every face, so "upright" is one
+    convention for all four.
+    """
+    out: list[tuple[str, Plane]] = []
+    for name, x_dir, normal in _SIDE_FACES:
+        origin = (
+            size / 2.0 + normal[0] * size / 2.0,
+            size / 2.0 + normal[1] * size / 2.0,
+            height / 2.0,
+        )
+        out.append((name, Plane(origin=origin, x_dir=x_dir, z_dir=normal)))
+    return out
+
+
+def _side_max_width(layout: FaceLayout, params: HardwareParams) -> float:
+    """Usable label width: the *flat* part of a side face, less both margins.
+
+    The footprint is a rounded square, so only ``size - 2·corner_radius`` of each
+    side face is flat — the corner fillets are not a place to put a letter.
+    """
+    flat = layout.size - 2.0 * layout.corner_radius
+    return flat - 2.0 * params.side_label_margin
+
+
+def _side_label_sketch(layout: FaceLayout, cap: float, max_w: float, max_h: float):
+    """The side-face glyph for a gate, origin-centred, or ``None`` if it has none.
+
+    Letters go through :func:`_fit_text` (bold ``_FONT``); CNOT and SWAP reuse the
+    printed face's ``●`` / ``⊕`` / ``×`` **vector** sketches.
+    """
+    spec = layout.spec
+    if spec.gate == "CNOT":
+        radius = cap / 2.0
+        glyph = (
+            _control_dot_sketch(radius)
+            if spec.role == "control"
+            else _target_cross_sketch(radius)
+        )
+        return _fit_sketch(glyph, max_w, max_h)
+    if spec.gate == "SWAP":
+        return _fit_sketch(_swap_cross_sketch(cap / 2.0), max_w, max_h)
+    if not layout.side_label:
+        return None
+    return _fit_text(layout.side_label, cap, max_w, max_h)
+
+
+def _clip_to_body(labels: list[SideLabel], body: Solid) -> list[SideLabel]:
+    """Trim each plug to the body, so it can never carry material outside it."""
+    return [
+        SideLabel(
+            face=sl.face,
+            role=sl.role,
+            color_name=sl.color_name,
+            hex=sl.hex,
+            solid=sl.solid & body,
+        )
+        for sl in labels
+    ]
+
+
+def _side_prism(sketch, plane: Plane, v: float, theta: float, depth: float) -> Solid:
+    """Extrude an origin-centred face sketch ``depth`` mm *into* the body.
+
+    ``v`` shifts it along the face's up axis and ``theta`` spins it in the face
+    plane (180° for a double piece's lower half).
+    """
+    sk = sketch
+    if theta % 360.0 != 0.0:
+        sk = sk.rotate(Axis.Z, theta)
+    sk = Pos(0.0, v) * sk
+    return plane * extrude(sk, amount=-depth)
+
+
+def side_label_solids(
+    layout: FaceLayout,
+    height: float,
+    params: HardwareParams,
+    *,
+    depth: float | None = None,
+) -> list[SideLabel]:
+    """The gate's name on all four vertical faces of a single-faced cube.
+
+    One inlay per face, centred, upright with the marker face up, in the gate's
+    own accent colour. Cap height targets ``side_label_cap`` × height and is
+    auto-shrunk by :func:`_fit_text` so the glyph keeps ``side_label_margin``
+    clear of every edge of the flat side face. Returns ``[]`` for a flat tile.
+    """
+    if not has_side_labels(height, params):
+        return []
+    cap = params.side_label_cap * height
+    max_w = _side_max_width(layout, params)
+    max_h = height - 2.0 * params.side_label_margin
+    sketch = _side_label_sketch(layout, cap, max_w, max_h)
+    if sketch is None:
+        return []
+    d = params.side_label_depth if depth is None else depth
+    out: list[SideLabel] = []
+    for name, plane in side_face_planes(layout.size, height):
+        out.append(
+            SideLabel(
+                face=name,
+                role=f"side-{name}",
+                color_name=layout.accent_name,
+                hex=layout.accent_hex,
+                solid=_side_prism(sketch, plane, 0.0, 0.0, d),
+            )
+        )
+    return out
+
+
+def double_side_label_solids(
+    layout_a: FaceLayout,
+    layout_b: FaceLayout,
+    height: float,
+    params: HardwareParams,
+    *,
+    depth: float | None = None,
+) -> list[SideLabel]:
+    """Both gates' names on all four vertical faces of a double-faced cube.
+
+    Each side face splits horizontally: the **upper** half carries face A (the
+    gate currently facing up), upright; the **lower** half carries face B rotated
+    180°, at the point reflection of A's position about the face centre.
+
+    That placement *is* the flip symmetry. The physical flip (roll 180° over the
+    front edge: ``(x, y, z) → (x, size − y, height − z)``) maps every vertical
+    face onto a vertical face and acts on it as a 180° in-plane rotation about
+    the face centre — so B's lower-half, upside-down label comes up upright in
+    the new upper half, exactly where A's was.
+    """
+    if not has_side_labels(height, params):
+        return []
+    cap = params.side_label_half_cap * height
+    max_w = _side_max_width(layout_a, params)
+    gap = params.side_label_split_gap
+    # Each half owns everything between the mid-line gap and the edge margin.
+    max_h = (height - 2.0 * params.side_label_margin - gap) / 2.0
+    offset = (gap + max_h) / 2.0
+    sk_a = _side_label_sketch(layout_a, cap, max_w, max_h)
+    sk_b = _side_label_sketch(layout_b, cap, max_w, max_h)
+    d = params.side_label_depth if depth is None else depth
+    out: list[SideLabel] = []
+    for name, plane in side_face_planes(layout_a.size, height):
+        for tag, sketch, layout, v, theta in (
+            ("a", sk_a, layout_a, offset, 0.0),
+            ("b", sk_b, layout_b, -offset, 180.0),
+        ):
+            if sketch is None:
+                continue
+            out.append(
+                SideLabel(
+                    face=name,
+                    role=f"side-{name}-{tag}",
+                    color_name=double_color_name(layout.accent_hex),
+                    hex=layout.accent_hex,
+                    solid=_side_prism(sketch, plane, v, theta, d),
+                )
+            )
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # Public entry point
 # --------------------------------------------------------------------------- #
 
@@ -280,6 +584,12 @@ def build_tile(
 
     # --- solid body (white), with relief / hollow / magnets ------------------
     body = extrude(_footprint(layout), amount=height)
+    if has_side_labels(height, params):
+        # Keep the tactile slot a band-edge feature: refill it below the top
+        # notch_span mm instead of letting it groove the whole side face.
+        fill = _notch_fill(layout, layout.notches, 0.0, height - params.notch_span)
+        if fill is not None:
+            body = body + fill
     body = _chamfer_bottom(body, params.bottom_chamfer)
     if height > params.hollow_min_height:
         body = _hollow(body, layout, params, height)
@@ -304,8 +614,15 @@ def build_tile(
 
     marker = _marker_solid(layout, height, fd, params.marker_bleed)
 
-    # White body = everything that is neither accent nor marker.
+    # --- cube side faces: the gate's name, flush, in the accent colour --------
+    # Clipped to the body, then cut out of it — the same flush-inlay boolean the
+    # top face uses, so plug and pocket are the same volume by construction.
+    side_labels = _clip_to_body(side_label_solids(layout, height, params), body)
+
+    # White body = everything that is neither accent nor marker nor side label.
     white_body = body - accent - marker
+    for sl in side_labels:
+        white_body = white_body - sl.solid
 
     return TileParts(
         layout=layout,
@@ -314,6 +631,7 @@ def build_tile(
         body=white_body,
         marker=marker,
         accent=accent,
+        side_labels=side_labels,
     )
 
 
@@ -338,6 +656,7 @@ class DoubleTileParts:
     body: Solid  # white
     marker: Solid  # black — both faces' markers
     accents: list[tuple[str, Solid]]  # (accent_hex, solid), grouped by colour
+    side_labels: list[SideLabel] = field(default_factory=list)  # cube only
 
     def named_parts(self) -> list[tuple[str, str, str, Solid]]:
         """``(role, colour_name, colour_hex, solid)`` for each part, print order."""
@@ -347,6 +666,8 @@ class DoubleTileParts:
         ]
         for hexc, solid in self.accents:
             out.append(("accent", double_color_name(hexc), hexc, solid))
+        for sl in self.side_labels:
+            out.append((sl.role, sl.color_name, sl.hex, sl.solid))
         return out
 
 
@@ -430,6 +751,15 @@ def build_double_tile(
 
     # --- white body (no bottom chamfer; hollow only for tall/cube heights) ----
     body = extrude(footprint, amount=height)
+    if has_side_labels(height, params):
+        # Each face's tactile slot stays a band-edge feature of *its own* face:
+        # face A's (bottom edge) only within notch_span of the top, face B's
+        # (top edge) only within notch_span of the bottom. See _notch_fill.
+        span = params.notch_span
+        for rects, z0 in ((notches_a, 0.0), (notches_b, span)):
+            fill = _notch_fill(layout_a, rects, z0, height - span)
+            if fill is not None:
+                body = body + fill
     if height > params.hollow_min_height:
         body = _hollow(body, layout_a, params, height)
 
@@ -461,9 +791,16 @@ def build_double_tile(
     else:
         accents = [(hex_a, accent_a), (hex_b, accent_b)]
 
+    # --- cube side faces: A upright in the upper half, B rotated in the lower --
+    side_labels = _clip_to_body(
+        double_side_label_solids(layout_a, layout_b, height, params), body
+    )
+
     white_body = body - marker
     for _hex, acc in accents:
         white_body = white_body - acc
+    for sl in side_labels:
+        white_body = white_body - sl.solid
 
     return DoubleTileParts(
         layout_a=layout_a,
@@ -473,6 +810,7 @@ def build_double_tile(
         body=white_body,
         marker=marker,
         accents=accents,
+        side_labels=side_labels,
     )
 
 
@@ -493,6 +831,11 @@ def build_double_tile(
 #     the face by a uniform ``mono_raise_height`` so one M600 colour change at
 #     that Z prints two-tone. A double piece raises both faces, so it prints
 #     dark → light → dark with two swaps.
+#
+# A cube's **side** gate names are a special case: a filament swap changes whole
+# layers and so cannot colour a vertical face, but a pen can. Both mono forms
+# therefore render the side names the *same* way — as ``mono_pocket_depth``
+# paint wells — rather than raising them.
 
 
 def _z_slab(size: float, z0: float, thickness: float) -> Solid:
@@ -520,10 +863,42 @@ def _mono_whole(parts) -> Solid:
     """The body with its colour footprints fused flush — one plain footprint prism.
 
     ``body`` already carries the hollow/chamfer/magnet features; adding the
-    colour prisms back fills the top (and bottom, for a double) colour layer so
-    the result is the tile's full outer volume with a flat, single-colour face.
+    colour prisms back fills the top (and bottom, for a double) colour layer —
+    and, on a cube, the side-face gate-name inlays — so the result is the piece's
+    full outer volume with flat, single-colour faces.
     """
-    return parts.body + _mono_colored(parts)
+    whole = parts.body + _mono_colored(parts)
+    for sl in parts.side_labels:
+        whole = whole + sl.solid
+    return whole
+
+
+def _mono_side_wells(parts, params: HardwareParams) -> Solid | None:
+    """The cube's side gate names re-cut as shallow ``mono_pocket_depth`` wells.
+
+    Rebuilt from the same generator at the mono depth rather than reusing the
+    (deeper) colour plugs, so a pen-fillable well is all that is left of the
+    inlay. ``None`` for a flat tile, which has no side labels.
+    """
+    depth = params.mono_pocket_depth
+    if isinstance(parts, DoubleTileParts):
+        labels = double_side_label_solids(
+            parts.layout_a, parts.layout_b, parts.height, params, depth=depth
+        )
+    else:
+        labels = side_label_solids(parts.layout, parts.height, params, depth=depth)
+    if not labels:
+        return None
+    wells = labels[0].solid
+    for sl in labels[1:]:
+        wells = wells + sl.solid
+    return wells
+
+
+def _sink_side_wells(solid: Solid, parts, params: HardwareParams) -> Solid:
+    """Subtract the side-name paint wells from a finished mono solid."""
+    wells = _mono_side_wells(parts, params)
+    return solid if wells is None else solid - wells
 
 
 def build_mono_recessed(parts: TileParts, params: HardwareParams | None = None) -> Solid:
@@ -540,7 +915,7 @@ def build_mono_recessed(parts: TileParts, params: HardwareParams | None = None) 
     depth = params.mono_pocket_depth
     whole = _mono_whole(parts)
     pocket = _mono_colored(parts) & _z_slab(size, h - depth, depth)
-    return whole - pocket
+    return _sink_side_wells(whole - pocket, parts, params)
 
 
 def build_mono_raised(parts: TileParts, params: HardwareParams | None = None) -> Solid:
@@ -557,7 +932,7 @@ def build_mono_raised(parts: TileParts, params: HardwareParams | None = None) ->
     whole = _mono_whole(parts)
     footprint = _mono_colored(parts) & _z_slab(size, h - r, r)  # z ∈ [h-r, h]
     raised = Pos(0.0, 0.0, r) * footprint  # z ∈ [h, h+r]
-    return whole + raised
+    return _sink_side_wells(whole + raised, parts, params)
 
 
 def build_double_mono_recessed(
@@ -572,7 +947,7 @@ def build_double_mono_recessed(
     whole = _mono_whole(parts)
     top_pocket = colored & _z_slab(size, h - depth, depth)  # z ∈ [h-d, h]
     bottom_pocket = colored & _z_slab(size, 0.0, depth)  # z ∈ [0, d]
-    return whole - top_pocket - bottom_pocket
+    return _sink_side_wells(whole - top_pocket - bottom_pocket, parts, params)
 
 
 def build_double_mono_raised(
@@ -594,4 +969,7 @@ def build_double_mono_raised(
     top_fp = colored & _z_slab(size, h - r, r)  # z ∈ [h-r, h]
     top_art = Pos(0.0, 0.0, 2.0 * r) * top_fp  # z ∈ [r+h, 2r+h]
     bottom_art = colored & _z_slab(size, 0.0, r)  # z ∈ [0, r]
-    return core + top_art + bottom_art
+    whole = core + top_art + bottom_art
+    wells = _mono_side_wells(parts, params)
+    # The core is lifted by r, so the side wells must ride with it.
+    return whole if wells is None else whole - Pos(0.0, 0.0, r) * wells

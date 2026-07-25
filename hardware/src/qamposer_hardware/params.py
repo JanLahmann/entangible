@@ -91,6 +91,28 @@ class HardwareParams:
     mono_raise_height: float = 0.6  # single-colour "raised" variant: uniform height
     # the art stands proud of the body face, so one filament swap at that Z prints
     # two-tone on any single-material printer.
+    tall_body_min_height: float = 12.0  # above this a body is a "cube": it gets the
+    # gate name on its four vertical faces and its tactile notch is confined to a
+    # band at the face it belongs to. Deliberately a separate knob from
+    # ``hollow_min_height`` so overriding one never silently moves the other.
+    side_label_depth: float = 1.0  # cube side faces: depth of the gate-name inlay
+    # pocket. The colour solid fills it exactly, so the letter is flush with the
+    # face; 1 mm leaves 2 mm of the 3 mm hollow-shell wall standing.
+    side_label_margin: float = 8.0  # minimum clear distance from a side label's
+    # bounding box to every edge of its (flat) side face. Also the reason a side
+    # label can never meet a tactile notch: see ``notch_span``.
+    side_label_cap: float = 0.45  # single-faced cube: target cap height as a
+    # fraction of the cube height (0.45 * 60 = 27 mm), auto-shrunk to fit.
+    side_label_half_cap: float = 0.30  # double-faced cube: target cap height per
+    # half-face, as a fraction of the cube height (0.30 * 60 = 18 mm).
+    side_label_split_gap: float = 4.0  # double-faced cube: blank gap between the
+    # upper (face A) and lower (face B, rotated 180°) label halves.
+    notch_span: float = 6.0  # tall bodies (cube) only: how far the tactile notch
+    # reaches from its own face along Z. On a 6/8 mm tile the slot spans the whole
+    # thickness; on a 60 mm cube the same 2D profile would become a full-height
+    # groove down a side face, so it is confined to a ``notch_span`` band at the
+    # face it belongs to. Kept < ``side_label_margin`` so the band sits entirely
+    # inside the side label's edge margin and the two can never intersect.
 
 
 def variant_height(variant: str, *, faces: str = "single") -> float:

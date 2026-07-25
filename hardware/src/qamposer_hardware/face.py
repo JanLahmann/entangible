@@ -39,6 +39,7 @@ __all__ = [
     "face_layout",
     "notch_count",
     "double_notch_rects",
+    "side_label_text",
     "COLOR_NAMES",
 ]
 
@@ -152,6 +153,7 @@ class FaceLayout:
     notch_count: int
     notches: tuple[Rect, ...]  # bottom-edge tactile slots (angle differentiation)
     label: str  # band caption text (e.g. "RX π/2"); "" for CNOT tiles
+    side_label: str = ""  # cube side-face gate name (family only); "" = vector glyph
     dial: DialFace | None = None  # dial-face geometry (IDs 42/43/44), else None
 
     @property
@@ -177,6 +179,26 @@ def notch_count(spec: GateSpec) -> int:
         if abs(angle - spec.parameter) < 1e-9:
             return idx + 1
     return 0
+
+
+def side_label_text(spec: GateSpec) -> str:
+    """Gate name for a cube's **vertical side** faces — family only, no angle.
+
+    The side faces answer "which gate is this?" from across a table, so they
+    carry the shortest unambiguous identity: ``H``/``X``/``Y``/``Z``/``S``/``T``
+    and the bare rotation family ``RX``/``RY``/``RZ`` (the *angle* stays top-face
+    information — band caption + tactile notches — and a dial's angle is set by
+    turning it, so a dial cube shows its axis only).
+
+    Returns ``""`` for CNOT and SWAP: those are drawn from the same ``●``/``⊕``/
+    ``×`` **vector** sketches the printed face uses, never a font glyph (see
+    :mod:`qamposer_assets.symbols` — the code points tofu unreliably).
+    """
+    if spec.gate in ("CNOT", "SWAP"):
+        return ""
+    if spec.dial_axis is not None:
+        return spec.dial_axis
+    return spec.gate
 
 
 def accent_color_name(hex_color: str) -> str:
@@ -327,6 +349,7 @@ def face_layout(marker_id: int, config: AssetsConfig) -> FaceLayout:
         notch_count=nc,
         notches=notches,
         label=label,
+        side_label=side_label_text(spec),
     )
 
 
@@ -454,5 +477,6 @@ def _dial_layout(marker_id: int, spec: GateSpec, config: AssetsConfig) -> FaceLa
         notch_count=0,
         notches=(),
         label="",
+        side_label=side_label_text(spec),
         dial=dial,
     )

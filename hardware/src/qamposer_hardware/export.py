@@ -113,6 +113,7 @@ class _MaterialPalette:
         self._group = mesher.model.AddBaseMaterialGroup()
         self._resource_id = self._group.GetResourceID()
         self._pid_by_hex: dict[str, int] = {}
+        self._coloured = 0
         self._add(WHITE_HEX, "white")
         self._add(BLACK_HEX, "black")
         for hexc in accents:
@@ -126,17 +127,32 @@ class _MaterialPalette:
         color = self._mesher.wrapper.FloatRGBAToColor(r, g, b, 1.0)
         self._pid_by_hex[key] = self._group.AddMaterial(Name=name, DisplayColor=color)
 
-    def apply(self, hex_color: str, name: str) -> None:
-        """Point the last mesh object added to ``mesher`` at this palette's colour.
+    def apply(self, hex_color: str, name: str) -> int:
+        """Point **every** mesh added since the last call at this palette's colour.
 
         Works on the lib3mf model directly (the ``Mesher.model``/``.wrapper``/
         ``.meshes`` handles build123d exposes) so the colour lands on the real
-        mesh object rather than the throwaway copy ``add_shape`` colours
+        mesh objects rather than the throwaway copy ``add_shape`` colours
         internally.
+
+        ``add_shape`` emits **one mesh per solid**, and a colour part is very
+        often more than one solid: the accent of any tile whose caption has a
+        closed counter (the ``R`` of ``RX``, the ``O``/``A``/``R`` of
+        ``CONTROL``/``TARGET``/``SWAP``) leaves that counter standing as an
+        island, a double piece's marker spans two disconnected faces, and a
+        multi-glyph cube side label (``RX``) is one solid per glyph. Colouring
+        only the *last* of them left every other one with no material assignment
+        — i.e. printed on slot 1 (white). Returns the number of meshes coloured,
+        which is the number of coloured objects this part contributes.
         """
-        mesh_obj = self._mesher.meshes[-1]
-        mesh_obj.SetObjectLevelProperty(self._resource_id, self._pid_by_hex[hex_color.lower()])
-        mesh_obj.SetName(name)
+        meshes = self._mesher.meshes
+        pid = self._pid_by_hex[hex_color.lower()]
+        fresh = meshes[self._coloured :]
+        for mesh_obj in fresh:
+            mesh_obj.SetObjectLevelProperty(self._resource_id, pid)
+            mesh_obj.SetName(name)
+        self._coloured = len(meshes)
+        return len(fresh)
 
 
 def _hex_rgb01(hex_color: str) -> tuple[float, float, float]:
@@ -285,6 +301,7 @@ def write_mono_md(
     params = params or HardwareParams()
     depth = params.mono_pocket_depth
     r = params.mono_raise_height
+    cube = height > params.tall_body_min_height
     lines: list[str] = [
         "# Single-colour (mono) variants — printers without an MMU",
         "",
@@ -301,6 +318,19 @@ def write_mono_md(
         f"the gate identity is already in the glyph. Pocket depth is kept ≤ 0.6 mm "
         "so an oblique camera's pocket shadow can't degrade marker detection.",
         "",
+    ]
+    if cube:
+        lines += [
+            "### Cube side faces",
+            "",
+            "A cube also carries its gate's name on all four **vertical** faces. "
+            f"**Both** mono forms render those as **{depth:g} mm** paint wells — a "
+            "filament swap changes whole layers and so cannot colour a vertical "
+            "face, but an acrylic pen can. Use the gate's accent colour from "
+            "`plates.md`, or leave them white: the recess alone still reads.",
+            "",
+        ]
+    lines += [
         "## Raised (filament-swap two-tone)",
         "",
         f"All art stands **{r:g} mm** proud of the face, so a single filament "
@@ -676,7 +706,10 @@ def _write_batch_3mf(
     ``footprint/2``); it is translated so that centre lands on its bed position.
     Every part points at the batch's one shared palette — white, black, then the
     plate's ``accents`` (in plates.md order) so a colour keeps its slot across
-    every batch of the plate. Returns the number of coloured objects written.
+    every batch of the plate. Returns the number of coloured objects written —
+    one per *solid*, not per part, since a disconnected part (a caption counter,
+    a two-glyph cube side label, a double piece's two markers) becomes one 3MF
+    object per island.
     """
     mesher = Mesher()
     palette = _MaterialPalette(
@@ -688,8 +721,7 @@ def _write_batch_3mf(
         dy = cy - footprint / 2.0
         for part in piece.parts:
             mesher.add_shape(Pos(dx, dy, 0.0) * part.solid)
-            palette.apply(part.hex, part.name)
-            n_obj += 1
+            n_obj += palette.apply(part.hex, part.name)
     mesher.write(str(path))
     return n_obj
 
@@ -867,7 +899,12 @@ def write_batch_plates_md(
     if variant == "cube":
         lines.append(
             "> **Cube kit:** pieces are 60 mm tall — a tall, long print. "
-            "Same 3 × 3 bed packing; expect a long job and watch bed adhesion."
+            "Same 3 × 3 bed packing; expect a long job and watch bed adhesion. "
+            "The gate name is inlaid on all four side faces, so the accent "
+            "colour is in play across most of the 60 mm rather than only the "
+            "top 0.8 mm — budget for **more wipe-tower purge** than a flat "
+            "tile plate. The 8-piece cap already leaves the rear/right corner "
+            "free for a taller tower."
         )
         lines.append("")
 
