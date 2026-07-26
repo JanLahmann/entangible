@@ -24,6 +24,7 @@ import {
   completionCelebration,
   courseTotals,
   golfStep,
+  golfReveal,
   initialGolfState,
 } from '@quantum/golf';
 import { courseCode, randomCourse } from '@quantum/golfRandom';
@@ -571,6 +572,71 @@ describe('Scorecard (shared)', () => {
       vi.useRealTimers();
       resetCourseTimers();
     }
+  });
+
+  it('names the price of a mid-hole reveal before it is taken (#99)', () => {
+    for (const p of ['bo', 'pk'] as const) {
+      // E2, par 4 → the offer says what it will cost, in strokes, up front.
+      const stuck = { ...initialGolfState(), levelIndex: 1, strokes: 7 };
+      const taken: number[] = [];
+      const { container } = render(
+        <Scorecard
+          state={stuck}
+          circuit={bell}
+          classPrefix={p}
+          onReveal={(h) => taken.push(h)}
+        />,
+      );
+      const btn = container.querySelector(`.${p}-golf-solution-btn`) as HTMLButtonElement;
+      expect(btn.textContent).toBe('Show solution (scores double par — 8)');
+      expect(container.querySelector(`.${p}-golf-stuck-note`)).toBeNull();
+
+      // Taking it asks the ENGINE (#68/#73: the card never touches a score) …
+      fireEvent.click(btn);
+      expect(taken).toEqual([2]);
+      expect(container.querySelector(`.${p}-golf-solution .${p}-mini-circ`)).not.toBeNull();
+      cleanup();
+    }
+  });
+
+  it('stops charging once the hole is paid for, and says what it now costs (#99)', () => {
+    const paid = golfReveal({ ...initialGolfState(), levelIndex: 1, strokes: 7 }, 2);
+    const taken: number[] = [];
+    const { container } = render(
+      <Scorecard state={paid} circuit={bell} classPrefix="pk" onReveal={(h) => taken.push(h)} />,
+    );
+    const btn = container.querySelector('.pk-golf-solution-btn') as HTMLButtonElement;
+    // No price on the button — this hole is already bought …
+    expect(btn.textContent).toBe('Stuck? Show solution');
+    // … and the receipt says what the hole is now heading for.
+    expect(container.querySelector('.pk-golf-stuck-note')?.textContent).toBe(
+      'this hole scores at least 8',
+    );
+    fireEvent.click(btn);
+    expect(taken).toEqual([]);
+    expect(btn.textContent).toBe('Hide solution');
+  });
+
+  it('never prices the reveal on a surface that cannot charge, or after the hole-in (#99)', () => {
+    // The kiosk passes no handler: an unattended card must not print a price it
+    // will never take.
+    const stuck = { ...initialGolfState(), levelIndex: 1, strokes: 7 };
+    const kiosk = render(<Scorecard state={stuck} circuit={bell} classPrefix="bo" />);
+    expect(kiosk.container.querySelector('.bo-golf-solution-btn')?.textContent).toBe(
+      'Stuck? Show solution',
+    );
+    cleanup();
+
+    // And the post-hole-in reveal stays free everywhere (#71).
+    const holed = { ...initialGolfState(), levelIndex: 1, holedIn: true, strokes: 9 };
+    const taken: number[] = [];
+    const { container } = render(
+      <Scorecard state={holed} circuit={bell} classPrefix="pk" onReveal={(h) => taken.push(h)} />,
+    );
+    const btn = container.querySelector('.pk-golf-solution-btn') as HTMLButtonElement;
+    expect(btn.textContent).toBe('Show solution');
+    fireEvent.click(btn);
+    expect(taken).toEqual([]);
   });
 
   it('keeps saying "Show solution" once the ball is in, and stays inert (#79)', () => {

@@ -26,6 +26,11 @@ import {
   saveBest,
   GOLF_STORAGE_KEY,
   GOLF_HOLES_KEY,
+  GOLF_REVEALED_KEY,
+  holeScore,
+  golfReveal,
+  loadRevealed,
+  saveRevealed,
 } from './golf';
 
 // The test board can emit gate types beyond the qamposer union (CH/S/T tiles).
@@ -662,4 +667,86 @@ describe('best persistence + migration', () => {
     const bad = fakeStorage({ [GOLF_HOLES_KEY]: 'not json' });
     expect(loadBest(bad)).toEqual({});
   });
+});
+
+describe('the price of the mid-hole reveal (#99)', () => {
+  const holeState = (n: number) => ({ ...initialGolfState(), levelIndex: n - 1 });
+
+  it('floors a revealed hole at double par, and leaves the rest alone', () => {
+    expect(holeScore(4, 4, false)).toBe(4);
+    expect(holeScore(4, 4, true)).toBe(8); // clean play after a peek: double par
+    expect(holeScore(11, 4, true)).toBe(11); // a shambles is still the shambles
+    expect(holeScore(0, 3, true)).toBe(6);
+  });
+
+  it('records double par when the answer was revealed mid-hole', () => {
+    // E2, par 4: build the Bell pair in two strokes — an eagle, but for the
+    // reveal taken along the way.
+    const peeked = golfReveal(holeState(2), 2);
+    expect(peeked.revealed[2]).toBe(true);
+    const step = golfStep(peeked, refCircuit(2));
+    expect(step.justHoledIn).toBe(true);
+    expect(step.strokes).toBe(2); // the board record is untouched (#68)
+    expect(step.score).toBe(8); // …the CARD record is floored at 2 × par
+    expect(step.state.best[2]).toBe(8);
+    expect(step.scoreName).toBe('HOLE IN +4');
+  });
+
+  it('is charged once per hole — reopening the drawing is free', () => {
+    const once = golfReveal(holeState(2), 2);
+    const twice = golfReveal(once, 2);
+    expect(twice).toBe(once); // same object: nothing happened at all
+  });
+
+  it('is free once the ball is in — that reveal is the pedagogy (#71)', () => {
+    const holed = golfStep(holeState(2), refCircuit(2));
+    expect(holed.state.holedIn).toBe(true);
+    expect(golfReveal(holed.state, 2)).toBe(holed.state);
+    expect(holed.state.best[2]).toBe(2); // the eagle stands
+  });
+
+  it('flows into vs-par, the totals and the celebration with no special-casing', () => {
+    const step = golfStep(golfReveal(holeState(2), 2), refCircuit(2));
+    // scoreKind reads the recorded score like any other, so a revealed hole is
+    // simply an over-par hole from here on.
+    expect(scoreKind(step.score, hole(2).par)).toBe('over');
+    const totals = courseTotals(step.state.best);
+    expect(totals.strokes).toBe(8);
+    expect(totals.vsPar).toBe(4);
+  });
+
+  it('keeps the price across a replay of the same hole, and drops it on a restart', () => {
+    // Seen once, floored ever after within the round: a reveal must not become
+    // a free lesson followed by a free eagle.
+    let step = golfStep(golfReveal(holeState(2), 2), refCircuit(2));
+    step = golfStep(step.state, empty); // advance to hole 3
+    expect(step.state.revealed[2]).toBe(true);
+
+    // …but the board-clear that restarts a finished course deals new prices.
+    const finished = { ...initialGolfState(), complete: true, revealed: { 2: true } };
+    const restarted = golfStep(finished, empty);
+    expect(restarted.restarted).toBe(true);
+    expect(restarted.state.revealed).toEqual({});
+    expect(restarted.state.best).toEqual(finished.best); // the record stands
+  });
+
+  it('round-trips the paid holes through storage (a refresh keeps them)', () => {
+    const store = new Map<string, string>();
+    const storage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    };
+    saveRevealed(storage, { 2: true, 7: true });
+    expect(loadRevealed(storage)).toEqual({ 2: true, 7: true });
+    // A state restored from storage still knows the price was paid …
+    const restored = initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage));
+    expect(restored.revealed[2]).toBe(true);
+    expect(golfReveal(restored, 2)).toBe(restored);
+    // … and nonsense in storage reads as "nothing revealed", never as a throw.
+    store.set(GOLF_REVEALED_KEY, '{ not json');
+    expect(loadRevealed(storage)).toEqual({});
+    expect(loadRevealed(null)).toEqual({});
+  });
+
 });

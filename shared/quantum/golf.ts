@@ -50,6 +50,8 @@ export const HOLE_IN_THRESHOLD = 0.99;
 export const GOLF_STORAGE_KEY = 'entangible.pocket.golf';
 /** Per-HOLE best key (the 18-hole course; keyed by hole number 1..18). */
 export const GOLF_HOLES_KEY = 'entangible.pocket.golf.holes';
+/** Which holes were solved with a mid-hole reveal (#99), keyed by hole number. */
+export const GOLF_REVEALED_KEY = 'entangible.pocket.golf.revealed';
 
 /** Which view a hole plays on (1-qubit holes on the Bloch sphere, else Q-sphere). */
 export type GolfView = 'bloch' | 'qsphere';
@@ -636,6 +638,27 @@ export function scoreKind(strokes: number, par: number): ScoreKind {
   return 'over';
 }
 
+/**
+ * What a completed hole RECORDS (#99) — strokes, floored at double par if the
+ * answer was revealed while the hole was still being played.
+ *
+ * The price of looking is deliberately a floor rather than a fistful of
+ * strokes. Injecting +2×par and playing on would compound: a player who reveals
+ * and then still fumbles ends near triple par, punished twice for the same
+ * decision. A floor says exactly what was agreed — "this hole now scores at
+ * least double par" — and leaves the stroke count itself an honest record of
+ * what happened on the board (#68). A player who reveals and then plays a
+ * shambles still records the shambles; one who reveals and plays it clean
+ * records double par.
+ *
+ * The reveal AFTER holing in is free and never reaches here: the score is
+ * already written, and reading the clean line afterwards is the pedagogy the
+ * whole feature exists for (#71).
+ */
+export function holeScore(strokes: number, par: number, revealed: boolean): number {
+  return revealed ? Math.max(strokes, 2 * par) : strokes;
+}
+
 /** Golf score name for a completed hole (strokes vs par). */
 export function scoreName(strokes: number, par: number): string {
   switch (scoreKind(strokes, par)) {
@@ -811,6 +834,14 @@ export interface GolfState {
   /** Gate multiset of the last circuit seen — the baseline the next change is
    *  diffed against. Empty at tee-off (see the teardown rule on `golfStep`). */
   readonly gateKeys: GateCounts;
+  /**
+   * Holes whose answer was revealed while they were still being played (#99).
+   * Sticky per hole and per course: the price is paid once, so closing and
+   * reopening the drawing is free, and a replay of a hole you have already seen
+   * the answer to still scores at least double par — otherwise the reveal would
+   * be a free lesson followed by a free eagle.
+   */
+  readonly revealed: Readonly<Record<number, boolean>>;
 }
 
 /**
@@ -823,6 +854,7 @@ export function initialGolfState(
   best: Record<number, number> = {},
   course: GolfCourse = 'classic',
   randomSeed = 0,
+  revealed: Record<number, boolean> = {},
 ): GolfState {
   return {
     course,
@@ -833,7 +865,26 @@ export function initialGolfState(
     best,
     strokes: 0,
     gateKeys: NO_GATES,
+    revealed,
   };
+}
+
+/**
+ * Take the mid-hole reveal on `holeNumber` (#99) — the ONLY way the flag is
+ * ever set, and the reason the price lives in the engine rather than in the
+ * card's arithmetic: strokes and scores are the engine's business (#68, #73),
+ * and a UI that could adjust a score is a UI that will eventually disagree with
+ * a replay, a second surface, or itself.
+ *
+ * Idempotent and refusing: revealing a hole that is already latched holed-in
+ * costs nothing (that reveal is the free pedagogy of #71), and revealing a hole
+ * whose price is already paid changes nothing, so the card may call this on
+ * every open of the drawer without counting anything twice.
+ */
+export function golfReveal(state: GolfState, holeNumber: number): GolfState {
+  if (state.holedIn || state.complete) return state;
+  if (state.revealed[holeNumber]) return state;
+  return { ...state, revealed: { ...state.revealed, [holeNumber]: true } };
 }
 
 /**
@@ -851,6 +902,12 @@ export interface GolfStep {
   readonly hole: Hole;
   readonly fidelity: number;
   readonly strokes: number;
+  /**
+   * What the hole RECORDS as it stands (#99): the stroke count, floored at
+   * double par once the answer has been revealed mid-hole. Identical to
+   * `strokes` on every hole nobody peeked at, which is almost all of them.
+   */
+  readonly score: number;
   readonly holedIn: boolean;
   /** True on the frame the current hole transitions into a hole-in. */
   readonly justHoledIn: boolean;
@@ -925,12 +982,17 @@ export function golfStep(
         best: prev.best,
         strokes: 0,
         gateKeys: NO_GATES,
+        // A restart is a NEW round, so every mid-hole reveal is unpaid again
+        // (#99). Bests are the record of what has been achieved and stay; the
+        // prices are about the round being played.
+        revealed: {},
       };
       return {
         state,
         hole: holes[0],
         fidelity: 0,
         strokes: 0,
+        score: 0,
         holedIn: false,
         justHoledIn: false,
         advanced: false,
@@ -947,6 +1009,7 @@ export function golfStep(
       hole: holes[prev.levelIndex],
       fidelity: 0,
       strokes: 0,
+      score: 0,
       holedIn: false,
       justHoledIn: false,
       advanced: false,
@@ -973,6 +1036,7 @@ export function golfStep(
           hole,
           fidelity: 0,
           strokes: 0,
+          score: 0,
           holedIn: false,
           justHoledIn: false,
           advanced: false,
@@ -990,6 +1054,7 @@ export function golfStep(
         hole: nextHole,
         fidelity: nextEv.fidelity,
         strokes: 0,
+        score: 0,
         holedIn: false,
         justHoledIn: false,
         advanced: true,
@@ -1008,6 +1073,7 @@ export function golfStep(
       hole,
       fidelity: 0,
       strokes,
+      score: holeScore(strokes, hole.par, prev.revealed[hole.hole] === true),
       holedIn: false,
       justHoledIn: false,
       advanced: false,
@@ -1018,23 +1084,29 @@ export function golfStep(
     };
   }
 
-  // Fresh hole-in this frame.
+  // Fresh hole-in this frame. What is RECORDED is the hole's score, which is
+  // the stroke count unless the answer was revealed mid-hole — then it is
+  // floored at double par (#99). Everything downstream reads the record, so the
+  // chips, the totals, the celebration tier and a shared result all see the
+  // price with no special-casing anywhere.
   if (ev.holedIn && !prev.holedIn) {
     const best = { ...prev.best };
     const prevBest = best[hole.hole];
-    if (prevBest === undefined || strokes < prevBest) best[hole.hole] = strokes;
+    const score = holeScore(strokes, hole.par, prev.revealed[hole.hole] === true);
+    if (prevBest === undefined || score < prevBest) best[hole.hole] = score;
     return {
       state: { ...prev, holedIn: true, best, strokes, gateKeys: keys },
       hole,
       fidelity: ev.fidelity,
       strokes,
+      score,
       holedIn: true,
       justHoledIn: true,
       advanced: false,
       justCompleted: false,
       restarted: false,
       complete: false,
-      scoreName: scoreName(strokes, hole.par),
+      scoreName: scoreName(score, hole.par),
     };
   }
 
@@ -1045,6 +1117,7 @@ export function golfStep(
     hole,
     fidelity: ev.fidelity,
     strokes,
+    score: holeScore(strokes, hole.par, prev.revealed[hole.hole] === true),
     holedIn,
     justHoledIn: false,
     advanced: false,
@@ -1106,6 +1179,45 @@ export function saveBest(
   if (!storage) return;
   try {
     storage.setItem(GOLF_HOLES_KEY, JSON.stringify(best));
+  } catch {
+    /* best-effort */
+  }
+}
+
+/**
+ * Which holes have already been paid for with a mid-hole reveal (#99).
+ *
+ * Persisted for the same reason the best scores are: the price is per hole, and
+ * a refresh in the middle of a round must not offer a player a second reveal on
+ * different terms from the first. Missing or corrupt storage reads as "nothing
+ * revealed", which is the state a brand-new device is in anyway. Only the
+ * classic course writes here (`persistsBest`): a generated hole 7 is a
+ * different hole on every seed.
+ */
+export function loadRevealed(storage?: ReadableStorage | null): Record<number, boolean> {
+  if (!storage) return {};
+  try {
+    const raw = storage.getItem(GOLF_REVEALED_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const out: Record<number, boolean> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      const id = Number(k);
+      if (Number.isFinite(id) && v === true) out[id] = true;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function saveRevealed(
+  storage: (Pick<Storage, 'setItem'>) | null | undefined,
+  revealed: Readonly<Record<number, boolean>>,
+): void {
+  if (!storage) return;
+  try {
+    storage.setItem(GOLF_REVEALED_KEY, JSON.stringify(revealed));
   } catch {
     /* best-effort */
   }

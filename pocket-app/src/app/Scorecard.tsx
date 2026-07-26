@@ -13,11 +13,14 @@ export function Scorecard({
   state,
   circuit,
   onNextLevel,
+  onReveal,
 }: {
   state: GolfState;
   circuit: Circuit;
   /** Build-on-screen only: renders the shared card's Next-level button. */
   onNextLevel?: () => void;
+  /** Takes the mid-hole reveal's double-par price (#99) through the engine. */
+  onReveal?: (holeNumber: number) => void;
 }) {
   return (
     <SharedScorecard
@@ -27,6 +30,7 @@ export function Scorecard({
       monoKet
       challenge={({ code, link }) => <CourseChallenge code={code} link={link} />}
       onNextLevel={onNextLevel}
+      onReveal={onReveal}
     />
   );
 }

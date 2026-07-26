@@ -1854,6 +1854,14 @@ body,
   font-size: 0.78rem;
 }
 
+/* The price, once paid (#99): a quiet receipt beside the toggle, so the score
+   the hole is heading for is never a surprise at the hole-in. */
+.pk-golf-stuck-note {
+  margin-left: 0.45rem;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
 /* The revealed answer, drawn as a mini circuit (shared MiniCircuit). */
 .pk-golf-solution {
   margin-top: 0.4rem;

@@ -24,9 +24,16 @@
  *
  * The same reveal is OFFERED mid-hole once a player is visibly stuck (#79):
  * `par + 3` strokes, or a minute since the hole's first stroke. The clock is a
- * UI concern — the engine stays pure and clockless — and it starts at the first
- * stroke, so a board left idle while somebody reads the target is never
- * interrupted with the answer.
+ * UI concern — the engine stays pure and clockless — but the timestamp lives in
+ * `courseTimer`'s module store rather than in a ref here (#98), and it starts at
+ * the first stroke, so a board left idle while somebody reads the target is
+ * never interrupted with the answer.
+ *
+ * That mid-hole reveal has a PRICE (#99): the hole then scores at least double
+ * par. The button says so before it is taken, the engine takes it (`golfReveal`
+ * — the card never does score arithmetic), and it is charged once per hole, so
+ * closing and reopening the drawing afterwards is free. The reveal after the
+ * ball is in stays free: nothing is given away once the score is written.
  *
  * The first reveal of a hole also starts an OPTIMAL search (#72, `@quantum/
  * optimal`) in the background. If it finds something shorter than the stored
@@ -279,6 +286,7 @@ export function Scorecard({
   monoKet = false,
   challenge,
   onNextLevel,
+  onReveal,
 }: {
   state: GolfState;
   circuit: Circuit;
@@ -295,6 +303,17 @@ export function Scorecard({
    * surfaces omit it — physically clearing the table is the ritual.
    */
   onNextLevel?: () => void;
+  /**
+   * Takes the mid-hole reveal's price (#99): the driver applies `golfReveal`,
+   * and from then on the hole records at least double par. Called at most once
+   * per hole — the engine is idempotent anyway, but the card only asks while
+   * the price is unpaid.
+   *
+   * Optional, and the offer's wording follows it: a surface that cannot charge
+   * (the unattended kiosk) must not print a price it will never take, so
+   * without this handler the offer reads exactly as it did before #99.
+   */
+  onReveal?: (holeNumber: number) => void;
 }) {
   const p = classPrefix;
   // Which hole's solution is currently revealed (#71). Keyed by hole NUMBER
@@ -312,6 +331,8 @@ export function Scorecard({
   const onHoleMs = useTimeOnHole(state, hole.hole, !state.holedIn && !state.complete);
   const courseMs = useCourseElapsed(state);
   const stuck = !state.holedIn && isStuck(state.strokes, hole.par, onHoleMs);
+  // This hole's mid-hole reveal is already paid for (#99) — reopening is free.
+  const paidFor = state.revealed[hole.hole] === true;
   const revealed = (state.holedIn || stuck) && !state.complete && solutionFor === hole.hole;
   const optimal = useOptimal(state, hole, revealed);
   const totals = courseTotals(state.best, holes);
@@ -430,8 +451,20 @@ export function Scorecard({
               hole={hole}
               shown={solutionFor === hole.hole}
               stuck
-              onToggle={() => setSolutionFor(solutionFor === hole.hole ? null : hole.hole)}
+              // The price is named on the button BEFORE it is taken (#99), and
+              // only while it is still owed: once this hole is paid for, looking
+              // again is free and a price tag would be a lie.
+              price={onReveal && !paidFor ? 2 * hole.par : null}
+              onToggle={() => {
+                if (onReveal && !paidFor) onReveal(hole.hole);
+                setSolutionFor(solutionFor === hole.hole ? null : hole.hole);
+              }}
             />
+            {paidFor && (
+              <span className={`${p}-golf-stuck-note`}>
+                this hole scores at least {2 * hole.par}
+              </span>
+            )}
           </div>
         )}
         {revealed && <Solutions p={p} state={state} hole={hole} optimal={optimal} />}
@@ -453,6 +486,7 @@ function SolutionToggle({
   hole,
   shown,
   stuck = false,
+  price = null,
   onToggle,
 }: {
   p: string;
@@ -461,9 +495,20 @@ function SolutionToggle({
   /** Offered mid-hole to a struggling player (#79) rather than after the ball
    *  went in — the button says so, so nobody reads it as "you finished". */
   stuck?: boolean;
+  /** What this reveal will cost (#99), named on the button so nobody is
+   *  surprised by a score: the double-par floor, or `null` when it is free
+   *  (already paid for, after the hole-in, or on a surface that never charges). */
+  price?: number | null;
   onToggle: () => void;
 }) {
   if (!hole.solution) return null;
+  const label = shown
+    ? 'Hide solution'
+    : price !== null
+      ? `Show solution (scores double par — ${price})`
+      : stuck
+        ? 'Stuck? Show solution'
+        : 'Show solution';
   return (
     <button
       type="button"
@@ -471,7 +516,7 @@ function SolutionToggle({
       aria-expanded={shown}
       onClick={onToggle}
     >
-      {shown ? 'Hide solution' : stuck ? 'Stuck? Show solution' : 'Show solution'}
+      {label}
     </button>
   );
 }

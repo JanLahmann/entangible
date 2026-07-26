@@ -75,6 +75,9 @@ import {
   initialGolfState,
   loadBest,
   saveBest,
+  loadRevealed,
+  saveRevealed,
+  golfReveal,
   persistsBest,
   clubGateTypes,
   holeHighlight,
@@ -447,7 +450,7 @@ export function App() {
   const [golfState, setGolfState] = useState<GolfState>(() => {
     const seed = settings.courseCode === null ? null : parseCourseCode(settings.courseCode);
     return seed === null
-      ? initialGolfState(loadBest(storage))
+      ? initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage))
       : initialGolfState({}, 'random', seed);
   });
   const [, setDebugTick] = useState(0);
@@ -534,6 +537,9 @@ export function App() {
             : step.state;
         golfStateRef.current = nextGolf;
         setGolfState(nextGolf);
+        // A board-clear restart tees off a new round, so the mid-hole reveals
+        // it may have paid for go with the old one (#99).
+        if (step.restarted && persistsBest(nextGolf)) saveRevealed(storage, nextGolf.revealed);
         // Course finished (#80): one burst, scaled and worded by the round.
         // Guarded by a ref like the moment engine's dedupe, so a replayed frame
         // or a StrictMode double-invoke cannot fire it twice; the guard clears
@@ -1052,7 +1058,9 @@ export function App() {
   const pickCourse = (course: GolfCourse) => {
     const seed = course === 'random' ? randomBaseSeed() : null;
     const fresh =
-      seed === null ? initialGolfState(loadBest(storage)) : initialGolfState({}, 'random', seed);
+      seed === null
+        ? initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage))
+        : initialGolfState({}, 'random', seed);
     golfStateRef.current = fresh;
     setGolfState(fresh);
     // Keep the shareable code (#78) pointing at the course actually in play, so
@@ -1070,7 +1078,7 @@ export function App() {
     const cur = golfStateRef.current;
     if (seed === null) {
       if (cur.course !== 'random') return;
-      const fresh = initialGolfState(loadBest(storage));
+      const fresh = initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage));
       golfStateRef.current = fresh;
       setGolfState(fresh);
     } else {
@@ -1096,12 +1104,28 @@ export function App() {
             cur.course === 'random'
               ? initialGolfState({}, 'random', randomBaseSeed())
               : initialGolfState(cur.best);
+          // A new round deals every price afresh (#99): holes revealed last
+          // time round are not still floored on this one.
+          if (persistsBest(fresh)) saveRevealed(storage, fresh.revealed);
           golfStateRef.current = fresh;
           setGolfState(fresh);
         }
         manualSourceRef.current.clear();
       }
     : undefined;
+
+  // Taking the mid-hole reveal (#99). The ENGINE marks the hole — the card only
+  // asks — so the double-par floor lands in the recorded score through the same
+  // path every other stroke takes, and a classic round remembers it across a
+  // refresh exactly as it remembers a best.
+  const takeReveal = (holeNumber: number) => {
+    const cur = golfStateRef.current;
+    const next = golfReveal(cur, holeNumber);
+    if (next === cur) return;
+    golfStateRef.current = next;
+    setGolfState(next);
+    if (persistsBest(next)) saveRevealed(storage, next.revealed);
+  };
 
   const sidebar = isGolf ? (
     <>
@@ -1159,6 +1183,7 @@ export function App() {
         state={golfState}
         circuit={circuit}
         onNextLevel={advanceHole}
+        onReveal={takeReveal}
       />
       {hasPanel('results') && (
         <ResultsHistogram key="results" circuit={circuit} displayQubits={displayed.qubits} />

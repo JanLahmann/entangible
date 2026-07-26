@@ -19,6 +19,7 @@ import {
   bestFidelity,
   saveBest,
   scoreName,
+  golfReveal,
   COURSE_PAR,
   GOLF_HOLES_KEY,
   HOLE_IN_THRESHOLD,
@@ -619,5 +620,21 @@ describe('course selection', () => {
     expect(restarted.state.course).toBe('random');
     expect(restarted.state.randomSeed).toBe(seed);
     expect(restarted.hole).toBe(holes[0]);
+  });
+});
+
+describe('the reveal price on a generated course (#99)', () => {
+  it('prices a generated hole from ITS par, and keeps it session-only', () => {
+    const holes = randomCourse(4242);
+    const rHole = holes[3];
+    const state = { ...initialGolfState({}, 'random', 4242), levelIndex: 3 };
+    const peeked = golfReveal(state, rHole.hole);
+    const step = golfStep(peeked, rHole.solution!, holes);
+    expect(step.justHoledIn).toBe(true);
+    // A generated hole's par is its own (optimal + 2, #76), so its floor is too.
+    expect(step.score).toBe(Math.max(step.strokes, 2 * rHole.par));
+    expect(step.state.best[rHole.hole]).toBe(step.score);
+    // …and nothing about a generated round is written to the device (#70).
+    expect(persistsBest(step.state)).toBe(false);
   });
 });
