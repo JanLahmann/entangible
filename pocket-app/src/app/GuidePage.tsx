@@ -4,13 +4,25 @@
  * camera even starts; rendered as an overlay over the still-mounted app so an
  * active camera stream is never torn down (see App.tsx / hashNav.ts).
  *
- * Sections: what it is · how to use it · run it for real · the modes (golf,
- * Quantina, Runner) · on-screen test boards (tap → fullscreen viewer) ·
- * download the printable kit · the full project + links · footer.
+ * SECTIONS (#82). The guide used to be one long scroll; it is now five topics
+ * behind a pinned chip nav, one visible at a time:
+ *
+ *   start · what it is, how to use it, run it for real
+ *   print · the paper kit + the 3D-printed tiles
+ *   play  · golf, Quantina, Quantum Runner
+ *   build · build on screen (manual input + tap-to-place)
+ *   booth · on-screen test boards, the booth installation, the family
+ *
+ * Each is deep-linkable as `#guide/<id>`; a bare `#guide` — what every link in
+ * the app uses — opens the first one, and an unknown slug falls back there too,
+ * so no existing entry point can break. Switching sections REPLACES the hash
+ * rather than pushing it: the URL stays shareable, but Back still leaves the
+ * Guide instead of walking backwards through the chips.
+ *
  * Styling is pk-token, dark, restrained; the copy voice is plain and warm.
  */
-import { useCallback, useEffect, useReducer, useRef } from 'react';
-import { goBack, type NavWindow } from './hashNav';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { goBack, guideSectionHash, parseGuideSection, type NavWindow } from './hashNav';
 import { TEST_BOARDS } from './testBoards';
 import { reduceViewer, CLOSED, type ViewerAction } from './viewer';
 import kitPdf from '../../../examples/print/entangible-print-kit-A4.pdf?url';
@@ -20,6 +32,7 @@ import cubeFamily from '../../../examples/renders/cube-family.png';
 const REPO_URL = 'https://github.com/JanLahmann/entangible';
 const ISSUES_URL = 'https://github.com/JanLahmann/entangible/issues';
 const QAMPOSER_URL = 'https://qamposer.org';
+const FAMILY_URL = 'https://fun-with-quantum.org';
 
 /** Fun-with-Quantum sibling projects — same list and order as the family READMEs. */
 const FAMILY = [
@@ -30,6 +43,69 @@ const FAMILY = [
   { name: 'Qoffee-Maker', url: 'https://qoffee-maker.org' },
 ] as const;
 
+/**
+ * The guide's sections, in nav order. `nav` is the chip label (kept short — the
+ * row must fit a phone without becoming a scroll of its own); `title` names the
+ * panel for screen readers.
+ */
+export const GUIDE_SECTIONS = [
+  { id: 'start', nav: 'Start here', title: 'Start here' },
+  { id: 'print', nav: 'Print the kit', title: 'Print the kit' },
+  { id: 'play', nav: 'Play', title: 'Play' },
+  { id: 'build', nav: 'Build on screen', title: 'Build on screen' },
+  { id: 'booth', nav: 'Booth & project', title: 'Booth and project' },
+] as const;
+
+export type GuideSectionId = (typeof GUIDE_SECTIONS)[number]['id'];
+
+/** Where a visitor lands with no section named — and the fallback for a bad one. */
+export const DEFAULT_GUIDE_SECTION: GuideSectionId = 'start';
+
+/**
+ * The section a location hash selects. A bare `#guide`, an unknown slug and a
+ * malformed sub-path all land on the first section: a deep link that has gone
+ * stale should open the guide, never break it.
+ */
+export function sectionFromHash(hash: string | null | undefined): GuideSectionId {
+  const slug = parseGuideSection(hash);
+  const known = GUIDE_SECTIONS.find((s) => s.id === slug);
+  return known ? known.id : DEFAULT_GUIDE_SECTION;
+}
+
+/**
+ * The visible section, kept in sync with the URL both ways.
+ *
+ * Selecting a chip REPLACES the hash instead of assigning it: assigning would
+ * push a history entry per chip, and the back pill (`goBack`) would then walk
+ * back through the sections instead of returning to the app. A real navigation
+ * — an external deep link, or the browser's own back/forward across one — still
+ * arrives through `hashchange`.
+ */
+function useGuideSection(): [GuideSectionId, (id: GuideSectionId) => void] {
+  const [section, setSection] = useState<GuideSectionId>(() =>
+    sectionFromHash(typeof window === 'undefined' ? '' : window.location.hash),
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onHash = () => setSection(sectionFromHash(window.location.hash));
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  const select = useCallback((id: GuideSectionId) => {
+    setSection(id);
+    if (typeof window === 'undefined') return;
+    try {
+      window.history.replaceState(null, '', guideSectionHash(id));
+    } catch {
+      /* best-effort: the section is already showing, only the URL lags */
+    }
+  }, []);
+
+  return [section, select];
+}
+
 function Label({ children }: { children: React.ReactNode }) {
   return <div className="pk-label pk-guide-label">{children}</div>;
 }
@@ -38,6 +114,27 @@ export function GuidePage() {
   const onBack = useCallback(() => {
     if (typeof window !== 'undefined') goBack(window as unknown as NavWindow);
   }, []);
+
+  const [section, selectSection] = useGuideSection();
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  // A new section starts at its top — landing halfway down a topic you just
+  // chose reads as a broken page.
+  useEffect(() => {
+    bodyRef.current?.scrollTo?.({ top: 0 });
+  }, [section]);
+
+  /** A chip, and any in-copy pointer from one section to another. */
+  const goToSection = useCallback(
+    (id: GuideSectionId) => (e: React.MouseEvent) => {
+      // Leave the real link alone for modified clicks — a deep link is a link,
+      // and "open in new tab" must still work.
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+      e.preventDefault();
+      selectSection(id);
+    },
+    [selectSection],
+  );
 
   // Fullscreen test-board viewer state machine (pure reducer + count).
   const [viewer, dispatch] = useReducer(
@@ -79,6 +176,7 @@ export function GuidePage() {
   }, [viewer.open]);
 
   const board = TEST_BOARDS[viewer.index];
+  const active = GUIDE_SECTIONS.find((s) => s.id === section) ?? GUIDE_SECTIONS[0];
 
   return (
     <div className="pk-guide" role="region" aria-label="Guide and about">
@@ -91,302 +189,388 @@ export function GuidePage() {
         </div>
       </header>
 
-      <div className="pk-guide-body">
-        {/* 1. What is this */}
-        <section className="pk-guide-sec">
-          <Label>What is this</Label>
-          <p>
-            Entangible is a quantum circuit composer you operate with your hands: physical gate
-            tiles on a printed board, read by a camera, simulated live. This pocket app is the
-            zero-install edition — everything runs right here in your browser; no server, no
-            account, nothing leaves your device. Entangible is part of the{' '}
-            <a href={QAMPOSER_URL} target="_blank" rel="noopener noreferrer">
-              QAMPoser
-            </a>{' '}
-            open-source family.
-          </p>
-          <p className="pk-guide-muted">
-            The name is a pun: <b>entangled + tangible = Entangible.</b>
-          </p>
-        </section>
-
-        {/* 2. How to use it */}
-        <section className="pk-guide-sec">
-          <Label>How to use it</Label>
-          <ol className="pk-guide-steps">
-            <li>Print the kit (or use the on-screen boards below).</li>
-            <li>
-              Start the camera and point it at the board from 30–60 cm, with all four corner
-              markers in view.
-            </li>
-            <li>
-              Place tiles — the circuit, outcomes and QASM follow live. A <b>●</b> and a{' '}
-              <b>⊕</b> in one column make a CNOT; a <b>●</b> next to any gate makes its
-              controlled version (● + <b>H</b> = controlled-H, two <b>●</b> + <b>X</b> = Toffoli).
-            </li>
-            <li>Build a Bell pair for a surprise.</li>
-          </ol>
-          <p className="pk-guide-muted pk-guide-tips">
-            Tips: pinch to zoom; the gear opens settings, including golf mode and a debug view;
-            matte print beats glossy; screens work as boards (below). On a Mac, your iPhone can be
-            the camera via Continuity — pick it under Settings → Camera.
-          </p>
-        </section>
-
-        {/* 2b. Run it for real */}
-        <section className="pk-guide-sec">
-          <Label>Run it for real</Label>
-          <p>
-            Built something you like? The <b>Transfer to IBM Composer</b> button opens the
-            IBM Quantum Composer in a new tab with your circuit pre-loaded (the QASM is also
-            copied to your clipboard — paste via <b>View → Code Editor</b> if ever needed).
-            To run it on a real quantum computer, sign in — or register for free at{' '}
-            <a href="https://quantum.cloud.ibm.com/registration" target="_blank" rel="noopener noreferrer">
-              quantum.cloud.ibm.com/registration
-            </a>
-            . A free IBM Quantum account
-            (the Open Plan) then lets you run it on real hardware.
-          </p>
-          <p>
-            On another device? The <b>QR</b> button beside Transfer shows a code that opens the
-            same pre-loaded Composer on your phone — scan it and your circuit is there, no typing.
-          </p>
-          <p>
-            Curious why real quantum computers get different answers? Flip <b>Noise</b> on in
-            Settings to overlay the results with a simulated-noise series and watch the same circuit
-            behave the way it would on real hardware. The presets walk through four real IBM chip
-            generations — Falcon (2021), Eagle, Heron and Nighthawk — with parameters taken from
-            device calibration snapshots, so you can see, literally, how the hardware has improved.
-          </p>
-        </section>
-
-        {/* 2b. Quantum Golf */}
-        <section className="pk-guide-sec">
-          <Label>Quantum Golf — eighteen holes</Label>
-          <p>
-            Switch <b>Settings → Mode → Golf</b> and each hole hands you a state to build.
-            Eighteen holes in four rounds, and every round unlocks new clubs <i>and</i> a new
-            idea: <b>Easy</b> plays with X, H and CX (superposition, Bell, GHZ); <b>Medium</b>{' '}
-            adds <b>Y</b> and, with it, minus signs; <b>Difficult</b> adds <b>Z</b> and{' '}
-            <b>S</b> for imaginary phases; <b>Extra</b> adds <b>T</b> and <b>controlled-H</b>,
-            for eighth-turn phases and uneven splits.
-          </p>
-          <p>
-            Every gate you add <i>or</i> remove counts a stroke, so a wrong tile costs you like
-            a wrong swing. Par carries a two-stroke margin: build the hole in the fewest gates
-            and you score an <b>EAGLE</b>, one gate more is a <b>BIRDIE</b>. The chip strip at
-            the bottom of the scorecard keeps every hole's result next to its par.
-          </p>
-          <p>
-            <b>New random 18</b> deals a fresh course. The targets are generated, but the
-            difficulty rules make sure each round still plays like its name — a medium hole
-            really does need Y, an extra hole really does need T or controlled-H. Every random
-            course carries a code (<b>Course #…</b>): tap it to copy a link, or type a code
-            into <b>Settings → Golf course code</b>. The same code deals the same eighteen
-            holes on any phone — play a friend.
-          </p>
-          <p>
-            Stuck? <b>Show solution</b> draws a short circuit that builds the target. It is
-            offered once you hole in, and also mid-hole once you are a few strokes over par or
-            a minute in. In the background the app searches for anything shorter: if it finds
-            one it draws that too, and if it can prove there is nothing shorter it labels the
-            drawing <b>Solution — optimal</b>.
-          </p>
-          <p className="pk-guide-muted">
-            The sphere names itself — a <b>Bloch sphere</b> on one-qubit holes, a{' '}
-            <b>Q-sphere</b> above. It always opens with |0…0⟩ at the top; drag to turn it (it
-            follows your finger) and the rewind arrow puts it back. The goal is drawn on it as
-            dashed rings with phase ticks, and the states that matter carry their ket label.
-            Balls of probability roll across the surface as your circuit plays, splitting when
-            a gate makes a superposition (<b>↻</b> replays). Below, the <b>State</b> and{' '}
-            <b>Target</b> lines write the same thing as math, and target terms you have not
-            matched yet glow.
-          </p>
-        </section>
-
-        {/* 2b. Quantina */}
-        <section className="pk-guide-sec">
-          <Label>Quantina — a quantum cantina</Label>
-          <p>
-            The built-in successor to Qoffee-Maker and quantum-mixer: switch{' '}
-            <b>Settings → Mode → Quantina</b> and the histogram becomes a menu — your circuit's
-            probabilities set the odds, a measurement picks your drink. Try{' '}
-            <a href="/?menu=cocktails">entangible.org/?menu=cocktails</a>: one H per wire makes
-            every cocktail equally likely; entangle two qubits and watch items start winning
-            together.
-          </p>
-          <p className="pk-guide-muted">
-            Five menus ship built-in (coffee, cocktails, ice cream, juice, diner). Booths can add
-            their own menus — and even wire the winning outcome to a real coffee machine — see the
-            repository docs.
-          </p>
-        </section>
-
-        {/* 2c. Quantum Runner */}
-        <section className="pk-guide-sec">
-          <Label>Quantum Runner — dodge the measurement</Label>
-          <p>
-            Switch <b>Settings → Mode → Quantum Runner</b> for a Flappy-style game where the
-            runner exists in every basis state at once — each lane's ghost is as solid as its
-            probability. Tap the gate buttons to reshape the live state as coins and obstacles
-            scroll in. Coins bank the <i>expected</i> value (never measured, so a superposition
-            banks fractions); a red obstacle triggers a real projective measurement — collapse
-            into it and you lose a life. On level 2, an obstacle straddling <b>|01⟩</b> and{' '}
-            <b>|10⟩</b> can't touch the Φ⁺ Bell state (H₀ then CX) — build it and sail through.
-          </p>
-          <p className="pk-guide-muted">
-            Based on Quantum Runner by the QAMPoser project. No hardware needed — it plays entirely
-            on screen.
-          </p>
-        </section>
-
-        {/* 3. Test without a printer */}
-        <section className="pk-guide-sec">
-          <Label>Test without a printer</Label>
-          <div className="pk-guide-grid">
-            {TEST_BOARDS.map((b, i) => (
-              <button
-                key={b.id}
-                type="button"
-                className="pk-guide-card"
-                onClick={() => dispatch({ type: 'open', index: i })}
-              >
-                <img src={b.src} alt={b.title} loading="lazy" />
-                <span className="pk-guide-card-title">{b.title}</span>
-                <span className="pk-guide-card-blurb">{b.blurb}</span>
-              </button>
-            ))}
-          </div>
-          <p className="pk-guide-muted">
-            Show these fullscreen on one device, point another device's camera at it. Flip images
-            to "move" tiles.
-          </p>
-          <p className="pk-guide-muted">
-            No printer <i>and</i> no camera? Choose <b>Build on screen</b> (Settings → Input, or the
-            button on the start screen) to place gates directly in the editor — play Quantum Golf
-            and transfer to the Composer, all with no hardware at all. In golf the on-screen
-            palette hands you only the current round's clubs; outside golf you get the full gate
-            set.
-          </p>
-          <p className="pk-guide-muted">
-            On a touchscreen you don't have to drag: <b>tap a gate tile to arm it</b>, then tap a
-            wire to place it there. For a controlled gate, tap the <b>control</b> wire first and
-            then the <b>target</b> (for a Toffoli: two controls, then the target) — a line above
-            the circuit says which tap is expected next. Tapping the armed tile again, or pressing
-            Escape, cancels. Tap a gate already on a wire for its small toolbar: the pencil edits
-            it (rotation angles and the wires of a controlled gate), the bin deletes it. Dragging
-            still works everywhere.
-          </p>
-        </section>
-
-        {/* 4. Print the real kit */}
-        <section className="pk-guide-sec">
-          <Label>Print the real kit</Label>
-          <p>
-            One PDF, 13 × A4: 44 gate tiles + the board mat. Print at 100 % — never "fit to page" —
-            on matte paper; each sheet carries a 100 mm check ruler.
-          </p>
+      {/* Section nav: real links (so a chip can be copied, opened in a tab and
+          deep-linked) that navigate in place on a plain click. */}
+      <nav className="pk-guide-nav" aria-label="Guide sections">
+        {GUIDE_SECTIONS.map((s) => (
           <a
-            className="pk-guide-download"
-            href={kitPdf}
-            download="entangible-print-kit-A4.pdf"
-            target="_blank"
-            rel="noopener noreferrer"
+            key={s.id}
+            className={`pk-guide-tab${s.id === section ? ' is-active' : ''}`}
+            href={guideSectionHash(s.id)}
+            aria-current={s.id === section ? 'page' : undefined}
+            onClick={goToSection(s.id)}
           >
-            Download the print kit (PDF)
+            {s.nav}
           </a>
-          <p className="pk-guide-muted">
-            An A1 single-sheet board for print shops lives in the repository.
-          </p>
-        </section>
+        ))}
+      </nav>
 
-        {/* 4b. 3D-print the tiles */}
-        <section className="pk-guide-sec">
-          <Label>3D-print the tiles</Label>
-          <p>
-            For multi-material printers (Prusa MMU, Bambu AMS): every gate as a colored 3MF —
-            white body, black marker, gate-colored band — as flat tiles (6 mm), chunky cubes
-            (60 mm, hollow), and <b>double-faced flip pieces</b>: two gates per piece, one flip
-            apart (flip H to get X; flip a rotation to get its inverse). Open a 3MF in your
-            slicer and map the pre-colored parts to filament slots. The <b>print-jobs folder</b> has
-            ready-to-slice bed layouts — up to 9 pieces pre-arranged per job (250×220 bed) —
-            so a whole kit is a handful of open-slice-print files. Use matte filament — glossy
-            tops glare and hurt detection.
-          </p>
-          <img
-            className="pk-guide-render"
-            src={cubeFamily}
-            alt="Isometric rendering of the Entangible gate cubes: H, X, Y, Z, CNOT control and target, RX(π/2), S and T"
-            loading="lazy"
-          />
-          <a
-            className="pk-guide-download"
-            href={tiles3d}
-            download="entangible-3d-tiles.zip"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Download the 3D tiles (3MF, ZIP)
-          </a>
-          <p className="pk-guide-muted">
-            Rotation-gate variants carry tactile notches (1–4 = π/4, π/2, π, −π/2). Cubes prefer
-            a straight-overhead camera — their height parallax-shifts the face at steep angles.
-          </p>
-        </section>
-
-        {/* 5. The full project */}
-        <section className="pk-guide-sec">
-          <Label>The full project</Label>
-          <p>
-            This same app also runs the full booth installation: a Raspberry Pi kiosk (RasQberry)
-            with a large screen shows it in kiosk mode, a live camera rig or a staff phone feeds
-            it, and celebrations light up when entanglement appears — built for fairs and events.
-            One app, same tiles, same board, same engine.
-          </p>
-          <p>
-            At a booth, scan the <b>visitor QR</b> on the big screen to follow along on your own
-            phone — you'll see the circuit being built on the table, live, and can take it home
-            with the Transfer button.
-          </p>
-          <ul className="pk-guide-links">
-            <li>
-              <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
-                GitHub repository
-              </a>
-            </li>
-            <li>
-              <a href={ISSUES_URL} target="_blank" rel="noopener noreferrer">
-                Report an issue
-              </a>
-            </li>
-          </ul>
-        </section>
-
-        {/* 6. Family */}
-        <section className="pk-guide-sec">
-          <Label>Part of the Fun with Quantum family</Label>
-          <p>
-            Entangible belongs to{' '}
-            <a href="https://fun-with-quantum.org" target="_blank" rel="noopener noreferrer">
-              <b>Fun with Quantum</b>
-            </a>
-            , a family of open-source quantum outreach projects:{' '}
-            {FAMILY.map((f, i) => (
-              <span key={f.name}>
-                {i > 0 && ' · '}
-                <a href={f.url} target="_blank" rel="noopener noreferrer">
-                  {f.name}
+      <div
+        className="pk-guide-body"
+        ref={bodyRef}
+        role="region"
+        aria-label={`${active.title} — guide section`}
+      >
+        {section === 'start' && (
+          <>
+            {/* What is this */}
+            <section className="pk-guide-sec">
+              <Label>What is this</Label>
+              <p>
+                Entangible is a quantum circuit composer you operate with your hands: physical
+                gate tiles on a printed board, read by a camera, simulated live. This pocket app
+                is the zero-install edition — everything runs right here in your browser; no
+                server, no account, nothing leaves your device. Entangible is built on{' '}
+                <a href={QAMPOSER_URL} target="_blank" rel="noopener noreferrer">
+                  QAMPoser
                 </a>
-              </span>
-            ))}
-            .
-          </p>
-        </section>
+                , the open-source quantum composer, and belongs to the{' '}
+                <a href={FAMILY_URL} target="_blank" rel="noopener noreferrer">
+                  Fun with Quantum
+                </a>{' '}
+                family.
+              </p>
+              <p className="pk-guide-muted">
+                The name is a pun: <b>entangled + tangible = Entangible.</b>
+              </p>
+            </section>
 
+            {/* How to use it */}
+            <section className="pk-guide-sec">
+              <Label>How to use it</Label>
+              <ol className="pk-guide-steps">
+                <li>
+                  Print the kit (or use the{' '}
+                  <a href={guideSectionHash('booth')} onClick={goToSection('booth')}>
+                    on-screen boards
+                  </a>
+                  ).
+                </li>
+                <li>
+                  Start the camera and point it at the board from 30–60 cm, with all four corner
+                  markers in view.
+                </li>
+                <li>
+                  Place tiles — the circuit, outcomes and QASM follow live. A <b>●</b> and a{' '}
+                  <b>⊕</b> in one column make a CNOT; a <b>●</b> next to any gate makes its
+                  controlled version (● + <b>H</b> = controlled-H, two <b>●</b> + <b>X</b> =
+                  Toffoli).
+                </li>
+                <li>Build a Bell pair for a surprise.</li>
+              </ol>
+              <p className="pk-guide-muted pk-guide-tips">
+                Tips: pinch to zoom; the gear opens settings, including golf mode and a debug
+                view; matte print beats glossy; screens work as boards. On a Mac, your iPhone can
+                be the camera via Continuity — pick it under Settings → Camera.
+              </p>
+            </section>
+
+            {/* Run it for real */}
+            <section className="pk-guide-sec">
+              <Label>Run it for real</Label>
+              <p>
+                Built something you like? The <b>Transfer to IBM Composer</b> button opens the
+                IBM Quantum Composer in a new tab with your circuit pre-loaded (the QASM is also
+                copied to your clipboard — paste via <b>View → Code Editor</b> if ever needed).
+                To run it on a real quantum computer, sign in — or register for free at{' '}
+                <a
+                  href="https://quantum.cloud.ibm.com/registration"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  quantum.cloud.ibm.com/registration
+                </a>
+                . A free IBM Quantum account (the Open Plan) then lets you run it on real
+                hardware.
+              </p>
+              <p>
+                On another device? The <b>QR</b> button beside Transfer shows a code that opens
+                the same pre-loaded Composer on your phone — scan it and your circuit is there,
+                no typing.
+              </p>
+              <p>
+                Curious why real quantum computers get different answers? Flip <b>Noise</b> on in
+                Settings to overlay the results with a simulated-noise series and watch the same
+                circuit behave the way it would on real hardware. The presets walk through four
+                real IBM chip generations — Falcon (2021), Eagle, Heron and Nighthawk — with
+                parameters taken from device calibration snapshots, so you can see, literally,
+                how the hardware has improved.
+              </p>
+            </section>
+          </>
+        )}
+
+        {section === 'print' && (
+          <>
+            {/* Print the real kit */}
+            <section className="pk-guide-sec">
+              <Label>Print the real kit</Label>
+              <p>
+                One PDF, 13 × A4: 44 gate tiles + the board mat. Print at 100 % — never "fit to
+                page" — on matte paper; each sheet carries a 100 mm check ruler.
+              </p>
+              <a
+                className="pk-guide-download"
+                href={kitPdf}
+                download="entangible-print-kit-A4.pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Download the print kit (PDF)
+              </a>
+              <p className="pk-guide-muted">
+                An A1 single-sheet board for print shops lives in the repository.
+              </p>
+            </section>
+
+            {/* 3D-print the tiles */}
+            <section className="pk-guide-sec">
+              <Label>3D-print the tiles</Label>
+              <p>
+                For multi-material printers (Prusa MMU, Bambu AMS): every gate as a colored 3MF —
+                white body, black marker, gate-colored band — as flat tiles (6 mm), chunky cubes
+                (60 mm, hollow), and <b>double-faced flip pieces</b>: two gates per piece, one
+                flip apart (flip H to get X; flip a rotation to get its inverse). Open a 3MF in
+                your slicer and map the pre-colored parts to filament slots. The{' '}
+                <b>print-jobs folder</b> has ready-to-slice bed layouts — up to 9 pieces
+                pre-arranged per job (250×220 bed) — so a whole kit is a handful of
+                open-slice-print files. Use matte filament — glossy tops glare and hurt
+                detection.
+              </p>
+              <img
+                className="pk-guide-render"
+                src={cubeFamily}
+                alt="Isometric rendering of the Entangible gate cubes: H, X, Y, Z, CNOT control and target, RX(π/2), S and T"
+                loading="lazy"
+              />
+              <a
+                className="pk-guide-download"
+                href={tiles3d}
+                download="entangible-3d-tiles.zip"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Download the 3D tiles (3MF, ZIP)
+              </a>
+              <p className="pk-guide-muted">
+                Rotation-gate variants carry tactile notches (1–4 = π/4, π/2, π, −π/2). Cubes
+                prefer a straight-overhead camera — their height parallax-shifts the face at
+                steep angles.
+              </p>
+            </section>
+          </>
+        )}
+
+        {section === 'play' && (
+          <>
+            {/* Quantum Golf */}
+            <section className="pk-guide-sec">
+              <Label>Quantum Golf — eighteen holes</Label>
+              <p>
+                Switch <b>Settings → Mode → Golf</b> and each hole hands you a state to build.
+                Eighteen holes in four rounds, and every round unlocks new clubs <i>and</i> a new
+                idea: <b>Easy</b> plays with X, H and CX (superposition, Bell, GHZ);{' '}
+                <b>Medium</b> adds <b>Y</b> and, with it, minus signs; <b>Difficult</b> adds{' '}
+                <b>Z</b> and <b>S</b> for imaginary phases; <b>Extra</b> adds <b>T</b> and{' '}
+                <b>controlled-H</b>, for eighth-turn phases and uneven splits.
+              </p>
+              <p>
+                Every gate you add <i>or</i> remove counts a stroke, so a wrong tile costs you
+                like a wrong swing. Par carries a two-stroke margin: build the hole in the fewest
+                gates and you score an <b>EAGLE</b>, one gate more is a <b>BIRDIE</b>. The chip
+                strip at the bottom of the scorecard keeps every hole's result next to its par.
+              </p>
+              <p>
+                <b>New random 18</b> deals a fresh course. The targets are generated, but the
+                difficulty rules make sure each round still plays like its name — a medium hole
+                really does need Y, an extra hole really does need T or controlled-H. Every
+                random course carries a code (<b>Course #…</b>): tap it to copy a link, or type a
+                code into <b>Settings → Golf course code</b>. The same code deals the same
+                eighteen holes on any phone — play a friend.
+              </p>
+              <p>
+                Stuck? <b>Show solution</b> draws a short circuit that builds the target. It is
+                offered once you hole in, and also mid-hole once you are a few strokes over par
+                or a minute in. In the background the app searches for anything shorter: if it
+                finds one it draws that too, and if it can prove there is nothing shorter it
+                labels the drawing <b>Solution — optimal</b>.
+              </p>
+              <p className="pk-guide-muted">
+                The sphere names itself — a <b>Bloch sphere</b> on one-qubit holes, a{' '}
+                <b>Q-sphere</b> above. It always opens with |0…0⟩ at the top; drag to turn it (it
+                follows your finger) and the rewind arrow puts it back. The goal is drawn on it
+                as dashed rings with phase ticks, and the states that matter carry their ket
+                label. Balls of probability roll across the surface as your circuit plays,
+                splitting when a gate makes a superposition (<b>↻</b> replays). Below, the{' '}
+                <b>State</b> and <b>Target</b> lines write the same thing as math, and target
+                terms you have not matched yet glow.
+              </p>
+              <p className="pk-guide-muted">
+                No printed tiles to hand? Golf plays just as well{' '}
+                <a href={guideSectionHash('build')} onClick={goToSection('build')}>
+                  on screen
+                </a>
+                .
+              </p>
+            </section>
+
+            {/* Quantina */}
+            <section className="pk-guide-sec">
+              <Label>Quantina — a quantum cantina</Label>
+              <p>
+                The built-in successor to Qoffee-Maker and quantum-mixer: switch{' '}
+                <b>Settings → Mode → Quantina</b> and the histogram becomes a menu — your
+                circuit's probabilities set the odds, a measurement picks your drink. Try{' '}
+                <a href="/?menu=cocktails">entangible.org/?menu=cocktails</a>: one H per wire
+                makes every cocktail equally likely; entangle two qubits and watch items start
+                winning together.
+              </p>
+              <p className="pk-guide-muted">
+                Five menus ship built-in (coffee, cocktails, ice cream, juice, diner). Booths can
+                add their own menus — and even wire the winning outcome to a real coffee machine
+                — see the repository docs.
+              </p>
+            </section>
+
+            {/* Quantum Runner */}
+            <section className="pk-guide-sec">
+              <Label>Quantum Runner — dodge the measurement</Label>
+              <p>
+                Switch <b>Settings → Mode → Quantum Runner</b> for a Flappy-style game where the
+                runner exists in every basis state at once — each lane's ghost is as solid as its
+                probability. Tap the gate buttons to reshape the live state as coins and
+                obstacles scroll in. Coins bank the <i>expected</i> value (never measured, so a
+                superposition banks fractions); a red obstacle triggers a real projective
+                measurement — collapse into it and you lose a life. On level 2, an obstacle
+                straddling <b>|01⟩</b> and <b>|10⟩</b> can't touch the Φ⁺ Bell state (H₀ then CX)
+                — build it and sail through.
+              </p>
+              <p className="pk-guide-muted">
+                Based on Quantum Runner by the QAMPoser project. No hardware needed — it plays
+                entirely on screen.
+              </p>
+            </section>
+          </>
+        )}
+
+        {section === 'build' && (
+          <section className="pk-guide-sec">
+            <Label>Build on screen — no printer, no camera</Label>
+            <p>
+              Choose <b>Build on screen</b> (Settings → Input, or the button on the start screen)
+              to place gates directly in the editor — play{' '}
+              <a href={guideSectionHash('play')} onClick={goToSection('play')}>
+                Quantum Golf
+              </a>{' '}
+              and transfer to the Composer, all with no hardware at all. In golf the on-screen
+              palette hands you only the current round's clubs; outside golf you get the full
+              gate set.
+            </p>
+            <p>
+              On a touchscreen you don't have to drag: <b>tap a gate tile to arm it</b>, then tap
+              a wire to place it there. For a controlled gate, tap the <b>control</b> wire first
+              and then the <b>target</b> (for a Toffoli: two controls, then the target) — a line
+              above the circuit says which tap is expected next. Tapping the armed tile again, or
+              pressing Escape, cancels. Tap a gate already on a wire for its small toolbar: the
+              pencil edits it (rotation angles and the wires of a controlled gate), the bin
+              deletes it. Dragging still works everywhere.
+            </p>
+            <p className="pk-guide-muted">
+              Have a screen to spare but no printer? The{' '}
+              <a href={guideSectionHash('booth')} onClick={goToSection('booth')}>
+                on-screen test boards
+              </a>{' '}
+              let a second device play the part of the printed mat.
+            </p>
+          </section>
+        )}
+
+        {section === 'booth' && (
+          <>
+            {/* Test without a printer */}
+            <section className="pk-guide-sec">
+              <Label>Test without a printer</Label>
+              <div className="pk-guide-grid">
+                {TEST_BOARDS.map((b, i) => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    className="pk-guide-card"
+                    onClick={() => dispatch({ type: 'open', index: i })}
+                  >
+                    <img src={b.src} alt={b.title} loading="lazy" />
+                    <span className="pk-guide-card-title">{b.title}</span>
+                    <span className="pk-guide-card-blurb">{b.blurb}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="pk-guide-muted">
+                Show these fullscreen on one device, point another device's camera at it. Flip
+                images to "move" tiles. No printer <i>and</i> no camera? Build the circuit{' '}
+                <a href={guideSectionHash('build')} onClick={goToSection('build')}>
+                  on screen
+                </a>{' '}
+                instead.
+              </p>
+            </section>
+
+            {/* The full project */}
+            <section className="pk-guide-sec">
+              <Label>The full project</Label>
+              <p>
+                This same app also runs the full booth installation: a Raspberry Pi kiosk
+                (RasQberry) with a large screen shows it in kiosk mode, a live camera rig or a
+                staff phone feeds it, and celebrations light up when entanglement appears — built
+                for fairs and events. One app, same tiles, same board, same engine.
+              </p>
+              <p>
+                At a booth, scan the <b>visitor QR</b> on the big screen to follow along on your
+                own phone — you'll see the circuit being built on the table, live, and can take
+                it home with the Transfer button.
+              </p>
+              <ul className="pk-guide-links">
+                <li>
+                  <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
+                    GitHub repository
+                  </a>
+                </li>
+                <li>
+                  <a href={ISSUES_URL} target="_blank" rel="noopener noreferrer">
+                    Report an issue
+                  </a>
+                </li>
+              </ul>
+            </section>
+
+            {/* Family */}
+            <section className="pk-guide-sec">
+              <Label>Part of the Fun with Quantum family</Label>
+              <p>
+                Entangible belongs to{' '}
+                <a href={FAMILY_URL} target="_blank" rel="noopener noreferrer">
+                  <b>Fun with Quantum</b>
+                </a>
+                , a family of open-source quantum outreach projects:{' '}
+                {FAMILY.map((f, i) => (
+                  <span key={f.name}>
+                    {i > 0 && ' · '}
+                    <a href={f.url} target="_blank" rel="noopener noreferrer">
+                      {f.name}
+                    </a>
+                  </span>
+                ))}
+                .
+              </p>
+            </section>
+          </>
+        )}
+
+        {/* The footer is not a topic — licence and trademarks belong on every
+            section, so it sits outside the switch. */}
         <footer className="pk-guide-foot">
           <p>
             Open source, Apache-2.0 licensed. Part of the{' '}
-            <a href="https://fun-with-quantum.org" target="_blank" rel="noopener noreferrer">
+            <a href={FAMILY_URL} target="_blank" rel="noopener noreferrer">
               Fun with Quantum family
             </a>
             .
