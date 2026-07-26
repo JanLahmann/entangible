@@ -1742,6 +1742,13 @@ body,
   border-color: var(--entangle);
 }
 
+/* The mid-hole offer (#79): same reveal, but it must not look like a hole-in
+   line — no accent colour, just a quiet control where the score line would be. */
+.pk-golf-stuck {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+}
+
 /* The revealed answer, drawn as a mini circuit (shared MiniCircuit). */
 .pk-golf-solution {
   margin-top: 0.4rem;

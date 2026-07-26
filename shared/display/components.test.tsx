@@ -8,7 +8,7 @@
  * booth vs pocket) is honoured. Runs once, in the pocket suite (jsdom pragma).
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
 import type { Circuit, Gate } from '@qamposer/react';
 import { Histogram } from './Histogram';
 import { StatePanel } from './StatePanel';
@@ -393,6 +393,85 @@ describe('Scorecard (shared)', () => {
     expect(container.querySelectorAll('.pk-golf-solution').length).toBe(1);
     expect(container.querySelector('.pk-golf-sol-label')).toBeNull();
     expect(container.querySelector('.pk-mini-circ')).not.toBeNull();
+  });
+
+  it('offers the solution once a hole costs par + 3, before it is holed in (#79)', () => {
+    for (const p of ['bo', 'pk'] as const) {
+      // E2, par 4: at 6 strokes there is still no offer …
+      const nearly = { ...initialGolfState(), levelIndex: 1, strokes: 6 };
+      const before = render(<Scorecard state={nearly} circuit={bell} classPrefix={p} />);
+      expect(before.container.querySelector(`.${p}-golf-solution-btn`)).toBeNull();
+      cleanup();
+
+      // … at 7 (par + 3) the offer appears, and says why it is there.
+      const stuck = { ...initialGolfState(), levelIndex: 1, strokes: 7 };
+      const { container } = render(<Scorecard state={stuck} circuit={bell} classPrefix={p} />);
+      const btn = container.querySelector(`.${p}-golf-solution-btn`) as HTMLButtonElement;
+      expect(btn.textContent).toBe('Stuck? Show solution');
+      // It is an offer, not a score line: no hole-in row alongside it.
+      expect(container.querySelector(`.${p}-golf-holed`)).toBeNull();
+      expect(container.querySelector(`.${p}-golf-stuck`)).not.toBeNull();
+
+      fireEvent.click(btn);
+      expect(container.querySelector(`.${p}-golf-solution .${p}-mini-circ`)).not.toBeNull();
+      expect(btn.textContent).toBe('Hide solution');
+      cleanup();
+    }
+  });
+
+  it('offers it a minute after the FIRST stroke, never after idle reading (#79)', () => {
+    // `performance` must be faked too: the hook times the hole with
+    // `performance.now()` (monotonic, unlike Date), and vitest does not fake it
+    // by default — without this the timer fires but no time has "passed".
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
+    try {
+      // A board nobody has touched: the clock has not started, so a minute of
+      // reading the target must not trigger the offer.
+      const idle = { ...initialGolfState(), levelIndex: 1, strokes: 0 };
+      const untouched = render(<Scorecard state={idle} circuit={bell} classPrefix="pk" />);
+      vi.advanceTimersByTime(120_000);
+      untouched.rerender(<Scorecard state={idle} circuit={bell} classPrefix="pk" />);
+      expect(untouched.container.querySelector('.pk-golf-solution-btn')).toBeNull();
+      cleanup();
+
+      // One stroke starts the clock. Well under a minute: still no offer.
+      const playing = { ...initialGolfState(), levelIndex: 1, strokes: 1 };
+      const { container, rerender } = render(
+        <Scorecard state={playing} circuit={bell} classPrefix="pk" />,
+      );
+      vi.advanceTimersByTime(30_000);
+      rerender(<Scorecard state={playing} circuit={bell} classPrefix="pk" />);
+      expect(container.querySelector('.pk-golf-solution-btn')).toBeNull();
+
+      // Past the minute it appears — without needing another gate to be played.
+      act(() => {
+        vi.advanceTimersByTime(31_000);
+      });
+      expect(
+        (container.querySelector('.pk-golf-solution-btn') as HTMLButtonElement).textContent,
+      ).toBe('Stuck? Show solution');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps saying "Show solution" once the ball is in, and stays inert (#79)', () => {
+    // A holed-in hole that also passed the stuck thresholds keeps the original
+    // wording — the offer is for people still playing.
+    const state = { ...initialGolfState(), levelIndex: 1, holedIn: true, strokes: 9 };
+    const { container } = render(<Scorecard state={state} circuit={bell} classPrefix="pk" />);
+    const btn = container.querySelector('.pk-golf-solution-btn') as HTMLButtonElement;
+    expect(btn.textContent).toBe('Show solution');
+    expect(container.querySelector('.pk-golf-stuck')).toBeNull();
+
+    // …and the mid-hole offer cannot touch the score either (#68).
+    const mid = { ...initialGolfState(), levelIndex: 1, strokes: 7 };
+    cleanup();
+    const stuck = render(<Scorecard state={mid} circuit={bell} classPrefix="pk" />);
+    const strokesBefore = stuck.container.querySelector('.pk-stats')?.textContent;
+    fireEvent.click(stuck.container.querySelector('.pk-golf-solution-btn') as HTMLButtonElement);
+    expect(stuck.container.querySelector('.pk-stats')?.textContent).toBe(strokesBefore);
+    expect(mid.strokes).toBe(7);
   });
 
   it('hides the reveal on the completed-course summary (no hole is in play)', () => {

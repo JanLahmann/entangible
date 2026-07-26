@@ -17,6 +17,12 @@
  * never applied to the board — so a reveal cannot cost a stroke, and it is
  * scoped to the hole it was opened on, so the next hole starts hidden again.
  *
+ * The same reveal is OFFERED mid-hole once a player is visibly stuck (#79):
+ * `par + 3` strokes, or a minute since the hole's first stroke. The clock is a
+ * UI concern — the engine stays pure and clockless — and it starts at the first
+ * stroke, so a board left idle while somebody reads the target is never
+ * interrupted with the answer.
+ *
  * The first reveal of a hole also starts an OPTIMAL search (#72, `@quantum/
  * optimal`) in the background. If it finds something shorter than the stored
  * answer, a second drawing appears under it, labelled "Optimal (N gates)"; if it
@@ -35,7 +41,7 @@
  * `monoKet` toggles the one pre-SC2 difference: pocket adds `pk-mono` to the
  * target-ket span; the booth does not tint its ket.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Circuit } from '@qamposer/react';
 import {
   ROUND_LABEL,
@@ -167,6 +173,57 @@ function CourseChip({ p, state }: { p: string; state: GolfState }) {
 /** How long the chip says "link copied" before returning to the code. */
 const COPIED_MS = 1600;
 
+/** Strokes over par at which a hole counts as a struggle worth helping (#79). */
+export const STUCK_OVER_PAR = 3;
+/** Time on a hole, measured from the FIRST stroke, after which help is offered. */
+export const STUCK_MS = 60_000;
+
+/**
+ * Is this player stuck on the hole in play (#79)?
+ *
+ * Two independent triggers, because being stuck looks like two different things:
+ * a card full of strokes, or a long time with nothing working. The clock starts
+ * at the FIRST stroke, never when the hole appeared — a board sitting untouched
+ * while somebody reads the target is not a player in trouble, and offering them
+ * the answer would be an interruption, not help.
+ */
+export function isStuck(strokes: number, par: number, msSinceFirstStroke: number | null): boolean {
+  if (strokes >= par + STUCK_OVER_PAR) return true;
+  return msSinceFirstStroke !== null && msSinceFirstStroke >= STUCK_MS;
+}
+
+/**
+ * Milliseconds since the current hole's first stroke, or `null` before it.
+ *
+ * Deliberately a UI concern: the golf engine is pure and has no clock, and a
+ * timer that lived in it would have to be threaded through every caller and
+ * every replay. The timestamp is taken when `strokes` first leaves 0, cleared
+ * when the hole changes, and a single timer re-renders once the threshold
+ * passes so the offer appears without waiting for the next gate.
+ */
+function useTimeOnHole(holeNumber: number, strokes: number): number | null {
+  const startedAt = useRef<number | null>(null);
+  const [, tick] = useState(0);
+  const holeRef = useRef(holeNumber);
+
+  if (holeRef.current !== holeNumber) {
+    holeRef.current = holeNumber;
+    startedAt.current = null;
+  }
+  if (startedAt.current === null && strokes > 0) startedAt.current = performance.now();
+
+  const started = startedAt.current;
+  useEffect(() => {
+    if (started === null) return;
+    const remaining = STUCK_MS - (performance.now() - started);
+    if (remaining <= 0) return;
+    const timer = setTimeout(() => tick((n) => n + 1), remaining);
+    return () => clearTimeout(timer);
+  }, [started]);
+
+  return started === null ? null : performance.now() - started;
+}
+
 export function Scorecard({
   state,
   circuit,
@@ -197,7 +254,12 @@ export function Scorecard({
   const hole = holes[state.levelIndex];
   // The optimal search starts with the reveal and outlives it (#72). Declared
   // before the course-complete return, because hooks may not be conditional.
-  const revealed = state.holedIn && !state.complete && solutionFor === hole.hole;
+  // Stuck-detection (#79) runs on every hole, holed in or not, so its clock is
+  // already ticking when the offer becomes due. Hooks may not be conditional,
+  // so both live above the course-complete return.
+  const onHoleMs = useTimeOnHole(hole.hole, state.strokes);
+  const stuck = !state.holedIn && isStuck(state.strokes, hole.par, onHoleMs);
+  const revealed = (state.holedIn || stuck) && !state.complete && solutionFor === hole.hole;
   const optimal = useOptimal(state, hole, revealed);
   const totals = courseTotals(state.best, holes);
   const totalLabel = totals.completed > 0 ? formatVsPar(totals.vsPar) : 'E';
@@ -296,6 +358,19 @@ export function Scorecard({
             />
           </div>
         )}
+        {/* Not holed in, but the hole has stopped being fun (#79): the same
+            reveal, offered rather than waited for. */}
+        {!holedIn && stuck && (
+          <div className={`${p}-golf-stuck`}>
+            <SolutionToggle
+              p={p}
+              hole={hole}
+              shown={solutionFor === hole.hole}
+              stuck
+              onToggle={() => setSolutionFor(solutionFor === hole.hole ? null : hole.hole)}
+            />
+          </div>
+        )}
         {revealed && <Solutions p={p} state={state} hole={hole} optimal={optimal} />}
         <ChipStrip p={p} holes={holes} currentHole={hole.hole} best={state.best} />
       </div>
@@ -314,11 +389,15 @@ function SolutionToggle({
   p,
   hole,
   shown,
+  stuck = false,
   onToggle,
 }: {
   p: string;
   hole: Hole;
   shown: boolean;
+  /** Offered mid-hole to a struggling player (#79) rather than after the ball
+   *  went in — the button says so, so nobody reads it as "you finished". */
+  stuck?: boolean;
   onToggle: () => void;
 }) {
   if (!hole.solution) return null;
@@ -329,7 +408,7 @@ function SolutionToggle({
       aria-expanded={shown}
       onClick={onToggle}
     >
-      {shown ? 'Hide solution' : 'Show solution'}
+      {shown ? 'Hide solution' : stuck ? 'Stuck? Show solution' : 'Show solution'}
     </button>
   );
 }
