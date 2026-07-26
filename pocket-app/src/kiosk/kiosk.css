@@ -1306,6 +1306,18 @@
   color: var(--ok);
 }
 
+/* The course result (#83): strokes and time, the two numbers one player
+   compares with another. Sits in the completion summary, under the score. */
+.bo-golf-time {
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.bo-golf-time b {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, monospace);
+  color: var(--entangle-text);
+}
+
 .bo-golf-total {
   font-size: 0.86rem;
   font-weight: 700;

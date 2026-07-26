@@ -56,6 +56,7 @@ import {
 import { shouldAttract } from './attract';
 import { Histogram } from './Histogram';
 import { MessageStrip, type StripMessage } from './MessageStrip';
+import { courseElapsed, tickCourseTimer } from '@shared/display/courseTimer';
 import { Celebrations, type CelebrationRequest } from './Celebrations';
 import { AttractMode } from './AttractMode';
 import { VisitorQr } from './VisitorQr';
@@ -261,7 +262,11 @@ export function KioskView() {
       // Course finished (#80): one burst, scaled and worded by the round.
       if (step.justCompleted && !completedRef.current) {
         completedRef.current = true;
-        const done = completionCelebration(courseTotals(step.state.best).vsPar);
+        const timing = tickCourseTimer(step.state, Date.now());
+        const done = completionCelebration(
+          courseTotals(step.state.best).vsPar,
+          courseElapsed(timing, Date.now()),
+        );
         setCelebration({
           kind: 'ghz',
           k: 5,

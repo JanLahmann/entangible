@@ -690,6 +690,22 @@ export function courseTotals(
   return { completed, strokes, par, vsPar: strokes - par };
 }
 
+/**
+ * A duration as mm:ss (or h:mm:ss past an hour) — the course timer's format
+ * (#83). Pure formatting, next to `formatVsPar`, so the ticking clock on the
+ * card, the frozen time on the summary and the celebration copy are all typeset
+ * by one function and cannot drift apart.
+ */
+export function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const seconds = total % 60;
+  const minutes = Math.floor(total / 60) % 60;
+  const hours = Math.floor(total / 3600);
+  const mm = hours > 0 ? String(minutes).padStart(2, '0') : String(minutes);
+  const ss = String(seconds).padStart(2, '0');
+  return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
 /** How a finished round is celebrated (#80) — the tiers a course-end burst is
  *  scaled and worded by. */
 export type CompletionTier = 'legendary' | 'under' | 'even' | 'over';
@@ -715,21 +731,32 @@ export interface CompletionCelebration {
  * minimum earns on the classic course (18 holes × 2 under a par of minimum + 2),
  * so it means "you found the best line, or something like it, all the way round".
  */
-export function completionCelebration(vsPar: number): CompletionCelebration {
+export function completionCelebration(
+  vsPar: number,
+  elapsedMs: number | null = null,
+): CompletionCelebration {
+  // The time is the other half of a result (#83): "12 under" says how well,
+  // "in 12:34" says how it was earned, and together they are what one player
+  // compares with another.
+  const time = elapsedMs === null ? '' : ` in ${formatDuration(elapsedMs)}`;
   if (vsPar <= LEGENDARY_VS_PAR) {
     return {
       tier: 'legendary',
       intensity: 2,
-      copy: `Legendary round — ${Math.abs(vsPar)} under par!`,
+      copy: `Legendary round — ${Math.abs(vsPar)} under par${time}!`,
     };
   }
   if (vsPar < 0) {
-    return { tier: 'under', intensity: 1.5, copy: `${Math.abs(vsPar)} under par!` };
+    return { tier: 'under', intensity: 1.5, copy: `${Math.abs(vsPar)} under par${time}!` };
   }
   if (vsPar === 0) {
-    return { tier: 'even', intensity: 1, copy: 'Even par — course complete!' };
+    return { tier: 'even', intensity: 1, copy: `Even par — course complete${time}!` };
   }
-  return { tier: 'over', intensity: 0.6, copy: `Course complete — ${formatVsPar(vsPar)}.` };
+  return {
+    tier: 'over',
+    intensity: 0.6,
+    copy: `Course complete — ${formatVsPar(vsPar)}${time}.`,
+  };
 }
 
 /** Format a vs-par delta golf-style: "E" (even), "+3", "−2". */

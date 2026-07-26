@@ -17,6 +17,11 @@
  * never applied to the board — so a reveal cannot cost a stroke, and it is
  * scoped to the hole it was opened on, so the next hole starts hidden again.
  *
+ * A course clock (#83) runs beside the total: it starts at the round's FIRST
+ * stroke — not when the course was dealt, since reading the first target is not
+ * playing — ticks once a second, and freezes at the eighteenth hole-in, where
+ * the summary shows it as the round's result alongside the stroke count.
+ *
  * The same reveal is OFFERED mid-hole once a player is visibly stuck (#79):
  * `par + 3` strokes, or a minute since the hole's first stroke. The clock is a
  * UI concern — the engine stays pure and clockless — and it starts at the first
@@ -55,6 +60,7 @@ import {
   scoreName,
   courseTotals,
   formatVsPar,
+  formatDuration,
   type GolfRound,
   type GolfState,
   type Hole,
@@ -62,6 +68,7 @@ import {
 import { courseCode, courseHoles } from '@quantum/golfRandom';
 import { findOptimalAsync, type OptimalResult } from '@quantum/optimal';
 import { MiniCircuit } from './MiniCircuit';
+import { courseElapsed, tickCourseTimer } from './courseTimer';
 
 const ROUNDS: readonly GolfRound[] = ['easy', 'medium', 'difficult', 'extra'];
 
@@ -173,6 +180,27 @@ function CourseChip({ p, state }: { p: string; state: GolfState }) {
 /** How long the chip says "link copied" before returning to the code. */
 const COPIED_MS = 1600;
 
+/**
+ * The course clock (#83), ticking once a second while a round is underway.
+ *
+ * The store does the deciding (`tickCourseTimer`); this only re-renders often
+ * enough to keep the display honest, and stops the interval the moment the
+ * course completes so a finished summary is not repainting forever.
+ */
+function useCourseElapsed(state: GolfState): number | null {
+  const [, tick] = useState(0);
+  const timing = tickCourseTimer(state, Date.now());
+  const running = timing.startedAt !== null && timing.finishedAt === null;
+
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [running]);
+
+  return courseElapsed(timing, Date.now());
+}
+
 /** Strokes over par at which a hole counts as a struggle worth helping (#79). */
 export const STUCK_OVER_PAR = 3;
 /** Time on a hole, measured from the FIRST stroke, after which help is offered. */
@@ -258,6 +286,7 @@ export function Scorecard({
   // already ticking when the offer becomes due. Hooks may not be conditional,
   // so both live above the course-complete return.
   const onHoleMs = useTimeOnHole(hole.hole, state.strokes);
+  const courseMs = useCourseElapsed(state);
   const stuck = !state.holedIn && isStuck(state.strokes, hole.par, onHoleMs);
   const revealed = (state.holedIn || stuck) && !state.complete && solutionFor === hole.hole;
   const optimal = useOptimal(state, hole, revealed);
@@ -280,6 +309,11 @@ export function Scorecard({
             <span className={`${p}-golf-qubits`}>
               {totals.strokes} strokes · par {fullPar}
             </span>
+            {courseMs !== null && (
+              <span className={`${p}-golf-time`}>
+                <b>{totals.strokes}</b> strokes in <b>{formatDuration(courseMs)}</b>
+              </span>
+            )}
             <span className={`${p}-golf-total`}>
               {formatVsPar(totals.vsPar)} <small>vs par</small>
             </span>
@@ -339,6 +373,11 @@ export function Scorecard({
           <div className={`${p}-stat`}>
             total <b>{totalLabel}</b>
           </div>
+          {courseMs !== null && (
+            <div className={`${p}-stat`}>
+              time <b>{formatDuration(courseMs)}</b>
+            </div>
+          )}
         </div>
         {holedIn && (
           <div className={`${p}-golf-holed`}>

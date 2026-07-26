@@ -1684,6 +1684,18 @@ body,
   color: var(--ok);
 }
 
+/* The course result (#83): strokes and time, the two numbers one player
+   compares with another. Sits in the completion summary, under the score. */
+.pk-golf-time {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.pk-golf-time b {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, monospace);
+  color: var(--entangle-text);
+}
+
 .pk-golf-total {
   font-size: 0.82rem;
   font-weight: 700;
@@ -2125,6 +2137,61 @@ body,
 
 .pk-guide-back:hover {
   border-color: var(--entangle);
+}
+
+/* Section nav (#82): a chip row pinned under the header. It sits OUTSIDE the
+   scrolling body rather than being `position: sticky` inside it, so it stays put
+   without fighting momentum scrolling on iOS. Mobile-first: the row scrolls
+   sideways when the chips outrun a narrow phone, and never wraps to two lines. */
+.pk-guide-nav {
+  flex: none;
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pk-guide-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.pk-guide-tab {
+  flex: none;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-inset);
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.3;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.pk-guide-tab:hover {
+  color: var(--text);
+  border-color: var(--entangle);
+}
+
+/* Selected state carries on THREE channels, not colour alone: fill, border and
+   weight — the chips must read as selected in high contrast and in greyscale. */
+.pk-guide-tab.is-active {
+  color: var(--text);
+  background: color-mix(in srgb, var(--entangle) 22%, var(--bg-inset));
+  border-color: var(--entangle);
+}
+
+.pk-guide-tab:focus-visible {
+  outline: 2px solid var(--entangle);
+  outline-offset: 2px;
 }
 
 .pk-guide-body {

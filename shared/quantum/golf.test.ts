@@ -14,6 +14,7 @@ import {
   scoreName,
   scoreKind,
   completionCelebration,
+  formatDuration,
   LEGENDARY_VS_PAR,
   ROUND_CODE,
   golfStep,
@@ -267,6 +268,20 @@ describe('scoreName', () => {
   });
 });
 
+describe('course timer formatting (#83)', () => {
+  it('writes mm:ss, and grows an hours field only when it needs one', () => {
+    expect(formatDuration(0)).toBe('0:00');
+    expect(formatDuration(9_000)).toBe('0:09');
+    expect(formatDuration(69_000)).toBe('1:09');
+    expect(formatDuration(12 * 60_000 + 34_000)).toBe('12:34');
+    expect(formatDuration(59 * 60_000 + 59_400)).toBe('59:59');
+    expect(formatDuration(3600_000)).toBe('1:00:00');
+    expect(formatDuration(3600_000 + 5 * 60_000 + 7_000)).toBe('1:05:07');
+    // Never negative, however the clocks disagree.
+    expect(formatDuration(-5_000)).toBe('0:00');
+  });
+});
+
 describe('course-end celebration (#80)', () => {
   it('tiers the round by vs-par, and names the result in the copy', () => {
     // Every hole played at the minimum on the classic course is −36; the
@@ -282,6 +297,18 @@ describe('course-end celebration (#80)', () => {
     expect(completionCelebration(-4).copy).toBe('4 under par!');
     expect(completionCelebration(0).copy).toBe('Even par — course complete!');
     expect(completionCelebration(3).copy).toBe('Course complete — +3.');
+  });
+
+  it('quotes the round\u2019s time when there is one (#83)', () => {
+    const ms = 12 * 60_000 + 34_000;
+    expect(completionCelebration(-20, ms).copy).toBe(
+      'Legendary round — 20 under par in 12:34!',
+    );
+    expect(completionCelebration(-4, ms).copy).toBe('4 under par in 12:34!');
+    expect(completionCelebration(0, ms).copy).toBe('Even par — course complete in 12:34!');
+    expect(completionCelebration(3, ms).copy).toBe('Course complete — +3 in 12:34.');
+    // An untimed round (the clock never started) reads exactly as before.
+    expect(completionCelebration(-4, null).copy).toBe('4 under par!');
   });
 
   it('scales the burst with the round, and never inverts the ordering', () => {

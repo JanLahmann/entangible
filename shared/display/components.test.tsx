@@ -16,8 +16,10 @@ import { QasmPanel } from './QasmPanel';
 import { MessageStrip } from './MessageStrip';
 import { Scorecard, courseShareLink } from './Scorecard';
 import { MiniCircuit } from './MiniCircuit';
+import { resetCourseTimers } from './courseTimer';
 import { Celebrations } from './Celebrations';
 import {
+  COURSE_PAR,
   HOLES,
   completionCelebration,
   courseTotals,
@@ -478,6 +480,53 @@ describe('Scorecard (shared)', () => {
     fireEvent.click(stuck.container.querySelector('.pk-golf-solution-btn') as HTMLButtonElement);
     expect(stuck.container.querySelector('.pk-stats')?.textContent).toBe(strokesBefore);
     expect(mid.strokes).toBe(7);
+  });
+
+  it('shows a course clock once the round is under way, not before (#83)', () => {
+    resetCourseTimers();
+    // Dealt but untouched: no clock — reading the first target is not playing.
+    const fresh = render(<Scorecard state={initialGolfState()} circuit={bell} classPrefix="pk" />);
+    expect(
+      Array.from(fresh.container.querySelectorAll('.pk-stat')).map((n) => n.textContent),
+    ).not.toContain('time 0:00');
+    cleanup();
+
+    // A stroke on the board starts it, and it reads beside the total.
+    const playing = { ...initialGolfState(), strokes: 3 };
+    const { container } = render(<Scorecard state={playing} circuit={bell} classPrefix="pk" />);
+    const stats = Array.from(container.querySelectorAll('.pk-stat')).map((n) => n.textContent);
+    expect(stats.some((t) => t?.startsWith('time '))).toBe(true);
+    resetCourseTimers();
+  });
+
+  it('freezes the clock on the summary and shows strokes AND time (#83)', () => {
+    resetCourseTimers();
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    try {
+      const best: Record<number, number> = {};
+      for (const h of HOLES) best[h.hole] = h.par;
+      // Play: one stroke starts the clock …
+      const playing = { ...initialGolfState(best), strokes: 1 };
+      const live = render(<Scorecard state={playing} circuit={bell} classPrefix="pk" />);
+      vi.advanceTimersByTime(90_000);
+      cleanup();
+
+      // … and completing freezes it into the summary's result line.
+      const done = { ...initialGolfState(best), levelIndex: 17, complete: true };
+      const { container } = render(<Scorecard state={done} circuit={bell} classPrefix="pk" />);
+      const result = container.querySelector('.pk-golf-time');
+      expect(result?.textContent).toBe(`${COURSE_PAR} strokes in 1:30`);
+      // Time on the summary screen does not change the recorded result.
+      vi.advanceTimersByTime(300_000);
+      const again = render(<Scorecard state={done} circuit={bell} classPrefix="pk" />);
+      expect(again.container.querySelector('.pk-golf-time')?.textContent).toBe(
+        `${COURSE_PAR} strokes in 1:30`,
+      );
+      expect(live).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+      resetCourseTimers();
+    }
   });
 
   it('hides the reveal on the completed-course summary (no hole is in play)', () => {

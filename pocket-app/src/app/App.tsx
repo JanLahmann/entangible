@@ -42,6 +42,7 @@ import { pinchZoom, pointerDistance, cropRect, type Point as PinchPoint } from '
 import { detectMatRoi } from '../vision/matDetect';
 import type { Rect } from '@shared/capture/matRoi';
 import { MessageStrip, type StripMessage } from './MessageStrip';
+import { courseElapsed, tickCourseTimer } from '@shared/display/courseTimer';
 import { Celebrations, LOW_POWER_PARTICLES, type CelebrationRequest } from './Celebrations';
 import { ResultsHistogram, noiseSeries } from './ResultsHistogram';
 import { QasmPanel } from './QasmPanel';
@@ -511,8 +512,10 @@ export function App() {
         // on restart, so playing again can earn it again.
         if (step.justCompleted && !completedRef.current) {
           completedRef.current = true;
+          const timing = tickCourseTimer(step.state, Date.now());
           const done = completionCelebration(
             courseTotals(step.state.best, courseHoles(step.state)).vsPar,
+            courseElapsed(timing, Date.now()),
           );
           setCelebration({
             kind: 'ghz',
