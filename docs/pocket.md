@@ -97,20 +97,45 @@ Serverless equivalents of the booth's /debug controls — all local
   guided rescues, fps, corners, reprojection error), marker table
   (id/gate/row/col/off-grid), warnings verbatim, active detector params
   (read-only). Appended below the other panels; visitors never see it.
-- **Golf mode (MVP — first playable golf!)**: holes = 1 Superposition
-  (H on any qubit, par 1), 2 Bell (par 2), 3 GHZ-3 (par 3), 4 GHZ-4 (par 4),
-  5 GHZ-5 (par 5). Sidebar becomes: **Q-SPHERE (2D)** — static SVG flat
-  projection: concentric rings by Hamming weight 0–5, nodes on rings, node
-  radius ∝ |amplitude|, fill hue = phase, target-state nodes outlined in
-  `--entangle` purple; **SCORECARD** — hole name + target ket, par, strokes
-  (= every gate added *and* deleted since the hole was teed off — a retry
-  costs, like real golf; sweeping the board mid-hole keeps counting (#73),
-  only leaving the hole tees the next one off at zero), live fidelity %,
-  best-of-device (localStorage); the
-  **recognized circuit stays on the stage** (golf never hides it). Hole-in at
-  fidelity ≥ 0.99 → purple banner ("EAGLE!/BIRDIE!/PAR!/HOLE IN +n" by
-  strokes vs par) + confetti; clearing the board advances to the next hole.
-  Animated state evolution deliberately absent (that's qsphere-evolution).
+- **Golf mode**: the 18-hole course of `@quantum/golf` (four rounds — Easy
+  E1–E5, Medium M1–M5, Difficult D1–D5, Extra X1/X3/X5; see
+  [`booth-ux.md`](booth-ux.md) "The course"). Sidebar becomes: the **sphere**
+  (`EvolvingState` — Bloch on 1-qubit holes, Q-sphere above, both captioned;
+  dashed target ghost rings + phase ticks + ket labels, roll-the-ball evolution
+  with a per-column scrubber, opening neutral at `|0…0⟩` up, #75) with the
+  live **State / Target** bra-ket lines under it; a **Course** picker
+  (Classic 18 / Random 18); and the **SCORECARD** — hole code + name, clubs,
+  target ket, par, strokes, live fidelity %, per-hole best (localStorage),
+  running total-vs-par, and the round-grouped 18-chip result strip. The
+  **recognized circuit stays on the stage** (golf never hides it).
+  - **Strokes** = every gate added *and* deleted since the hole was teed off
+    (#68) — a retry costs, like real golf; moving a tile between columns is
+    free, rewiring/retyping costs 2. Sweeping the board mid-hole keeps counting
+    (#73); only *leaving* the hole (hole-in advance, course-complete clear,
+    post-course restart) tees the next one off at zero with an empty baseline,
+    so a teardown never lands on the next hole. **Par = minimum + 2** (#69), so
+    minimum play scores an eagle and one extra a birdie; classic course par 101.
+  - **Hole-in** at fidelity ≥ 0.99 → purple banner ("EAGLE!/BIRDIE!/PAR!/
+    HOLE IN +n" by strokes vs par) + confetti; clearing the board advances.
+    Finishing hole 18 fires a celebration whose intensity and wording scale
+    with the round's total vs par (#80: legendary at −18 or better, then under /
+    even / over). In build-on-screen mode a **Next hole ▸** button by the sphere
+    and on the card does the clearing instead (camera keeps the physical ritual).
+  - **Solutions** (#71/#72/#79): "Show solution" draws the hole's worked answer
+    as an inert mini circuit — offered on the hole-in, and mid-hole once the
+    player is stuck (`par + 3` strokes, or 60 s after the hole's first stroke).
+    A background optimal search then draws anything shorter, or relabels the
+    stored answer "Solution — optimal"; budget exhaustion says nothing.
+  - **Random course** (#70/#76/#77/#78): "Random 18" deals generated targets
+    over the same round/level structure, drawn from each round's own clubs and
+    filtered so each round plays like its name (no dead wires, per-round phase
+    vocabulary, a readable ket, a difficulty floor above `level` gates, and the
+    round's added clubs genuinely required) — see the
+    `shared/quantum/golfRandom.ts` header for the full rule set. Par is the
+    computed minimum + 2. The base seed is the course: it is shown as a base-36
+    **Course #…** chip that copies a `?course=<code>` link, and typing a code
+    into **Settings → Golf course code** deals the identical eighteen holes.
+    Random bests are session-only (never written to the device card).
 
 ## Input modes — camera · manual · booth-connected
 
@@ -129,11 +154,22 @@ them:
   and the Composer handoff all work (play Quantum Golf with on-screen gates).
   The register is pinned to the physical **5 qubits** (`maxQubits: 5`); the
   wires setting still collapses empty trailing wires for the view, so to reach
-  q3/q4 switch **Wires → all 5**. Native gate set: H, X, Y, Z, RX/RY/RZ, CNOT
-  (no native S/T/SWAP in the library, and rotation angles are typed per-gate,
-  default π/2 — see the tile-vs-palette note below). Discovery points: the
+  q3/q4 switch **Wires → all 5**. Palette gate set (the entangible fork):
+  H, X, Y, Z, S, T, RX/RY/RZ, CNOT, CY, CZ, CH, CS, CT, CCX — rotation angles
+  are typed per-gate, default π/2. In **golf** the palette is narrowed to the
+  round's clubs (`clubGateTypes`, #55), so it teaches the round instead of every
+  gate the library knows; outside golf the full set shows. Discovery points: the
   camera-idle start screen's *"No camera? Build on screen"* button, and
   **Settings → Input**.
+- **Touch placement (#61)**: dragging a palette tile onto a wire is awkward on a
+  phone, so the fork also supports **tap-to-place** — tap a palette tile to
+  *arm* it (it renders `aria-pressed`), then tap a wire to drop the gate in the
+  tapped column. A controlled gate collects its **control** wire first and then
+  its **target** (CCX: two controls, then the target), with a hint line above
+  the circuit naming the next expected tap; the column is locked by the very
+  first tap. Re-tapping the armed tile, or **Escape**, cancels. A tap on a
+  placed gate opens the library's gate toolbar (edit — rotations and controlled
+  gates only — and delete). Drag-and-drop is untouched, and a drag disarms.
 - **booth-connected** (`BoothSocketSource`, read-only viewer — see below):
   follows a booth host over `/ws/state`.
 

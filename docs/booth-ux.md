@@ -174,15 +174,53 @@ Compare against canonical states up to global phase, fidelity ≥ 0.99.
   betrays the phase fidelity catches), and **Extra** (X1/X3/X5: a T-phase magic
   state, the CH-only **Cascade** unequal superposition, and a golden GHZ). Each
   round names its "clubs" (a cumulative gate-set hint) on the scorecard; the
-  board can't enforce them, so they are pedagogy, not a lock. Course par is 65.
-  The scorecard shows round + hole ("Difficult · hole 13/18"), the target ket,
-  par, live fidelity, per-hole best, and a running total-vs-par; clearing the
+  board can't enforce them, so they are pedagogy, not a lock. The scorecard
+  shows round + hole ("Difficult · hole 13/18"), the target ket, par, live
+  strokes/fidelity, per-hole best, and a running total-vs-par; clearing the
   board after hole 18 shows the final score, and a re-clear restarts. Best
   strokes persist per hole on the pocket app (in memory on the booth); the old
-  5-level best migrates once into E1–E5. Strokes count every gate ADD and
-  DELETE on the hole cumulatively (#68) — sliding a tile to another column is
-  free, rewiring or retyping it costs 2; the count freezes on the hole-in and
-  resets on any board-clear, so a teardown never lands on the next hole.
+  5-level best migrates once into E1–E5.
+- **Strokes and par (#68, #69, #73)**: strokes count every gate ADD and DELETE
+  on the hole, cumulatively — sliding a tile to another column is free (the
+  column is not part of a gate's identity), rewiring or retyping one costs 2.
+  Par is the hole's MINIMUM stroke count **+ 2** (#69): minimum play scores an
+  EAGLE, one extra stroke a BIRDIE, a small fumble still makes par. Classic
+  course par is **101** (E 25 + M 29 + D 30 + X 17). Two rules keep the count
+  honest: once a hole is holed in the pencil goes down (lifting the tiles to
+  advance is not a stroke), and only *leaving* a hole — the post-hole-in
+  advance, the course-complete clear, the post-course restart — resets strokes
+  to zero with an empty diff baseline, so a teardown can never land on the next
+  hole. Sweeping the board **mid-hole keeps counting** (#73): the tiles you
+  lifted were strokes, and starting the same hole over is a decision with a
+  price. A completed hole's chip in the 18-hole strip carries its result (#74):
+  best strokes + vs-par, tinted eagle / birdie / par / over.
+- **Random course (#70, #76, #77)**: an alternative 18 with the same round /
+  level / view structure, whose targets are drawn from random circuits built out
+  of each round's own clubs. Constraints reject a deal unless it is non-trivial,
+  keeps every wire alive, obeys its round's phase vocabulary, prints whole on the
+  ket line, costs strictly more than `level` gates, and genuinely NEEDS the clubs
+  its round adds. Par is the target's computed minimum + 2, the classic rule,
+  falling back to generator + 1 when the search runs out of budget. Everything is
+  derived from one 32-bit base seed (shown as a base-36 "Course #…" code, #78);
+  see the `shared/quantum/golfRandom.ts` header for the full constraint set and
+  the measured acceptance rates. **The kiosk plays the classic course only, by
+  design**: its surface is operator-layout-driven and unattended, while choosing
+  a random round is a per-visitor decision with nobody at the big screen to make
+  it. Random bests are session-only and never touch the device card.
+- **Solutions (#71, #72, #79)**: a holed-in hole offers "Show solution", which
+  DRAWS the hole's worked answer as a compact circuit diagram (inert — pure
+  props, never applied to the board, so a reveal can never cost a stroke). The
+  same reveal is OFFERED mid-hole once a player is visibly stuck: `par + 3`
+  strokes, or 60 s since the hole's FIRST stroke (a board left idle while
+  somebody reads the target is never interrupted). The first reveal starts a
+  background breadth-first optimal search (`@quantum/optimal`): a shorter circuit
+  is drawn underneath as "Optimal (N gates)"; a proof that nothing shorter exists
+  relabels the stored one "Solution — optimal"; budget exhaustion says nothing at
+  all.
+- **Course-end celebration (#80)**: the finishing burst is scaled and worded by
+  the round's total vs par — `legendary` at −18 or better (playing every hole at
+  the minimum), `under`, `even`, `over` — with the particle budget multiplied by
+  2 / 1.5 / 1 / 0.6 respectively.
 - **Golf-mode animation** (builds on the layer-evolution idea in design.md):
   the target node carries the flag and *pulses* (2 s cycle); on every stable
   circuit change the ball replays from |0…0⟩ **gate-layer by gate-layer**
@@ -216,6 +254,27 @@ just the final state.
 - **Motion.** ~500 ms eased (cubic in-out) transitions per column via `rAF` on
   the fed statevector (no per-frame simulation). `prefers-reduced-motion` skips
   all tweening — steps jump instantly and the scrubber still works.
+- **Roll the ball (#57).** On top of the cross-fade, balls of probability mass
+  TRAVEL the sphere surface between basis nodes — one ball splits in two when a
+  gate creates superposition, balls arrive together when paths merge. The
+  transport map comes from `@quantum/evolution`; the view stays dumb and renders
+  what it is handed. No travelers under reduced motion.
+- **Bra-ket line (#59, #66).** `KetDisplay` typesets the SAME animated
+  statevector under the view, so the notation moves with the balls: terms in
+  ascending basis order, exact fractions (`1/√2`, `1/2`, `1/(2√2)`, the `√3/2`
+  family), phases relative to the reference amplitude so a global phase can never
+  leak in. In golf a second line labelled **Target** sits under it, with the
+  terms the live state does not match yet (magnitude off, or a missed − sign)
+  highlighted.
+- **Neutral orientation (#75).** The sphere always OPENS with `|0…0⟩` up — the
+  lattice's canonical frame — and the rewind-arrow button resets there. Drag
+  rotates trackball-style (the sphere follows the finger); a new orientation is
+  never forced on a user who has taken the view over. The #58 auto-face
+  experiment (camera chasing the target/populated centroid) is retired: a
+  stable, predictable frame beat a clever one. Dashed target ghost rings, phase
+  ticks and ket labels carry the "where is the target" job instead.
+- **The view names itself**: a `Bloch sphere` / `Q-sphere` caption above it —
+  the two read identically to a newcomer otherwise.
 - Shared by both skins via the `classPrefix` pattern (`pk-evo-*` / `bo-evo-*`).
 
 ## Scaling, modes, branding, help (v2 additions, 2026-07-18)

@@ -31,6 +31,41 @@ camera (operator QR), and the staff `/debug` panel.
 Renders are generated from the same source of truth as the print kit and the
 vision detector (`tools/render_cube_art.py`).*
 
+## Features
+
+- **Quantum Golf** — 18 holes in four rounds, each unlocking clubs and a concept
+  (Easy `X·H·CX` → Medium `+Y` → Difficult `+Z·S` → Extra `+T·CH`). Strokes count
+  every gate added *and* removed on the hole; par is the minimum + 2, so minimum
+  play scores an eagle. Per-hole bests persist on the device.
+- **Random courses with shareable codes** — "New random 18" generates targets
+  from each round's own clubs, with difficulty floors and a club-necessity rule
+  so a medium hole genuinely needs `Y` and an extra hole genuinely needs `T`/`CH`.
+  A course is its 32-bit seed, shown in base 36 (`Course #1z9k4h`, `?course=…`),
+  so the same code deals the identical eighteen holes on any device.
+- **Computed-optimal solutions** — a hole's worked answer can be revealed after
+  the hole-in, or mid-hole when a player is stuck. A background breadth-first
+  search over the hole's clubs then either draws a shorter circuit or certifies
+  the stored one as minimal ("Solution — optimal").
+- **Roll-the-ball state evolution** — the golf Q-sphere/Bloch view steps through
+  the circuit one column at a time, with probability mass travelling across the
+  sphere surface (splitting when a gate creates superposition), a per-column
+  scrubber, and a `prefers-reduced-motion` fallback.
+- **Bra-ket display** — the live state typeset under the sphere as
+  `1/√2|00⟩ + 1/√2|11⟩` (exact fractions, phases relative to the reference
+  amplitude, same convention the sphere colours by), with the target on a second
+  line and unmatched target terms highlighted.
+- **Tap-to-place touch input** — build on screen with no printer and no camera:
+  tap a palette gate to arm it, tap a wire to place it; controlled gates collect
+  their control(s) and then the target. Drag-and-drop is unchanged.
+- **Gate names on cube side faces** — a 60 mm cube is mostly seen from the side,
+  so all four vertical faces carry the gate name as a flush 1 mm inlay in the
+  same accent as the top face (one filament slot, not a new one); flip cubes
+  split each side face between their two gates, mono kits use paint wells.
+- **Wipe-tower-friendly plates + provenance stamps** — MMU print jobs anchor
+  their grid in the front-left bed corner and cap at 8 pieces by default, so all
+  free bed area consolidates into one region for the wipe tower. Every generated
+  plate `.md` and `.3mf` names the commit and date it was built from.
+
 ## Quick start
 
 ```sh

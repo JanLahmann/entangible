@@ -4,8 +4,9 @@
  * camera even starts; rendered as an overlay over the still-mounted app so an
  * active camera stream is never torn down (see App.tsx / hashNav.ts).
  *
- * Sections: what it is · how to use it · on-screen test boards (tap → fullscreen
- * viewer) · download the printable kit · the full project + links · footer.
+ * Sections: what it is · how to use it · run it for real · the modes (golf,
+ * Quantina, Runner) · on-screen test boards (tap → fullscreen viewer) ·
+ * download the printable kit · the full project + links · footer.
  * Styling is pk-token, dark, restrained; the copy voice is plain and warm.
  */
 import { useCallback, useEffect, useReducer, useRef } from 'react';
@@ -159,6 +160,50 @@ export function GuidePage() {
           </p>
         </section>
 
+        {/* 2b. Quantum Golf */}
+        <section className="pk-guide-sec">
+          <Label>Quantum Golf — eighteen holes</Label>
+          <p>
+            Switch <b>Settings → Mode → Golf</b> and each hole hands you a state to build.
+            Eighteen holes in four rounds, and every round unlocks new clubs <i>and</i> a new
+            idea: <b>Easy</b> plays with X, H and CX (superposition, Bell, GHZ); <b>Medium</b>{' '}
+            adds <b>Y</b> and, with it, minus signs; <b>Difficult</b> adds <b>Z</b> and{' '}
+            <b>S</b> for imaginary phases; <b>Extra</b> adds <b>T</b> and <b>controlled-H</b>,
+            for eighth-turn phases and uneven splits.
+          </p>
+          <p>
+            Every gate you add <i>or</i> remove counts a stroke, so a wrong tile costs you like
+            a wrong swing. Par carries a two-stroke margin: build the hole in the fewest gates
+            and you score an <b>EAGLE</b>, one gate more is a <b>BIRDIE</b>. The chip strip at
+            the bottom of the scorecard keeps every hole's result next to its par.
+          </p>
+          <p>
+            <b>New random 18</b> deals a fresh course. The targets are generated, but the
+            difficulty rules make sure each round still plays like its name — a medium hole
+            really does need Y, an extra hole really does need T or controlled-H. Every random
+            course carries a code (<b>Course #…</b>): tap it to copy a link, or type a code
+            into <b>Settings → Golf course code</b>. The same code deals the same eighteen
+            holes on any phone — play a friend.
+          </p>
+          <p>
+            Stuck? <b>Show solution</b> draws a short circuit that builds the target. It is
+            offered once you hole in, and also mid-hole once you are a few strokes over par or
+            a minute in. In the background the app searches for anything shorter: if it finds
+            one it draws that too, and if it can prove there is nothing shorter it labels the
+            drawing <b>Solution — optimal</b>.
+          </p>
+          <p className="pk-guide-muted">
+            The sphere names itself — a <b>Bloch sphere</b> on one-qubit holes, a{' '}
+            <b>Q-sphere</b> above. It always opens with |0…0⟩ at the top; drag to turn it (it
+            follows your finger) and the rewind arrow puts it back. The goal is drawn on it as
+            dashed rings with phase ticks, and the states that matter carry their ket label.
+            Balls of probability roll across the surface as your circuit plays, splitting when
+            a gate makes a superposition (<b>↻</b> replays). Below, the <b>State</b> and{' '}
+            <b>Target</b> lines write the same thing as math, and target terms you have not
+            matched yet glow.
+          </p>
+        </section>
+
         {/* 2b. Quantina */}
         <section className="pk-guide-sec">
           <Label>Quantina — a quantum cantina</Label>
@@ -218,10 +263,19 @@ export function GuidePage() {
           </p>
           <p className="pk-guide-muted">
             No printer <i>and</i> no camera? Choose <b>Build on screen</b> (Settings → Input, or the
-            button on the start screen) to place gates directly in the editor — play the 18-hole
-            Quantum Golf course (superposition to CH-only Cascade) and transfer to the Composer, all
-            with no hardware at all. In golf the on-screen palette hands you only the current
-            round's clubs; outside golf you get the full gate set.
+            button on the start screen) to place gates directly in the editor — play Quantum Golf
+            and transfer to the Composer, all with no hardware at all. In golf the on-screen
+            palette hands you only the current round's clubs; outside golf you get the full gate
+            set.
+          </p>
+          <p className="pk-guide-muted">
+            On a touchscreen you don't have to drag: <b>tap a gate tile to arm it</b>, then tap a
+            wire to place it there. For a controlled gate, tap the <b>control</b> wire first and
+            then the <b>target</b> (for a Toffoli: two controls, then the target) — a line above
+            the circuit says which tap is expected next. Tapping the armed tile again, or pressing
+            Escape, cancels. Tap a gate already on a wire for its small toolbar: the pencil edits
+            it (rotation angles and the wires of a controlled gate), the bin deletes it. Dragging
+            still works everywhere.
           </p>
         </section>
 
