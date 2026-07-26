@@ -35,7 +35,9 @@ from .laser import (
     laser_notes_text,
     laser_sheet_svgs,
     laser_tile_svg,
+    laser_wire_svg,
 )
+from .qubit_wire_block import QUBIT_WIRE_COPIES, QUBIT_WIRE_ID, QUBIT_WIRE_SLUG
 from .pdf import BackendUnavailable, available_backend, svg_to_pdf
 from .sheets import kit_sheet_svgs, kit_tile_ids, sample_sheet_svgs, tile_sheet_svgs
 from .tile_face import gate_marker_ids
@@ -95,8 +97,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--corners",
         action="store_true",
         help=(
-            "also export the four board-corner blocks (marker IDs 0-3) that "
-            "replace the printed mat (default: off)."
+            "also export the board furniture: the four corner blocks (marker "
+            "IDs 0-3) that replace the printed mat, plus the qubit-wire block "
+            f"(ID {QUBIT_WIRE_ID}), nested {QUBIT_WIRE_COPIES}x (default: off)."
         ),
     )
     laser_group.add_argument(
@@ -200,8 +203,10 @@ def generate_laser(
 
     Laser output is always SVG (never PDF): laser shops import vector SVG, and
     the red/black stroke convention must survive verbatim. With ``corners`` the
-    four board-corner blocks join the nested sheets and get their own one-off
-    SVGs, exactly like a gate tile.
+    board furniture joins the nested sheets and gets its own one-off SVGs,
+    exactly like a gate tile: the four corner blocks once each, and the one
+    qubit-wire design nested ``QUBIT_WIRE_COPIES`` times (its *count* is what
+    sets the board's qubit count, so the sheet cuts a full set).
     """
     bed_w, bed_h = bed
     written: list[Path] = []
@@ -213,7 +218,8 @@ def generate_laser(
 
     # --- Nested kit sheets ---------------------------------------------------
     cols, rows = laser_bed_grid(cfg, bed_w, bed_h, spacing=spacing)
-    sheet_ids = kit_tile_ids(cfg) + (corner_block_ids() if corners else [])
+    furniture_ids = corner_block_ids() + [QUBIT_WIRE_ID] * QUBIT_WIRE_COPIES
+    sheet_ids = kit_tile_ids(cfg) + (furniture_ids if corners else [])
     sheets = laser_sheet_svgs(
         cfg, sheet_ids, bed_w, bed_h, spacing=spacing, kerf=kerf
     )
@@ -230,13 +236,18 @@ def generate_laser(
             out_dir / "laser" / "tiles" / f"tile-{marker_id}.svg",
         )
 
-    # --- One SVG per corner block (opt-in) -----------------------------------
+    # --- One SVG per furniture block (opt-in) --------------------------------
     if corners:
         for marker_id in corner_block_ids():
             _write(
                 laser_corner_svg(marker_id, cfg, kerf=kerf),
                 out_dir / "laser" / "corners" / f"corner-{marker_id}.svg",
             )
+        # One file for all five wire blocks — they are the same piece.
+        _write(
+            laser_wire_svg(cfg, kerf=kerf),
+            out_dir / "laser" / "corners" / f"{QUBIT_WIRE_SLUG}.svg",
+        )
 
     # --- Shop README ---------------------------------------------------------
     _write(

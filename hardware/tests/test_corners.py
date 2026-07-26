@@ -399,6 +399,7 @@ def test_block_ink_is_the_marker_black(blocks):
 
 
 def test_corner_plate_needs_only_white_and_black(config, tmp_path):
+    """The furniture plate — corners *and* wire blocks — is two filaments."""
     infos = export_corner_batches(
         config,
         variant="tile",
@@ -407,6 +408,7 @@ def test_corner_plate_needs_only_white_and_black(config, tmp_path):
         spacing=SPACING,
         out_dir=tmp_path,
         params=PARAMS,
+        ids=corner_block_ids(),
     )
     assert [i.path.name for i in infos] == ["corners-batch1.3mf"]
     assert _palette(infos[0].path) == [("white", "#ffffff"), ("black", "#000000")]
@@ -446,6 +448,11 @@ def test_mono_forms_exist_for_a_corner_block(blocks):
 
 
 def test_corner_batch_totality_every_block_exactly_once(config, tmp_path):
+    """Restricted to the corner IDs, each of the four is placed exactly once.
+
+    (The default membership is the whole furniture family — corners *plus* the
+    five wire blocks; that totality is asserted in ``test_qubit_wire.py``.)
+    """
     infos = export_corner_batches(
         config,
         variant="tile",
@@ -454,6 +461,7 @@ def test_corner_batch_totality_every_block_exactly_once(config, tmp_path):
         spacing=SPACING,
         out_dir=tmp_path,
         params=PARAMS,
+        ids=corner_block_ids(),
     )
     placed = [s for i in infos for s in i.slugs]
     assert sorted(placed) == ["ll", "lr", "ul", "ur"]
@@ -473,6 +481,7 @@ def test_corner_batches_respect_the_cap(config, tmp_path):
         out_dir=tmp_path,
         params=PARAMS,
         max_per_bed=3,
+        ids=corner_block_ids(),
     )
     assert [i.path.name for i in infos] == [
         "corners-batch1.3mf",
@@ -494,7 +503,7 @@ def test_cli_corners_are_opt_in(tmp_path):
     plain = tmp_path / "plain"
     assert main(["generate", "--variant", "tile", "--gates", "H", "--out", str(plain)]) == 0
     names = {p.name for p in (plain / "tile").iterdir()}
-    assert not [n for n in names if n.startswith(("ul", "ur", "ll", "lr"))]
+    assert not [n for n in names if n.startswith(("ul", "ur", "ll", "lr", "qwire"))]
     assert "corners.md" not in names
 
 
@@ -517,6 +526,8 @@ def test_cli_corners_emit_the_block_file_set(tmp_path):
         "lr.3mf",
         "ll.3mf",
         "corners.md",
+        # The wire block ships under the same flag (see test_qubit_wire.py).
+        "qwire.3mf",
     }
     assert expected <= names, f"missing: {expected - names}"
     for name in ("ul.3mf", "ll.3mf"):

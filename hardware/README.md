@@ -46,9 +46,10 @@ uv run qamposer-hardware generate --variant cube --gates H --magnets
 
 Options: `--variant tile|cube|all`, `--gates H,X,RX,CNOT,...|<marker-id>,...|all`,
 `--magnets`, `--mono` (single-colour STLs for non-MMU printers — see
-[No MMU?](#no-mmu-single-colour-routes)), `--corners` (the four board-corner
-blocks — see [Corner blocks](#corner-blocks-no-mat)), `--out DIR` (default
-`out/hardware`, git-ignored).
+[No MMU?](#no-mmu-single-colour-routes)), `--corners` (the board furniture:
+four corner blocks + the qubit-wire block — see [Corner
+blocks](#corner-blocks-no-mat)), `--out DIR` (default `out/hardware`,
+git-ignored).
 
 Output per variant lands in `out/hardware/<variant>/`:
 
@@ -256,6 +257,21 @@ the board homography); the marker sits visibly off-centre toward the *outside*
 corner and the label reads upright when the block is placed correctly. The
 generated **`corners.md`** has the placement rules and outer-corner spacing.
 The left pair (UL/LL) marks the circuit-start edge.
+
+The same flag also emits the **qubit-wire block** (`qwire`, marker ID 46) — one
+design you print **three to five times**. The blocks are identical on purpose:
+lay them along the board's left edge between UL and LL, one per qubit, and it is
+their *count* and their *heights* that tell the app how many wires the board has
+(topmost = q1; none at all = the classic five). Keep centres at least the board's
+70 mm row pitch apart. The face carries a 2 mm black wire line at mid-height —
+running into both edges and passing behind the marker, exactly as a circuit wire
+passes behind a gate box, because ink may not enter the ArUco quiet zone — plus a
+small `q` on the inner edge. The marker is the standard 36 mm tile marker and it
+is *centred*, so the marker's centre is the block's centre is the wire's height:
+centre a block on a row and the wire is on the row, and a block turned 180° still
+declares the same wire. `plates --corners` packs the whole family — 4 corners +
+5 wire blocks = 9 pieces — onto `corners-batch1/2.3mf` (white + black only, no
+accent slot). `corners.md` covers placement for both.
 
 ## Double-faced pieces
 

@@ -19,11 +19,23 @@ from qamposer_assets.laser import (
     laser_sheet_svgs,
     laser_tile_body,
     laser_tile_svg,
+    laser_wire_body,
+    laser_wire_svg,
 )
 from qamposer_assets.corner_block import (
     corner_block_ids,
     corner_block_label,
     corner_block_marker_origin,
+)
+from qamposer_assets.qubit_wire_block import (
+    QUBIT_WIRE_COPIES,
+    QUBIT_WIRE_ID,
+    QUBIT_WIRE_LABEL,
+    QUBIT_WIRE_SLUG,
+    WIRE_STROKE_MM,
+    qubit_wire_line_y,
+    qubit_wire_marker_origin,
+    qubit_wire_segments,
 )
 from qamposer_assets.marker_svg import marker_group
 from qamposer_assets.sheets import kit_tile_ids
@@ -293,6 +305,8 @@ def test_cli_laser_corners_emit_svgs_and_notes(tmp_path):
         "corner-1.svg",
         "corner-2.svg",
         "corner-3.svg",
+        # One file for all five wire blocks — they are the same piece.
+        f"{QUBIT_WIRE_SLUG}.svg",
     ]
     for path in corners:
         assert path.stat().st_size > 500
@@ -305,3 +319,111 @@ def test_cli_laser_corners_emit_svgs_and_notes(tmp_path):
     nested = "".join(p.read_text(encoding="utf-8") for p in sheets)
     for marker_id in CORNER_IDS_LIST:
         assert f'id="laser-corner-{marker_id}"' in nested
+
+
+# ---------------------------------------------------------------------------
+# Qubit-wire block (opt-in): one design, five pieces, cut in wood
+# ---------------------------------------------------------------------------
+
+
+def test_wire_block_has_cut_and_engrave_layers():
+    svg = laser_wire_svg(CFG)
+    assert 'id="cut"' in svg
+    assert 'id="engrave"' in svg
+    colours = set(_HEX.findall(svg))
+    assert colours == {CUT_COLOR, ENGRAVE_COLOR}, colours
+    assert "#ffffff" not in svg
+
+
+def test_wire_block_marker_is_the_tile_marker_centred():
+    """The tiles' 36 mm marker, centred — byte-identical artwork to a tile's."""
+    x, y = qubit_wire_marker_origin(CFG)
+    assert (x, y) == pytest.approx(((CFG.tile.size - CFG.tile.marker_size) / 2.0,) * 2)
+    expected = marker_group(
+        QUBIT_WIRE_ID,
+        x,
+        y,
+        CFG.tile.marker_size,
+        dictionary=CFG.aruco_dictionary,
+        group_id="marker",
+        with_background=False,
+    )
+    assert expected in laser_wire_body(CFG)
+
+
+def test_wire_block_engraves_both_runs_at_mid_height():
+    """Two black lines at y = size/2, each touching one edge of the block."""
+    engrave = laser_wire_body(CFG).split('id="engrave"', 1)[1]
+    cy = qubit_wire_line_y(CFG)
+    for x0, x1 in qubit_wire_segments(CFG):
+        assert (
+            f'<line x1="{fmt(x0)}" y1="{fmt(cy)}" x2="{fmt(x1)}" y2="{fmt(cy)}" '
+            f'stroke="{ENGRAVE_COLOR}" stroke-width="{fmt(WIRE_STROKE_MM)}"'
+        ) in engrave
+    assert engrave.count("<line ") == 2  # exactly the two runs, nothing else
+    assert f">{QUBIT_WIRE_LABEL}</text>" in engrave
+
+
+def test_wire_block_ink_never_enters_the_quiet_zone():
+    """Every engraved x is outside the marker ± ``min_quiet_zone``.
+
+    The marker's own module rects are excluded (they *are* the marker); what is
+    checked is that the wire runs and the glyph keep out of the white ring.
+    """
+    t = CFG.tile
+    mx, _my = qubit_wire_marker_origin(CFG)
+    lo, hi = mx - t.min_quiet_zone, mx + t.marker_size + t.min_quiet_zone
+    body = laser_wire_body(CFG)
+    engrave = body.split('id="engrave"', 1)[1]
+    art = engrave.split("</g>", 1)[1]  # drop the marker group
+    for x0, x1 in re.findall(r'<line x1="([-\d.]+)"[^>]*x2="([-\d.]+)"', art):
+        assert float(x0) <= lo + 1e-9 or float(x0) >= hi - 1e-9
+        assert float(x1) <= lo + 1e-9 or float(x1) >= hi - 1e-9
+    for x in re.findall(r'<text x="([-\d.]+)"', art):
+        assert float(x) >= hi - 1e-9
+
+
+def test_wire_block_has_no_border_score():
+    """A frame score would cross the wire line and enter the quiet zone."""
+    engrave = laser_wire_body(CFG).split('id="engrave"', 1)[1]
+    assert f'<rect' not in engrave.split('id="marker"', 1)[1].split("</g>", 1)[1]
+
+
+def test_sheet_nesting_dispatches_the_wire_block():
+    """``laser_sheet_svgs`` handles the wire ID exactly like a gate or corner ID."""
+    svgs = laser_sheet_svgs(CFG, [10, 0, QUBIT_WIRE_ID], 300.0, 200.0)
+    assert len(svgs) == 1
+    assert 'id="laser-tile-10"' in svgs[0]
+    assert 'id="laser-corner-0"' in svgs[0]
+    assert f'id="laser-wire-{QUBIT_WIRE_ID}"' in svgs[0]
+
+
+def test_single_tile_svg_rejects_the_wire_block():
+    with pytest.raises(ValueError):
+        laser_tile_body(QUBIT_WIRE_ID, CFG)
+
+
+def test_cli_laser_nests_five_wire_blocks_and_documents_them(tmp_path):
+    rc = cli.main(["--out", str(tmp_path), "--corners", "laser"])
+    assert rc == 0
+    one_off = tmp_path / "laser" / "corners" / f"{QUBIT_WIRE_SLUG}.svg"
+    assert one_off.stat().st_size > 500
+    sheets = sorted((tmp_path / "laser" / "sheets").glob("*.svg"))
+    nested = "".join(p.read_text(encoding="utf-8") for p in sheets)
+    # Five copies of the one design nested across the sheets — the count is the
+    # signal, so a full set has to be cuttable from the kit sheets.
+    assert nested.count(f'id="laser-wire-{QUBIT_WIRE_ID}"') == QUBIT_WIRE_COPIES
+    notes = (tmp_path / "laser" / "README.txt").read_text(encoding="utf-8")
+    assert "Qubit-wire blocks" in notes
+    assert f"{QUBIT_WIRE_SLUG}.svg" in notes
+    assert f"{fmt(CFG.board.pitch)} mm apart" in notes
+
+
+def test_cli_laser_wire_block_is_opt_in(tmp_path):
+    rc = cli.main(["--out", str(tmp_path), "laser"])
+    assert rc == 0
+    sheets = sorted((tmp_path / "laser" / "sheets").glob("*.svg"))
+    nested = "".join(p.read_text(encoding="utf-8") for p in sheets)
+    assert f'id="laser-wire-{QUBIT_WIRE_ID}"' not in nested
+    notes = (tmp_path / "laser" / "README.txt").read_text(encoding="utf-8")
+    assert "Qubit-wire blocks" not in notes

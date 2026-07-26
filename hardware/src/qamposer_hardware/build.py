@@ -44,12 +44,14 @@ from build123d import (
 from qamposer_assets.config import AssetsConfig
 
 from .face import (
+    WIRE_STROKE_MM,
     FaceLayout,
     Rect,
     corner_face_layout,
     double_color_name,
     double_notch_rects,
     face_layout,
+    qubit_wire_face_layout,
 )
 from .params import HardwareParams
 
@@ -59,6 +61,9 @@ __all__ = [
     "SideLabel",
     "build_tile",
     "build_corner_block",
+    "build_qubit_wire_block",
+    "qubit_wire_accent_sketch",
+    "qubit_wire_side_labels",
     "build_double_tile",
     "footprint_area",
     "has_side_labels",
@@ -703,6 +708,121 @@ def build_corner_block(
 
 
 # --------------------------------------------------------------------------- #
+# Qubit-wire blocks — board furniture that declares one wire (marker ID 46)
+# --------------------------------------------------------------------------- #
+
+
+def qubit_wire_accent_sketch(layout: FaceLayout, config: AssetsConfig):
+    """The wire block's top-face art as one sketch: the wire runs + the ``q``.
+
+    The runs come straight from :attr:`FaceLayout.wires` (derived once in
+    :mod:`qamposer_assets.qubit_wire_block`) and are intersected with the tile
+    footprint so ink can never sit outside the body; the ``q`` is fitted into
+    :attr:`FaceLayout.band`, the strip along the block's inner edge.
+    """
+    band = layout.band
+    cap = min(config.typography.band_cap_height, band.h - 2.0)
+    sketch = Pos(band.cx, band.cy) * _fit_text(
+        layout.label, cap, band.w, band.h - 1.0
+    )
+    footprint = _footprint(layout)
+    for wr in layout.wires:
+        sketch = sketch + (footprint & (Pos(wr.cx, wr.cy) * Rectangle(wr.w, wr.h)))
+    return sketch
+
+
+def qubit_wire_side_labels(
+    layout: FaceLayout,
+    height: float,
+    params: HardwareParams,
+    *,
+    depth: float | None = None,
+) -> list[SideLabel]:
+    """The wire + ``q`` repeated on all four vertical faces of a cube block.
+
+    The top face answers "which wire?" only to someone looking down; a wire
+    block sitting in a row of five needs to say "I am a wire" from any seat. So
+    each vertical face carries the same two marks as the top: a bar spanning the
+    face's **flat** width (the rounded corners are not a place for art) at the
+    block's mid-height, and a ``q`` centred above it. Black, like every other
+    mark on the piece — no filament slot. Returns ``[]`` for a flat tile.
+    """
+    if not has_side_labels(height, params):
+        return []
+    flat = layout.size - 2.0 * layout.corner_radius
+    bar = Rectangle(flat, WIRE_STROKE_MM)
+    # Everything above the bar, less the edge margin, belongs to the glyph.
+    max_h = height / 2.0 - WIRE_STROKE_MM / 2.0 - params.side_label_margin
+    max_w = _side_max_width(layout, params)
+    sketch = bar
+    if max_h > 1.0 and layout.label:
+        glyph = _fit_text(layout.label, params.side_label_cap * height, max_w, max_h)
+        gh = glyph.bounding_box().size.Y
+        v = WIRE_STROKE_MM / 2.0 + (max_h - gh) / 2.0 + gh / 2.0
+        sketch = sketch + Pos(0.0, v) * glyph
+    d = params.side_label_depth if depth is None else depth
+    return [
+        SideLabel(
+            face=name,
+            role=f"side-{name}",
+            color_name=layout.accent_name,
+            hex=layout.accent_hex,
+            solid=_side_prism(sketch, plane, 0.0, 0.0, d),
+        )
+        for name, plane in side_face_planes(layout.size, height)
+    ]
+
+
+def build_qubit_wire_block(
+    config: AssetsConfig,
+    *,
+    variant: str,
+    height: float,
+    params: HardwareParams | None = None,
+    magnets: bool = False,
+) -> TileParts:
+    """Build the one qubit-wire block design (marker ID 46) as :class:`TileParts`.
+
+    Same three-part split as a corner block — white body, black marker, black
+    "accent" (here the wire line and the ``q``) — so a wire block never adds a
+    filament slot. One design: the kit prints it up to five times, and it is the
+    *count* and vertical position of the placed blocks that declare the wires.
+    A cube-height block repeats the wire and the ``q`` on all four vertical
+    faces (the #62 side-inlay technique, in black).
+    """
+    params = params or HardwareParams()
+    layout = qubit_wire_face_layout(config)
+    fd = params.face_depth
+
+    body = extrude(_footprint(layout), amount=height)
+    body = _chamfer_bottom(body, params.bottom_chamfer)
+    if height > params.hollow_min_height:
+        body = _hollow(body, layout, params, height)
+    if magnets:
+        body = _magnet_pockets(body, layout, params)
+
+    accent = _extrude_top(qubit_wire_accent_sketch(layout, config), height, fd)
+    marker = _marker_solid(layout, height, fd, params.marker_bleed)
+    side_labels = _clip_to_body(
+        qubit_wire_side_labels(layout, height, params), body
+    )
+
+    white_body = body - accent - marker
+    for sl in side_labels:
+        white_body = white_body - sl.solid
+
+    return TileParts(
+        layout=layout,
+        variant=variant,
+        height=height,
+        body=white_body,
+        marker=marker,
+        accent=accent,
+        side_labels=side_labels,
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Double-faced pieces
 # --------------------------------------------------------------------------- #
 
@@ -951,6 +1071,10 @@ def _mono_side_wells(parts, params: HardwareParams) -> Solid | None:
     if isinstance(parts, DoubleTileParts):
         labels = double_side_label_solids(
             parts.layout_a, parts.layout_b, parts.height, params, depth=depth
+        )
+    elif parts.layout.wires:  # qubit-wire block: a wire bar, not a gate name
+        labels = qubit_wire_side_labels(
+            parts.layout, parts.height, params, depth=depth
         )
     else:
         labels = side_label_solids(parts.layout, parts.height, params, depth=depth)

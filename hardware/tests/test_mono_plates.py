@@ -10,7 +10,7 @@ they come out bed-ready, with the one rule that makes them printable in bulk:
 
 The suite pins totality (every piece of the kit on the recessed beds exactly
 once, and again on the raised beds), the per-bed cap, the form separation, the
-opt-in corner blocks, and the provenance stamps on both the 3MFs and the notes —
+opt-in board furniture, and the provenance stamps on both the 3MFs and the notes —
 including the swap Z the raised beds are printed at.
 """
 
@@ -205,7 +205,7 @@ def test_cap_is_respected(config, tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# Double kit + opt-in corner blocks
+# Double kit + opt-in board furniture
 # --------------------------------------------------------------------------- #
 
 
@@ -228,7 +228,7 @@ def test_double_kit_expands_quantities_per_form(config, tmp_path):
         assert placed == ["cnot-ctrl+cnot-tgt", "h+x", "h+x"]
 
 
-def test_corner_blocks_are_opt_in(config, tmp_path):
+def test_furniture_blocks_are_opt_in(config, tmp_path):
     without = export_mono_batches(
         config, faces="single", variant="tile", height=TILE_H, bed=BED,
         spacing=SPACING, out_dir=tmp_path / "a", params=PARAMS, ids=[10],
@@ -242,7 +242,9 @@ def test_corner_blocks_are_opt_in(config, tmp_path):
     )
     for form in MONO_FORMS:
         placed = sorted(s for i in with_corners if i.form == form for s in i.slugs)
-        assert placed == ["h", "ll", "lr", "ul", "ur"]
+        # The whole furniture family: four corners + five identical wire blocks.
+        assert placed == ["h", "ll", "lr", "qwire", "qwire", "qwire", "qwire",
+                          "qwire", "ul", "ur"]
 
 
 # --------------------------------------------------------------------------- #

@@ -27,10 +27,15 @@ from .build import (
     build_double_tile,
     build_mono_raised,
     build_mono_recessed,
+    build_qubit_wire_block,
     build_tile,
 )
 from .face import (
     CORNER_LABEL_BY_ROLE,
+    QUBIT_WIRE_COPIES,
+    QUBIT_WIRE_ID,
+    QUBIT_WIRE_SLUG,
+    WIRE_STROKE_MM,
     accent_color_name,
     corner_block_ids,
     corner_block_label,
@@ -59,6 +64,7 @@ __all__ = [
     "export_single_batches",
     "export_double_batches",
     "export_corner_batches",
+    "furniture_ids",
     "export_mono_batches",
     "write_batch_plates_md",
     "write_corner_plates_md",
@@ -147,9 +153,17 @@ def _angle_slug(param: float) -> str:
 
 
 def tile_slug(spec: GateSpec) -> str:
-    """Filename-safe identifier for a gate tile or corner block (ASCII, lower)."""
+    """Filename-safe identifier for a gate tile or board-furniture block.
+
+    ASCII, lower case. Board furniture that is *not* a corner is — today and by
+    construction, since it is the only such piece — the qubit-wire block; keying
+    on "neither gate nor corner" rather than on the literal ``kind`` string keeps
+    the slug stable whatever the marker table ends up calling it.
+    """
     if spec.kind == "corner":
         return CORNER_LABEL_BY_ROLE[spec.role or ""].lower()
+    if spec.kind != "gate":
+        return QUBIT_WIRE_SLUG
     if spec.gate == "CNOT":
         return f"cnot-{spec.role}"
     if spec.parameter is not None:
@@ -930,16 +944,43 @@ def export_double_batches(
 
 
 # --------------------------------------------------------------------------- #
-# Board-corner blocks — an opt-in extra plate (white + black only)
+# Board furniture — an opt-in extra plate (white + black only)
 # --------------------------------------------------------------------------- #
+#
+# One family, one plate, one ``--corners`` flag: the four corner blocks (IDs
+# 0-3) and the five identical qubit-wire blocks (all ID 46) are the pieces that
+# make a bare table into a board. Nine pieces, none of them carrying a gate
+# colour — every mark is the marker black that slot 2 already holds — so the
+# plate needs no accent filament and can never disturb the gate plates' slots.
+
+
+def furniture_ids() -> list[int]:
+    """Every board-furniture piece, one entry per **physical block**.
+
+    The four corner blocks, then :data:`QUBIT_WIRE_COPIES` copies of the one
+    wire-block design — the wire blocks are identical by design (their *count*
+    is the signal), so the ID repeats.
+    """
+    return corner_block_ids() + [QUBIT_WIRE_ID] * QUBIT_WIRE_COPIES
+
+
+def _furniture_parts(
+    mid: int, config: AssetsConfig, variant: str, height: float, params: HardwareParams
+) -> TileParts:
+    """Build one board-furniture block — a corner block or the wire block."""
+    if mid == QUBIT_WIRE_ID:
+        return build_qubit_wire_block(
+            config, variant=variant, height=height, params=params
+        )
+    return build_corner_block(
+        mid, config, variant=variant, height=height, params=params
+    )
 
 
 def _corner_piece(
     mid: int, config: AssetsConfig, variant: str, height: float, params: HardwareParams
 ) -> _Piece:
-    parts = build_corner_block(
-        mid, config, variant=variant, height=height, params=params
-    )
+    parts = _furniture_parts(mid, config, variant, height, params)
     slug = tile_slug(parts.layout.spec)
     cp = [
         _ColoredPart(_part_color_hex(role, parts.layout), f"{slug}-{role}-{cn}", solid)
@@ -960,14 +1001,17 @@ def export_corner_batches(
     max_per_bed: int | None = None,
     ids: list[int] | None = None,
 ) -> list[BatchInfo]:
-    """Write bed-ready batch 3MFs for the four board-corner blocks.
+    """Write bed-ready batch 3MFs for the board-furniture set.
 
-    Their own plate: the label and side letters print in the marker black that
-    slot 2 already holds, so the plate needs **no accent filament** and can
-    never disturb the gate plates' slot assignment.
+    Nine blocks by default (:func:`furniture_ids`: four corners + five wire
+    blocks), which at the default 8-piece wipe-tower cap is two beds —
+    ``corners-batch1`` (8) and ``corners-batch2`` (1). Their own plate: every
+    mark prints in the marker black that slot 2 already holds, so the plate
+    needs **no accent filament** and can never disturb the gate plates' slot
+    assignment.
     """
     params = params or HardwareParams()
-    members = corner_block_ids() if ids is None else list(ids)
+    members = furniture_ids() if ids is None else list(ids)
     return _export_batches(
         lambda mid: _corner_piece(mid, config, variant, height, params),
         [members],
@@ -1086,10 +1130,10 @@ def _mono_entries(
             )
             entries.append((tile_slug(parts.layout.spec), _mono_forms(parts, params)))
     if corners:
-        for mid in corner_block_ids():
-            parts = build_corner_block(
-                mid, config, variant=variant, height=height, params=params
-            )
+        # One entry per physical furniture block, so the five identical wire
+        # blocks really do get five pieces on the mono beds.
+        for mid in furniture_ids():
+            parts = _furniture_parts(mid, config, variant, height, params)
             entries.append((tile_slug(parts.layout.spec), _mono_forms(parts, params)))
     return entries
 
@@ -1251,25 +1295,27 @@ def write_batch_plates_md(
 
 
 def write_corner_plates_md(base_md: Path, infos: list[BatchInfo]) -> Path:
-    """Append the **corner blocks** plate section to an existing ``plates.md``.
+    """Append the **board-furniture** plate section to an existing ``plates.md``.
 
-    Their own plate because they need no accent filament at all — white bodies,
-    black markers, black labels. Appended (never inserted) so the numbered gate
+    Its own plate because it needs no accent filament at all — white bodies,
+    black markers, black art. Appended (never inserted) so the numbered gate
     plates above keep the exact slot assignment they had without ``--corners``.
     """
     lines: list[str] = [
         "",
         "---",
         "",
-        "## Plate — board-corner blocks (opt-in)",
+        "## Plate — board furniture: corner + qubit-wire blocks (opt-in)",
         "",
         "| Slot | Filament | Hex |",
         "| ---- | -------- | --- |",
         f"| 1 | white (bodies) | `{WHITE_HEX}` |",
-        f"| 2 | black (markers + labels) | `{BLACK_HEX}` |",
+        f"| 2 | black (markers + art) | `{BLACK_HEX}` |",
         "",
-        "The four corner blocks replace the printed board mat. They carry **no "
-        "gate colour**: the UL/UR/LL/LR label and the side letters print in the "
+        f"{len(corner_block_ids())} corner blocks replace the printed board mat "
+        f"and {QUBIT_WIRE_COPIES} identical qubit-wire blocks (`{QUBIT_WIRE_SLUG}`) "
+        "set how many qubits the board plays. They carry **no gate colour**: the "
+        "UL/UR/LL/LR labels, the wire lines and the side art all print in the "
         "same black as the marker, so this plate needs only two filaments and "
         "the gate plates above keep their slots unchanged.",
         "",
@@ -1277,7 +1323,7 @@ def write_corner_plates_md(base_md: Path, infos: list[BatchInfo]) -> Path:
         "",
     ]
     for info in infos:
-        lines.append(f"### `{info.path.name}` — corner blocks, batch {info.batch}")
+        lines.append(f"### `{info.path.name}` — board furniture, batch {info.batch}")
         lines.append("")
         lines.append(
             f"{len(info.slugs)} block(s), {info.object_count} coloured objects: "
@@ -1291,13 +1337,68 @@ def write_corner_plates_md(base_md: Path, infos: list[BatchInfo]) -> Path:
     return base_md
 
 
-def write_corners_md(config: AssetsConfig, out_dir: Path) -> Path:
-    """Emit ``corners.md``: what the four blocks are, and how to place them.
+def _qubit_wire_md_lines(config: AssetsConfig) -> list[str]:
+    """The qubit-wire-block section of ``corners.md``.
 
-    Placement and *rotation* are load-bearing: the board homography is fitted
-    from each marker's four corner points, so a block turned by 90° skews the
-    whole board transform. This documents both cues that make the correct
-    orientation obvious on the printed part.
+    Everything a user needs to turn a pile of identical blocks into a qubit
+    count: how many to print, where they go, which one is ``q1``, and how far
+    apart. The numbers are read from ``assets.toml`` (the row pitch, the tile
+    size) so this text can never quote a stale spacing.
+    """
+    b = config.board
+    size = config.tile.size
+    return [
+        "---",
+        "",
+        "## Qubit-wire blocks — how many qubits the board plays",
+        "",
+        f"All {QUBIT_WIRE_COPIES} wire blocks are the **same piece** "
+        f"(`{QUBIT_WIRE_SLUG}`, marker ID {QUBIT_WIRE_ID}) — one design, printed "
+        "up to five times. They are not gates and they are not corners: they are "
+        "furniture, and it is *how many you lay down* that matters.",
+        "",
+        f"- **Print 3-5 copies** (five is the full set — the board tops out at "
+        f"{b.rows} qubits).",
+        "- Lay them along the board's **left edge**, between the `UL` and `LL` "
+        "corner blocks, one per qubit you want. Lay **none** and the board falls "
+        f"back to the classic {b.rows} wires.",
+        "- The blocks are read **top → bottom**: the topmost block is **q1**, "
+        "the next one down q2, and so on. Their vertical positions are what set "
+        "the wire heights, so put each block at the height you want its wire.",
+        f"- Keep block centres **at least {b.pitch:g} mm apart** — the board's "
+        f"own row pitch. The blocks are {size:g} mm square, so {b.pitch:g} mm "
+        f"centres leave a {b.pitch - size:g} mm gap and no two wires can be "
+        "mistaken for one.",
+        "",
+        "### Reading the face",
+        "",
+        f"The marker is the standard {config.tile.marker_size:g} mm tile marker "
+        "and it is centred, so the **marker's centre is the block's centre** — "
+        "and that is exactly the height of the wire the block declares. Centre "
+        "the block on the row and the wire is on the row; there is no offset to "
+        "remember, and a block turned 180° still declares the same wire.",
+        "",
+        f"The **wire line** is the {WIRE_STROKE_MM:g} mm black bar at "
+        "mid-height. It runs into both edges of the block and passes behind the "
+        "marker (ink cannot enter the marker's quiet zone, exactly as on a "
+        "circuit diagram where the wire disappears into a gate box) — so line up "
+        "the *bar*, edge to edge, with the row's wire. The small **q** sits just "
+        "above the bar on the block's inner (right) edge, the side the circuit "
+        "runs off towards. On a cube-height block the bar and the q are repeated "
+        "on all four vertical faces, so the wire reads from any seat.",
+        "",
+    ]
+
+
+def write_corners_md(config: AssetsConfig, out_dir: Path) -> Path:
+    """Emit ``corners.md``: the board-furniture blocks, and how to place them.
+
+    Covers both families the ``--corners`` flag emits — the four corner blocks
+    and the qubit-wire blocks. Placement and *rotation* are load-bearing for the
+    corners: the board homography is fitted from each marker's four corner
+    points, so a block turned by 90° skews the whole board transform. This
+    documents both cues that make the correct orientation obvious on the printed
+    part, then the wire blocks' own placement rules.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     b = config.board
@@ -1305,14 +1406,15 @@ def write_corners_md(config: AssetsConfig, out_dir: Path) -> Path:
     inner = size - b.corner_margin - b.corner_marker_size
 
     lines: list[str] = [
-        "# Board-corner blocks — the printed mat, in four pieces",
+        "# Board furniture — the printed mat, in loose blocks",
         "",
         _md_stamp(),
         "",
         "Four blocks carrying the board's ArUco corner markers (IDs 0-3). Put "
         "one at each corner of the play area and the vision pipeline gets "
         "exactly the fiducials the printed mat would have given it — no mat "
-        "needed. They are **opt-in**: generate them with `--corners`.",
+        "needed. They are **opt-in**: generate them with `--corners`, which also "
+        "emits the qubit-wire blocks documented at the bottom of this file.",
         "",
         "| Block | Marker ID | Detector role | Corner of the board |",
         "| ----- | --------- | ------------- | ------------------- |",
@@ -1366,11 +1468,12 @@ def write_corners_md(config: AssetsConfig, out_dir: Path) -> Path:
         "- keep all four blocks flat and coplanar (the homography assumes a "
         "plane), and keep the whole rectangle in frame.",
         "",
-        "Blocks do not draw the grid, the wires or the qubit labels — only the "
+        "Corner blocks do not draw the grid or the qubit labels — only the "
         "corners. The circuit still reads left → right from the UL/LL side. If "
         "you want the printed guides, use the mat (`qamposer-assets board`).",
         "",
     ]
+    lines += _qubit_wire_md_lines(config)
     path = out_dir / "corners.md"
     path.write_text("\n".join(lines), encoding="utf-8")
     return path

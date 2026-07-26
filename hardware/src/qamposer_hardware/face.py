@@ -31,6 +31,18 @@ from qamposer_assets.corner_block import (
     corner_block_marker_origin,
 )
 from qamposer_assets.marker_svg import marker_bit_matrix
+from qamposer_assets.qubit_wire_block import (
+    QUBIT_WIRE_COPIES,
+    QUBIT_WIRE_ID,
+    QUBIT_WIRE_LABEL,
+    QUBIT_WIRE_SLUG,
+    WIRE_STROKE_MM,
+    qubit_wire_glyph_box,
+    qubit_wire_line_y,
+    qubit_wire_marker_origin,
+    qubit_wire_segments,
+    qubit_wire_spec,
+)
 from qamposer_vision.markers import (
     MARKER_TABLE,
     ROTATION_ANGLES,
@@ -61,6 +73,17 @@ __all__ = [
     "corner_block_marker_origin",
     "corner_label_band",
     "corner_face_layout",
+    # Qubit-wire blocks — same re-export rule as the corner blocks above.
+    "QUBIT_WIRE_ID",
+    "QUBIT_WIRE_SLUG",
+    "QUBIT_WIRE_LABEL",
+    "QUBIT_WIRE_COPIES",
+    "WIRE_STROKE_MM",
+    "FURNITURE_INK_HEX",
+    "qubit_wire_spec",
+    "qubit_wire_glyph_band",
+    "qubit_wire_rects",
+    "qubit_wire_face_layout",
 ]
 
 #: Depth of the coloured top face (last N mm of tile height) — the MMU colour
@@ -175,6 +198,7 @@ class FaceLayout:
     label: str  # band caption text (e.g. "RX π/2"); "" for CNOT tiles
     side_label: str = ""  # cube side-face gate name (family only); "" = vector glyph
     dial: DialFace | None = None  # dial-face geometry (IDs 42/43/44), else None
+    wires: tuple[Rect, ...] = ()  # qubit-wire block: the wire line's drawn runs
 
     @property
     def black_cells(self) -> tuple[tuple[int, int], ...]:
@@ -300,9 +324,11 @@ def double_notch_rects(
 def face_layout(marker_id: int, config: AssetsConfig) -> FaceLayout:
     """Build the :class:`FaceLayout` for a gate tile.
 
-    Raises ``ValueError`` if ``marker_id`` is not a gate tile (corners 0-3 have
-    no printable gate face).
+    Raises ``ValueError`` if ``marker_id`` is not a gate tile (corners 0-3 and
+    the qubit-wire block 46 have no printable gate face).
     """
+    if marker_id == QUBIT_WIRE_ID:
+        raise ValueError(f"marker {marker_id} is the qubit-wire block, not a gate tile")
     spec = MARKER_TABLE[marker_id]
     if spec.kind != "gate":
         raise ValueError(f"marker {marker_id} is not a gate tile ({spec.label})")
@@ -407,6 +433,10 @@ def corner_face_layout(marker_id: int, config: AssetsConfig) -> FaceLayout:
     ``corner_marker_size``, unrotated, at the mat's own corner inset (see
     :mod:`qamposer_assets.corner_block`).
     """
+    if marker_id == QUBIT_WIRE_ID:
+        raise ValueError(
+            f"marker {marker_id} is the qubit-wire block, not a board corner"
+        )
     spec = MARKER_TABLE[marker_id]
     if spec.kind != "corner":
         raise ValueError(f"marker {marker_id} is not a board corner ({spec.label})")
@@ -458,6 +488,104 @@ def corner_face_layout(marker_id: int, config: AssetsConfig) -> FaceLayout:
         notches=(),
         label=label,
         side_label=label,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Qubit-wire blocks — board furniture that declares one wire (marker ID 46)
+# --------------------------------------------------------------------------- #
+#
+# Up to five identical blocks along the board's left edge; each declares one
+# qubit wire at its own vertical position. As with the corner blocks, every
+# dimension is derived once in :mod:`qamposer_assets.qubit_wire_block` and
+# shared with the laser-cut wood piece — this module only lifts that SVG
+# geometry into the 3D face frame. Also as with the corner blocks, the ink is
+# the marker black: a wire block adds geometry but never a filament slot.
+
+#: Board furniture (corner blocks + wire blocks) shares one ink — the marker
+#: black that is already on the plate. Spelled as its own name so the wire block
+#: does not read as borrowing the *corner* block's colour.
+FURNITURE_INK_HEX = CORNER_INK_HEX
+
+
+def qubit_wire_glyph_band(config: AssetsConfig) -> Rect:
+    """The ``q`` glyph box on a wire block's top face (3D coords)."""
+    x, y, w, h = qubit_wire_glyph_box(config)
+    size = config.tile.size
+    return Rect(cx=x + w / 2.0, cy=_flip_y(size, y + h / 2.0), w=w, h=h)
+
+
+def qubit_wire_rects(config: AssetsConfig) -> tuple[Rect, ...]:
+    """The wire line's drawn runs on a wire block's top face (3D coords).
+
+    Two runs — outer and inner — because the marker's quiet zone interrupts the
+    line; see :func:`qamposer_assets.qubit_wire_block.qubit_wire_segments`. Both
+    reach the block's edge exactly, at the block's mid-height.
+    """
+    size = config.tile.size
+    cy = _flip_y(size, qubit_wire_line_y(config))
+    return tuple(
+        Rect(cx=(x0 + x1) / 2.0, cy=cy, w=x1 - x0, h=WIRE_STROKE_MM)
+        for x0, x1 in qubit_wire_segments(config)
+    )
+
+
+def qubit_wire_face_layout(config: AssetsConfig) -> FaceLayout:
+    """:class:`FaceLayout` for the qubit-wire block (marker ID 46).
+
+    Like a corner block there is no colour band and no frame: plain body-white
+    with a black marker and black art. Unlike a corner block the marker is the
+    **tile's** 36 mm marker, centred on both axes, so the marker centre — the
+    point the detector reports — is the block's centre and therefore the height
+    of the wire it declares. The face art is the wire line itself (in
+    :attr:`FaceLayout.wires`) plus the ``q`` glyph in :attr:`FaceLayout.band`.
+    """
+    t = config.tile
+    size = t.size
+    inner_radius = max(t.corner_radius - t.frame_width, 0.0)
+    field_w = size - 2 * t.frame_width
+    centre = size / 2.0
+    white_field = Rect(cx=centre, cy=centre, w=field_w, h=field_w)
+
+    band = qubit_wire_glyph_band(config)
+
+    matrix = marker_bit_matrix(QUBIT_WIRE_ID, config.aruco_dictionary)
+    n = len(matrix)
+    module = t.marker_size / n
+    mx, my = qubit_wire_marker_origin(config)
+    cells: list[ModuleCell] = []
+    for r, row in enumerate(matrix):
+        for c, bit in enumerate(row):
+            cx = mx + c * module + module / 2.0
+            cy = _flip_y(size, my + r * module + module / 2.0)
+            cells.append(
+                ModuleCell(
+                    row=r,
+                    col=c,
+                    bit=int(bit),
+                    rect=Rect(cx=cx, cy=cy, w=module, h=module),
+                )
+            )
+
+    return FaceLayout(
+        marker_id=QUBIT_WIRE_ID,
+        spec=qubit_wire_spec(),
+        size=size,
+        corner_radius=t.corner_radius,
+        frame_width=t.frame_width,
+        band_height=band.h,
+        accent_hex=FURNITURE_INK_HEX,
+        accent_name="black",
+        white_field=white_field,
+        inner_radius=inner_radius,
+        band=band,
+        module_size=module,
+        modules=tuple(cells),
+        notch_count=0,
+        notches=(),
+        label=QUBIT_WIRE_LABEL,
+        side_label=QUBIT_WIRE_LABEL,
+        wires=qubit_wire_rects(config),
     )
 
 

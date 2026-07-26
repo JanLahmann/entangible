@@ -42,7 +42,17 @@ from .corner_block import (
     corner_block_marker_origin,
 )
 from .marker_svg import marker_group
-from .svgbase import esc, fmt, rect, svg_document
+from .qubit_wire_block import (
+    QUBIT_WIRE_COPIES,
+    QUBIT_WIRE_ID,
+    QUBIT_WIRE_LABEL,
+    WIRE_STROKE_MM,
+    qubit_wire_glyph_box,
+    qubit_wire_line_y,
+    qubit_wire_marker_origin,
+    qubit_wire_segments,
+)
+from .svgbase import esc, fmt, line, rect, svg_document
 from .symbols import control_dot, swap_cross, target_cross, text
 from .tile_face import _CAP_TO_EM, _fit_font, _rotated_text, tile_label
 
@@ -59,6 +69,8 @@ __all__ = [
     "laser_tile_svg",
     "laser_corner_body",
     "laser_corner_svg",
+    "laser_wire_body",
+    "laser_wire_svg",
     "laser_piece_body",
     "laser_bed_grid",
     "laser_sheet_svgs",
@@ -219,6 +231,8 @@ def laser_tile_body(marker_id: int, cfg: AssetsConfig, *, kerf: float = 0.0) -> 
     make this exact). ``kerf`` = 0 draws the cut at nominal size and the shop
     applies its own offset.
     """
+    if marker_id == QUBIT_WIRE_ID:
+        raise ValueError(f"marker {marker_id} is the qubit-wire block, not a gate tile")
     spec = MARKER_TABLE[marker_id]
     if spec.kind != "gate":
         raise ValueError(f"marker {marker_id} is not a gate tile ({spec.label})")
@@ -372,8 +386,93 @@ def laser_corner_svg(marker_id: int, cfg: AssetsConfig, *, kerf: float = 0.0) ->
     )
 
 
+# ---------------------------------------------------------------------------
+# The qubit-wire block
+# ---------------------------------------------------------------------------
+
+
+def laser_wire_body(cfg: AssetsConfig, *, kerf: float = 0.0) -> str:
+    """Inner SVG for the qubit-wire block: a ``#cut`` and an ``#engrave`` group.
+
+    Same 60 mm outline and the same red-cut / black-engrave convention as a gate
+    tile; the face is the wire block's (see
+    :mod:`~qamposer_assets.qubit_wire_block`): the standard tile marker, centred,
+    the wire line engraved at mid-height in the two runs the marker's quiet zone
+    leaves free, and a ``q`` in the strip along the block's inner edge.
+
+    As on the corner blocks there is deliberately **no border score**: the frame
+    line would run ``frame_width`` from the edge, i.e. straight through the wire
+    line's own ink and — on the marker's own sides — inside its quiet zone.
+    """
+    t = cfg.tile
+    k2 = kerf / 2.0
+
+    cut = (
+        '<g id="cut">'
+        + rect(
+            -k2,
+            -k2,
+            t.size + kerf,
+            t.size + kerf,
+            fill="none",
+            stroke=CUT_COLOR,
+            stroke_width=CUT_STROKE_MM,
+            rx=t.corner_radius + k2,
+        )
+        + "</g>"
+    )
+
+    mx, my = qubit_wire_marker_origin(cfg)
+    marker = marker_group(
+        QUBIT_WIRE_ID,
+        mx,
+        my,
+        t.marker_size,
+        dictionary=cfg.aruco_dictionary,
+        group_id="marker",
+        with_background=False,
+    )
+    cy = qubit_wire_line_y(cfg)
+    wire = "".join(
+        line(x0, cy, x1, cy, stroke=ENGRAVE_COLOR, stroke_width=WIRE_STROKE_MM)
+        for x0, x1 in qubit_wire_segments(cfg)
+    )
+    gx, gy, gw, gh = qubit_wire_glyph_box(cfg)
+    font = _fit_font(
+        QUBIT_WIRE_LABEL, gw, min(cfg.typography.band_cap_height, gh - 2.0) * _CAP_TO_EM
+    )
+    glyph = text(
+        gx + gw / 2.0,
+        gy + gh / 2.0,
+        QUBIT_WIRE_LABEL,
+        size=font,
+        color=ENGRAVE_COLOR,
+        family=cfg.typography.font_family,
+    )
+    engrave = f'<g id="engrave">{marker}{wire}{glyph}</g>'
+    return f'<g id="laser-wire-{QUBIT_WIRE_ID}">{cut}{engrave}</g>'
+
+
+def laser_wire_svg(cfg: AssetsConfig, *, kerf: float = 0.0) -> str:
+    """A standalone qubit-wire-block laser SVG document."""
+    k2 = kerf / 2.0
+    t = cfg.tile
+    body = (
+        f'<g transform="translate({fmt(k2)},{fmt(k2)})">'
+        f"{laser_wire_body(cfg, kerf=kerf)}</g>"
+    )
+    return svg_document(
+        t.size + kerf,
+        t.size + kerf,
+        body,
+        title=f"Laser qubit-wire block {esc(QUBIT_WIRE_LABEL)}",
+    )
+
+
 def laser_piece_body(marker_id: int, cfg: AssetsConfig, *, kerf: float = 0.0) -> str:
-    """Dispatch to the gate-tile or corner-block body by marker kind."""
+    """Dispatch to the gate-tile, corner-block or wire-block body by marker ID."""
+    if marker_id == QUBIT_WIRE_ID:
+        return laser_wire_body(cfg, kerf=kerf)
     if MARKER_TABLE[marker_id].kind == "corner":
         return laser_corner_body(marker_id, cfg, kerf=kerf)
     return laser_tile_body(marker_id, cfg, kerf=kerf)
@@ -473,9 +572,9 @@ def laser_notes_text(
 ) -> str:
     """Plain-text README for the laser shop, emitted next to the SVGs.
 
-    Pass ``cfg`` to append the board-corner-block section (the ``--corners``
-    export); its numbers come from ``assets.toml`` so the note can never quote a
-    stale margin or mat size.
+    Pass ``cfg`` to append the board-furniture section — corner blocks and
+    qubit-wire blocks (the ``--corners`` export); its numbers come from
+    ``assets.toml`` so the note can never quote a stale margin or mat size.
     """
     kerf_line = (
         f"Cut paths are OUTSET by kerf/2 = {fmt(kerf / 2.0)} mm "
@@ -511,6 +610,26 @@ it.
 
 Outer-corner spacing when laid out: {fmt(b.mat_width)} mm left-to-right,
 {fmt(b.mat_height)} mm top-to-bottom.
+
+Qubit-wire blocks (corners/qwire.svg)
+-------------------------------------
+{QUBIT_WIRE_COPIES} more {fmt(cfg.tile.size)} mm pieces, all cut from the SAME
+file (marker ID {QUBIT_WIRE_ID}) — the count is the signal, so cut three to five
+of them. They sit along the board's LEFT edge between the UL and LL corner
+blocks; each one declares one qubit wire at its own height, read top to bottom
+(topmost = q1). Lay none and the board plays the classic {b.rows} qubits.
+
+  * The marker is the tiles' {fmt(cfg.tile.marker_size)} mm one and it IS
+    centred, so the marker centre is the block centre is the wire height.
+  * The {fmt(WIRE_STROKE_MM)} mm wire line engraves at mid-height and runs into
+    both edges, passing BEHIND the marker (ink may not enter the quiet zone) —
+    like a wire meeting a gate box on a circuit diagram. Both stubs matter: they
+    are what the eye carries on into the row. Engrave them.
+  * The small "{QUBIT_WIRE_LABEL}" sits just above the line on the block's inner
+    (right) edge.
+  * No border score on these pieces either — it would cross the wire line.
+
+Keep wire-block centres at least {fmt(b.pitch)} mm apart (the board's row pitch).
 """
     return f"""Entangible — laser-cut wood gate-tile kit
 ============================================
