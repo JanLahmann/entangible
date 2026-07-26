@@ -16,9 +16,12 @@ on:
 permissions:
   contents: read
 
+# Superseded PR pushes are pointless to finish, but every commit that lands on
+# main must get its own verdict — main is pushed to often enough that cancelling
+# would leave commits permanently untested.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   python:
