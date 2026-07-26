@@ -45,6 +45,7 @@ const ISSUES_URL = 'https://github.com/JanLahmann/entangible/issues';
  */
 const RELEASE_BASE = 'https://github.com/JanLahmann/entangible/releases/latest/download';
 const TILES_3D_URL = `${RELEASE_BASE}/entangible-3d-tiles.zip`;
+const LASER_KIT_URL = `${RELEASE_BASE}/entangible-laser-kit.zip`;
 const QAMPOSER_URL = 'https://qamposer.org';
 const FAMILY_URL = 'https://fun-with-quantum.org';
 
@@ -320,8 +321,9 @@ export function GuidePage() {
             <section className="pk-guide-sec">
               <Label>Print the real kit</Label>
               <p>
-                One PDF, 13 × A4: 44 gate tiles + the board mat. Print at 100 % — never "fit to
-                page" — on matte paper; each sheet carries a 100 mm check ruler.
+                One PDF, 14 × A4: 49 gate tiles on five sheets, the board mat on nine. Print at
+                100 % — never "fit to page" — on matte paper; each sheet carries a 100 mm check
+                ruler.
               </p>
               <a
                 className="pk-guide-download"
@@ -343,13 +345,11 @@ export function GuidePage() {
               <p>
                 For multi-material printers (Prusa MMU, Bambu AMS): every gate as a colored 3MF —
                 white body, black marker, gate-colored band — as flat tiles (6 mm), chunky cubes
-                (60 mm, hollow), and <b>double-faced flip pieces</b>: two gates per piece, one
-                flip apart (flip H to get X; flip a rotation to get its inverse). Open a 3MF in
-                your slicer and map the pre-colored parts to filament slots. The{' '}
-                <b>print-jobs folder</b> has ready-to-slice bed layouts — up to 9 pieces
-                pre-arranged per job (250×220 bed) — so a whole kit is a handful of
-                open-slice-print files. Use matte filament — glossy tops glare and hurt
-                detection.
+                (60 mm, hollow, gate letters on all four sides so you can read a piece from across
+                the table), and <b>double-faced flip pieces</b>: two gates per piece, one flip
+                apart (flip H to get X; flip a rotation to get its inverse). Open a 3MF in your
+                slicer and map the pre-colored parts to filament slots. Use matte filament —
+                glossy tops glare and hurt detection.
               </p>
               <img
                 className="pk-guide-render"
@@ -357,18 +357,69 @@ export function GuidePage() {
                 alt="Isometric rendering of the Entangible gate cubes: H, X, Y, Z, CNOT control and target, RX(π/2), S and T"
                 loading="lazy"
               />
+              <p>
+                The zip holds one folder per variant — <b>tile</b>, <b>cube</b>,{' '}
+                <b>tile-double</b>, <b>cube-double</b> — each with its pieces, a{' '}
+                <b>plates.md</b> naming the filament colors slot by slot, and a <b>mono.md</b> for
+                single-color printing. Alongside them, <b>print-jobs</b> has ready-to-slice bed
+                layouts, up to 8 pieces pre-arranged per job (250×220 bed, room left for the wipe
+                tower), so a whole kit is a handful of open-slice-print files.
+              </p>
               <a
                 className="pk-guide-download"
                 href={TILES_3D_URL}
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Download the 3D tiles (3MF, ZIP)
+                Download the 3D tiles (3MF + STL, ZIP)
               </a>
               <p className="pk-guide-muted">
                 Rotation-gate variants carry tactile notches (1–4 = π/4, π/2, π, −π/2). Cubes
                 prefer a straight-overhead camera — their height parallax-shifts the face at
                 steep angles.
+              </p>
+            </section>
+
+            {/* One filament only */}
+            <section className="pk-guide-sec">
+              <Label>One filament only</Label>
+              <p>
+                No MMU? The same zip carries every piece twice more, as plain STLs.{' '}
+                <b>*-mono-recessed.stl</b> sinks each colored region 0.5 mm into the face as a
+                paint well with vertical walls: print it white, then fill the wells with acrylic
+                paint pens — the surrounding rim masks the paint edge. Only the black marker
+                really has to be painted; the gate glyph already says which gate it is.{' '}
+                <b>*-mono-raised.stl</b> does the opposite, standing the art proud of the face so
+                a single filament swap at the accent layer gives you a two-tone piece on any
+                printer. Each variant's <b>mono.md</b> has the recipe: which color belongs where,
+                and the exact Z height for the color change.
+              </p>
+            </section>
+
+            {/* Laser-cut wood */}
+            <section className="pk-guide-sec">
+              <Label>Laser-cut wood tiles</Label>
+              <p>
+                Access to a laser cutter? The wood kit is the same 60 mm tiles as SVGs in the
+                standard shop convention: pure red is a through-cut (the outline), pure black is
+                an engrave (the marker's dark modules, the gate glyph, a border score). Nothing
+                else — the bare wood is the marker's "white", so leave the marker field
+                unengraved and unpainted. Tiles come grid-nested onto full sheets for a laser bed
+                plus one SVG per gate for one-offs, cut paths outset by half the kerf so finished
+                pieces land at nominal size, and a plain-text shop README with material and kerf
+                notes. Birch or maple ply, matte, no lacquer.
+              </p>
+              <a
+                className="pk-guide-download"
+                href={LASER_KIT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Download the laser kit (SVG, ZIP)
+              </a>
+              <p className="pk-guide-muted">
+                Engrave one H tile first and check this app detects it before cutting the whole
+                kit — plies vary, and contrast is everything.
               </p>
             </section>
           </>

@@ -135,3 +135,53 @@ describe('guide section nav (#82)', () => {
     }
   });
 });
+
+/**
+ * Kit downloads (#88, #89). The 3D and laser kits are release assets rebuilt by
+ * CI, never files in this repository: a checked-in copy is what went stale (and
+ * put 37 MB into every site build) in the first place. These assertions pin the
+ * whole set of download links in the print section, so re-bundling one, or
+ * adding a kit without a link, cannot pass unnoticed.
+ */
+describe('guide kit downloads (#88, #89)', () => {
+  const RELEASE = 'https://github.com/JanLahmann/entangible/releases/latest/download';
+
+  beforeEach(() => {
+    window.location.hash = guideSectionHash('print');
+  });
+
+  it('links every kit, and serves the built ones from the latest release', () => {
+    render(<GuidePage />);
+
+    const links = [...document.querySelectorAll<HTMLAnchorElement>('a.pk-guide-download')];
+    const hrefs = links.map((a) => a.getAttribute('href'));
+    expect(hrefs.length).toBe(3);
+    // The paper kit is small and stays bundled; the two heavy kits are remote.
+    expect(hrefs[0]).toMatch(/entangible-print-kit-A4/);
+    expect(hrefs.slice(1)).toEqual([
+      `${RELEASE}/entangible-3d-tiles.zip`,
+      `${RELEASE}/entangible-laser-kit.zip`,
+    ]);
+  });
+
+  it('does not promise a forced download on a cross-origin link', () => {
+    render(<GuidePage />);
+
+    for (const a of document.querySelectorAll<HTMLAnchorElement>('a.pk-guide-download')) {
+      const href = a.getAttribute('href') ?? '';
+      // `download` is ignored cross-origin — claiming it would be a lie the
+      // browser silently breaks. Every kit link still opens in a new tab.
+      if (href.startsWith('http')) expect(a.hasAttribute('download')).toBe(false);
+      expect(a.getAttribute('target')).toBe('_blank');
+      expect(a.getAttribute('rel')).toMatch(/noopener/);
+    }
+  });
+
+  it('covers the printers without an MMU: mono STLs and laser-cut wood', () => {
+    render(<GuidePage />);
+
+    expect(screen.getByText(/-mono-recessed\.stl/)).toBeTruthy();
+    expect(screen.getByText(/-mono-raised\.stl/)).toBeTruthy();
+    expect(screen.getByText(/Laser-cut wood tiles/)).toBeTruthy();
+  });
+});
