@@ -33,6 +33,7 @@ from .detector import ArucoDetector, DetectedMarker
 from .grid import GridMapper
 from .markers import CORNER_IDS, MARKER_TABLE
 from .qasm import circuit_to_qasm
+from .wires import wire_positions
 
 __all__ = ["DetectionResult", "detect_circuit", "annotate_frame", "main"]
 
@@ -71,6 +72,7 @@ def detect_circuit(
     The corner markers' actual span is estimated first (task #94); a rectangle
     within the mat tolerance keeps the classic geometry verbatim, anything else
     is interpreted under ``board_layout`` (``"stretch"`` | ``"grid"``).
+    Qubit-wire blocks (task #95), when present, replace the model's rows.
     """
     if board_config is None:
         board_config = BoardConfig.from_toml()
@@ -93,7 +95,9 @@ def detect_circuit(
             markers=markers,
         )
 
-    model = build_board_model(board_config, rect, board_layout)
+    base = build_board_model(board_config, rect, board_layout)
+    wires = wire_positions(markers, board, base.grid)
+    model = build_board_model(board_config, rect, board_layout, tuple(wires))
     qubits = model.rows
     grid = GridMapper(model.grid, tolerance=grid_tolerance)
 

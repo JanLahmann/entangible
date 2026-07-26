@@ -19,7 +19,7 @@ import numpy as np
 
 from qamposer_vision.board import BoardConfig, BoardRect, with_rect
 from qamposer_vision.grid import GridConfig
-from qamposer_vision.markers import ARUCO_DICT_NAME, CORNER_IDS
+from qamposer_vision.markers import ARUCO_DICT_NAME, CORNER_IDS, QUBIT_WIRE_ID
 
 # ---------------------------------------------------------------------------
 # Scenarios: (marker_id, row, col) tile placements + golden fixture basename.
@@ -120,6 +120,9 @@ class RenderOptions:
     #: Lattice the ``placements`` cells are taken from. ``None`` = the mat's.
     #: Pass the active :class:`BoardModel`'s grid when rendering a non-mat board.
     grid: GridConfig | None = None
+    #: Board-mm y positions of qubit-wire blocks (task #95). Each is drawn as an
+    #: ID-46 marker at the board's left edge, at the corner-block inset.
+    wire_mm: tuple[float, ...] = ()
 
 
 def _aruco_dictionary() -> "cv2.aruco.Dictionary":
@@ -173,6 +176,15 @@ def render_board(
         square = config.corner_marker_square(corner_id)
         x0, y0 = mm_to_px(square[0][0], square[0][1])
         _paste_marker(canvas, dictionary, corner_id, x0, y0, corner_size_px)
+
+    # Qubit-wire blocks along the left edge, at the corner-block inset (#95).
+    wire_x = config.corner_margin + config.corner_marker_size / 2.0
+    for y_mm in opt.wire_mm:
+        x0, y0 = mm_to_px(
+            wire_x - config.corner_marker_size / 2.0,
+            y_mm - config.corner_marker_size / 2.0,
+        )
+        _paste_marker(canvas, dictionary, QUBIT_WIRE_ID, x0, y0, corner_size_px)
 
     # Gate tiles at their cell centres. A placement may carry a 4th element, the
     # clockwise 90° rotation (0-3) — used by dial tiles to select their angle.

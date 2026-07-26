@@ -364,7 +364,7 @@ deviation from the plan above: the validation fixtures use `qiskit.quantum_info`
 applying the exact documented channel schedule, which carries less alignment
 risk than matching Aer's implicit channel ordering.
 
-### Variable corner placement (task #94; implemented 2026-07-26)
+### Variable corner placement + qubit-wire blocks (tasks #94/#95; implemented 2026-07-26)
 
 Corner blocks (#90) replaced the printed mat, but detection still assumed the
 mat's exact geometry — the homography was fitted from 16 correspondences at
@@ -404,6 +404,20 @@ The setting is `settings.boardLayout` (`?board=stretch|grid`), broadcast
 booth-wide as `layout.boardLayout` / `select_board_layout` on the noise-preset
 pattern — a connected booth owns it so every screen in the room reads the table
 the same way.
+
+**Qubit-wire blocks.** Marker ID 46 is furniture, not a gate (deliberately
+absent from `MARKER_TABLE`, so it can never be filed into a cell; present in
+`DETECTABLE_IDS` so both detectors decode it). Up to five identical blocks along
+the left edge — anything left of the grid's first column — each declare one wire
+at their own y. Sorted top-down they are q0…qn−1, the emitted circuit carries
+exactly that many qubits, and a tile takes the row of the NEAREST wire within
+half a cell height (further away is off-grid, as ever — never guessed). The wire
+SET goes through its own asymmetric hysteresis, matching the tile stabilizer:
+growing it takes 5 of the last 7 frames, shrinking it (including losing the last
+block, which falls back to the model's own rows) takes 12 consecutive frames, so
+a hand crossing the left edge cannot resize the circuit. While the count holds
+steady the positions keep tracking silently. This subsumes the "adaptive qubit
+count" idea above on the *physical* side: the board really does play 1–5 qubits.
 
 ### Quantina — unified Qoffee-Maker/quantum-mixer successor (task #35; IMPLEMENTED 2026-07-20)
 

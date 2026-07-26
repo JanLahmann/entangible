@@ -149,3 +149,16 @@ export function prettyAngle(theta: number): string {
 
 /** ArUco marker ID → GateSpec. */
 export const MARKER_TABLE: ReadonlyMap<number, GateSpec> = buildMarkerTable();
+
+/**
+ * Every ID a detector must be able to DECODE: the gate/corner table plus the
+ * qubit-wire block. ID 46 carries no `GateSpec` — it is furniture, deliberately
+ * absent from `MARKER_TABLE` so it can never be mapped to a cell as a gate —
+ * but the board still has to recognise it, so `dictionary.json` carries it and
+ * the browser decodes exactly the same IDs `cv2.aruco` does. Mirrors
+ * `markers.DETECTABLE_IDS`.
+ */
+export const DETECTABLE_IDS: ReadonlySet<number> = new Set([
+  ...MARKER_TABLE.keys(),
+  QUBIT_WIRE_ID,
+]);

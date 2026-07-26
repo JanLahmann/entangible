@@ -55,6 +55,7 @@ from .markers import CORNER_IDS, MARKER_TABLE
 from .qasm import circuit_to_qasm
 from .sources import FrameSource
 from .stabilizer import Tile, TileStabilizer
+from .wires import WireStabilizer, wire_positions
 
 __all__ = ["MarkerObs", "CircuitEvent", "DetectionEvent", "Pipeline"]
 
@@ -109,6 +110,9 @@ class DetectionEvent:
     #: Active lattice size.
     rows: int = 0
     cols: int = 0
+    #: Qubit-wire blocks driving the rows (task #95), or ``None`` when the
+    #: model's own rows are used.
+    wires: int | None = None
 
 
 class Pipeline:
@@ -129,6 +133,7 @@ class Pipeline:
 
         self._detector = ArucoDetector()
         self._stabilizer = TileStabilizer()
+        self._wire_stabilizer = WireStabilizer()
         # Sticky board rectangle (task #94): starts at the mat and only moves
         # when an estimate differs by more than the mat tolerance, so a real mat
         # stays bit-for-bit classic and a fixed table layout does not re-derive
@@ -163,6 +168,7 @@ class Pipeline:
         self._structural_warnings = []
         self._emitted = False
         self._stabilizer.reset()
+        self._wire_stabilizer.reset()
         self._rect = mat_rect(self._board_config)
         self._model = mat_board_model(self._board_config)
         self._thread = threading.Thread(
@@ -204,6 +210,7 @@ class Pipeline:
             old = self._source
             self._source = source
         self._stabilizer.reset()
+        self._wire_stabilizer.reset()
         if old is not source:
             try:
                 old.close()
@@ -245,10 +252,21 @@ class Pipeline:
         self._update_rect(markers)
         board = fit_board(markers, self._board_config, self._rect)
 
-        # 2. Interpret it under the chosen layout.
-        self._model = build_board_model(
-            self._board_config, self._rect, self._board_layout
-        )
+        # 2. Qubit-wire blocks, read in the rectangle's own board frame (#95).
+        #    The pre-wire model supplies the "left of the grid" threshold; the
+        #    stabilized wire set then decides the rows.
+        base = build_board_model(self._board_config, self._rect, self._board_layout)
+        wire_changed = False
+        if board is not None:
+            wires = self._wire_stabilizer.update(
+                wire_positions(markers, board, base.grid)
+            )
+            wire_changed = wires.changed
+            self._model = build_board_model(
+                self._board_config, self._rect, self._board_layout, wires.wires
+            )
+        else:
+            self._model = base
 
         grid = GridMapper(self._model.grid)
         observations, marker_obs, off_grid_warnings = self._map_markers(
@@ -256,7 +274,7 @@ class Pipeline:
         )
 
         result = self._stabilizer.update(observations)
-        if result.changed or not self._emitted:
+        if result.changed or wire_changed or not self._emitted:
             self._rebuild_and_maybe_emit(result.stable, source)
 
         detection_warnings = self._compose_warnings(off_grid_warnings)
@@ -281,6 +299,7 @@ class Pipeline:
                     board_layout=self._model.kind,
                     rows=self._model.rows,
                     cols=self._model.cols,
+                    wires=self._model.wire_count,
                 )
             )
 
@@ -371,8 +390,8 @@ class Pipeline:
             TilePlacement(marker_id=mid, row=row, col=col, rotation=rot)
             for (mid, row, col, rot) in stable
         ]
-        # Qubit count follows the active model: the mat's five rows, or the
-        # rows derived from the board height.
+        # Qubit count follows the active model: the mat's five rows, the rows
+        # derived from the board height, or one per qubit-wire block (#95).
         build = build_circuit(placements, self._model.rows)
         self._structural_warnings = build.warnings
 

@@ -1,8 +1,9 @@
-"""Variable corner placement (#94).
+"""Variable corner placement (#94) + qubit-wire blocks (#95).
 
-Two axes, exercised end to end on synthetic renders: board scale (mat-exact /
-1.3x / 2x) and layout (``stretch`` / ``grid``). Plus the unit-level pieces:
-rectangle estimation accuracy, the mat tolerance and column/row derivation.
+Three axes, exercised end to end on synthetic renders: board scale
+(mat-exact / 1.3x / 2x), layout (``stretch`` / ``grid``) and wire-block count
+(0 / 3 / 5). Plus the unit-level pieces: rectangle estimation accuracy, the
+mat tolerance, column/row derivation, wire snapping and the wire hysteresis.
 """
 
 from __future__ import annotations
@@ -35,7 +36,8 @@ from qamposer_vision.board_model import (
 )
 from qamposer_vision.cli import detect_circuit
 from qamposer_vision.detector import ArucoDetector
-from qamposer_vision.grid import GridConfig
+from qamposer_vision.grid import GridConfig, GridMapper
+from qamposer_vision.wires import WireStabilizer
 
 from tests.utils.render_board import SCENARIOS_BY_NAME, RenderOptions, render_board
 
@@ -213,24 +215,126 @@ def test_unknown_layout_falls_back_to_grid(config: BoardConfig) -> None:
 
 
 # ---------------------------------------------------------------------------
-# End to end: scale x layout
+# Wire blocks (#95)
+# ---------------------------------------------------------------------------
+
+
+def test_wire_ys_replace_the_rows(config: BoardConfig) -> None:
+    wires = (120.0, 240.0, 360.0)
+    model = mat_board_model(config, wires)
+    assert model.rows == 3
+    assert model.wire_count == 3
+    assert model.grid.wire_ys == wires
+    mapper = GridMapper(model.grid)
+    cx, _cy = model.grid.cell_center(0, 0)
+    # A tile snaps to the NEAREST wire, not to a lattice row.
+    assert mapper.assign(cx, 122.0) == (0, 0)
+    assert mapper.assign(cx, 355.0) == (2, 0)
+    # ... but only within half a cell height; the middle of a wide gap is not
+    # silently filed onto one of them.
+    assert mapper.assign(cx, 180.0) is None
+
+
+def test_wire_ys_are_sorted_and_capped(config: BoardConfig) -> None:
+    model = mat_board_model(config, (400.0, 100.0, 250.0))
+    assert model.grid.wire_ys == (100.0, 250.0, 400.0)
+    six = tuple(float(50 * i) for i in range(1, 7))
+    assert len(mat_board_model(config, six).grid.wire_ys) == MAX_WIRES
+
+
+def test_no_wires_keeps_the_lattice(config: BoardConfig) -> None:
+    assert mat_board_model(config, ()).grid == GridConfig.from_board_config(config)
+    assert mat_board_model(config, None).grid.wire_ys is None
+
+
+def test_wire_stabilizer_appears_after_five_of_seven() -> None:
+    st = WireStabilizer()
+    ys = [100.0, 200.0, 300.0]
+    for _ in range(4):
+        assert st.update(ys).wires is None
+    result = st.update(ys)
+    assert result.changed
+    assert result.wires == (100.0, 200.0, 300.0)
+
+
+def test_wire_stabilizer_survives_a_hand_over_the_left_edge() -> None:
+    st = WireStabilizer()
+    ys = [100.0, 200.0, 300.0]
+    for _ in range(5):
+        st.update(ys)
+    assert st.stable is not None
+    # A hand hides the blocks for eleven frames: the wires must hold.
+    for _ in range(11):
+        result = st.update([])
+        assert not result.changed
+        assert result.wires == (100.0, 200.0, 300.0)
+    # The twelfth consecutive empty frame finally drops back to the lattice.
+    result = st.update([])
+    assert result.changed
+    assert result.wires is None
+
+
+def test_wire_stabilizer_tracks_positions_without_re_emitting() -> None:
+    st = WireStabilizer()
+    for _ in range(5):
+        st.update([100.0, 200.0])
+    result = st.update([104.0, 197.0])
+    assert not result.changed
+    assert result.wires == (104.0, 197.0)
+
+
+def test_wire_stabilizer_grows_on_debounce() -> None:
+    st = WireStabilizer()
+    for _ in range(5):
+        st.update([100.0, 200.0])
+    # A fourth... third block appears; four frames are not enough.
+    for _ in range(4):
+        assert not st.update([100.0, 200.0, 300.0]).changed
+    assert st.update([100.0, 200.0, 300.0]).changed
+    assert st.stable == (100.0, 200.0, 300.0)
+
+
+def test_wire_stabilizer_rejects_bad_window() -> None:
+    with pytest.raises(ValueError):
+        WireStabilizer(appear_window=3, appear_min=4)
+
+
+# ---------------------------------------------------------------------------
+# End to end: scale x layout x wire count
 # ---------------------------------------------------------------------------
 
 E2E_SCALES = [("mat", 1.0, 3.0), ("1.3x", 1.3, 2.4), ("2x", 2.0, 1.6)]
 
 
+def _wire_ys(config: BoardConfig, model_rows: int, height: float, count: int) -> tuple:
+    """`count` evenly spread wire positions inside a board `height` mm tall."""
+    top = config.grid_offset_y + config.cell_size / 2.0
+    bottom = height - top
+    if count == 1:
+        return (0.5 * (top + bottom),)
+    step = (bottom - top) / (count - 1)
+    return tuple(top + step * i for i in range(count))
+
+
 @pytest.mark.parametrize("label,scale,ppm", E2E_SCALES, ids=[s[0] for s in E2E_SCALES])
 @pytest.mark.parametrize("layout", ["stretch", "grid"])
-def test_end_to_end_scale_layout(
+@pytest.mark.parametrize("wire_count", [0, 3, 5])
+def test_end_to_end_scale_layout_wires(
     config: BoardConfig,
     detector: ArucoDetector,
     label: str,
     scale: float,
     ppm: float,
     layout: str,
+    wire_count: int,
 ) -> None:
     rect = _rect(config, scale, scale)
-    model = build_board_model(config, rect, layout)
+    wires = (
+        ()
+        if wire_count == 0
+        else _wire_ys(config, config.rows, rect.height, wire_count)
+    )
+    model = build_board_model(config, rect, layout, wires or None)
 
     # A Bell pair on the first two wires, at the first two columns.
     placements = ((10, 0, 0), (14, 0, 1), (15, 1, 1))
@@ -240,6 +344,7 @@ def test_end_to_end_scale_layout(
         RenderOptions(
             rect=(rect.width, rect.height),
             grid=model.grid,
+            wire_mm=wires,
             px_per_mm=ppm,
         ),
     )
@@ -247,8 +352,13 @@ def test_end_to_end_scale_layout(
     assert result.has_board
     assert result.model is not None
     assert result.model.kind == ("mat" if scale == 1.0 else layout)
-    assert result.circuit["qubits"] == model.rows
-    # Same Bell circuit whatever the board size or layout.
+    if wire_count:
+        assert result.model.wire_count == wire_count
+        assert result.circuit["qubits"] == wire_count
+    else:
+        assert result.model.wire_count is None
+        assert result.circuit["qubits"] == model.rows
+    # Same Bell circuit whatever the board size, layout or wire count.
     assert [(g["type"], g["position"]) for g in result.circuit["gates"]] == [
         ("H", 0),
         ("CNOT", 1),

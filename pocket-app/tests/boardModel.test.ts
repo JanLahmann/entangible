@@ -1,12 +1,13 @@
 /**
- * Variable corner placement (#94), TS side.
+ * Variable corner placement (#94) + qubit-wire blocks (#95), TS side.
  *
  * Mirrors `packages/qamposer-vision/tests/test_board_model.py`: rectangle
- * estimation accuracy, the mat tolerance and column/row derivation as units —
- * then the whole `PocketPipeline` over synthetic boards at three scales
- * (mat-exact / 1.3× / 2×) × both layouts. Markers are painted straight into a
- * grayscale buffer from the detector's own dictionary, so the suite is
- * hermetic (no camera, no Python).
+ * estimation accuracy, the mat tolerance, column/row derivation, wire snapping
+ * and the wire hysteresis as units — then the whole `PocketPipeline` over
+ * synthetic boards at three scales (mat-exact / 1.3× / 2×) × both layouts ×
+ * {0, 3, 5} wire blocks. Markers are painted straight into a grayscale buffer
+ * from the detector's own dictionary, so the suite is hermetic (no camera, no
+ * Python).
  */
 import { describe, it, expect } from 'vitest';
 import { estimateBoardRect, fitBoard } from '../src/vision/board';
@@ -34,6 +35,8 @@ import {
   type BoardModel,
 } from '../src/vision/boardModel';
 import { GridMapper } from '../src/vision/grid';
+import { WireStabilizer } from '../src/vision/wires';
+import { QUBIT_WIRE_ID } from '../src/vision/markers';
 import { PocketPipeline } from '../src/vision/pipeline';
 import type { Corner, DetectedMarker, GrayImage } from '../src/vision/detect';
 import dictionary from '../src/vision/dictionary.json';
@@ -222,8 +225,78 @@ describe('board model derivation (#94)', () => {
   });
 });
 
+describe('wire blocks replace the rows (#95)', () => {
+  it('snaps a tile to the nearest wire, within half a cell', () => {
+    const model = matBoardModel([120, 240, 360]);
+    expect(model.rows).toBe(3);
+    expect(model.wireCount).toBe(3);
+    const mapper = new GridMapper(model.grid);
+    const [cx] = mapper.cellCenter(0, 0);
+    expect(mapper.assign(cx, 122)).toEqual({ row: 0, col: 0 });
+    expect(mapper.assign(cx, 355)).toEqual({ row: 2, col: 0 });
+    // The middle of a wide gap is off-grid, not silently filed onto a wire.
+    expect(mapper.assign(cx, 180)).toBeNull();
+  });
+
+  it('sorts and caps the wire set', () => {
+    expect(matBoardModel([400, 100, 250]).grid.wireYs).toEqual([100, 250, 400]);
+    const six = [50, 100, 150, 200, 250, 300];
+    expect(matBoardModel(six).grid.wireYs!.length).toBe(MAX_WIRES);
+  });
+
+  it('keeps the lattice when there are no blocks', () => {
+    expect(matBoardModel([]).grid).toEqual(matBoardModel().grid);
+    expect(matBoardModel(null).grid.wireYs).toBeUndefined();
+  });
+});
+
+describe('WireStabilizer (#95)', () => {
+  it('appears after five of seven frames', () => {
+    const st = new WireStabilizer();
+    const ys = [100, 200, 300];
+    for (let i = 0; i < 4; i++) expect(st.update(ys).wires).toBeNull();
+    const result = st.update(ys);
+    expect(result.changed).toBe(true);
+    expect(result.wires).toEqual(ys);
+  });
+
+  it('survives a hand over the left edge for eleven frames', () => {
+    const st = new WireStabilizer();
+    const ys = [100, 200, 300];
+    for (let i = 0; i < 5; i++) st.update(ys);
+    for (let i = 0; i < 11; i++) {
+      const r = st.update([]);
+      expect(r.changed).toBe(false);
+      expect(r.wires).toEqual(ys);
+    }
+    const r = st.update([]);
+    expect(r.changed).toBe(true);
+    expect(r.wires).toBeNull();
+  });
+
+  it('tracks positions at a steady count without re-emitting', () => {
+    const st = new WireStabilizer();
+    for (let i = 0; i < 5; i++) st.update([100, 200]);
+    const r = st.update([104, 197]);
+    expect(r.changed).toBe(false);
+    expect(r.wires).toEqual([104, 197]);
+  });
+
+  it('grows on the same debounce', () => {
+    const st = new WireStabilizer();
+    for (let i = 0; i < 5; i++) st.update([100, 200]);
+    for (let i = 0; i < 4; i++) expect(st.update([100, 200, 300]).changed).toBe(false);
+    expect(st.update([100, 200, 300]).changed).toBe(true);
+    expect(st.stable).toEqual([100, 200, 300]);
+  });
+
+  it('rejects an impossible window', () => {
+    expect(() => new WireStabilizer(3, 4)).toThrow();
+  });
+});
+
 // ---------------------------------------------------------------------------
-// Rendered end-to-end: scale × layout
+// Rendered end-to-end: scale × layout × wire count
 // ---------------------------------------------------------------------------
 
 interface Canvas {
@@ -258,12 +331,13 @@ function paintMarker(cv: Canvas, id: number, x0: number, y0: number, px: number)
 }
 
 /**
- * Render a board spanning `model.rect`: the four corner fiducials and gate
- * tiles at the model's cell centres.
+ * Render a board spanning `model.rect`: the four corner fiducials, any wire
+ * blocks at the board's left edge, and gate tiles at the model's cell centres.
  */
 function renderBoard(
   model: BoardModel,
   placements: Array<[number, number, number]>,
+  wireYs: readonly number[],
   ppm: number,
 ): GrayImage {
   const padMm = 24;
@@ -283,6 +357,16 @@ function renderBoard(
     paintMarker(cv, id, x0, y0, BOARD.cornerMarkerSize * ppm);
   }
 
+  // Wire blocks along the left edge, at the corner-block inset.
+  const wireX = BOARD.cornerMargin + BOARD.cornerMarkerSize / 2;
+  for (const y of wireYs) {
+    const [x0, y0] = at(
+      wireX - BOARD.cornerMarkerSize / 2,
+      y - BOARD.cornerMarkerSize / 2,
+    );
+    paintMarker(cv, QUBIT_WIRE_ID, x0, y0, BOARD.cornerMarkerSize * ppm);
+  }
+
   const mapper = new GridMapper(model.grid);
   const half = TILE.markerSize / 2;
   for (const [id, row, col] of placements) {
@@ -293,50 +377,72 @@ function renderBoard(
   return { data: cv.data, width: cv.width, height: cv.height };
 }
 
-/** Feed one still through the pipeline until the hysteresis settles. */
-function settle(pipe: PocketPipeline, frame: GrayImage, frames = 8) {
+/**
+ * Feed one still through the pipeline until the hysteresis settles.
+ *
+ * Wire blocks need their own 5-of-7 debounce BEFORE the tiles can be filed
+ * against the wire rows, and the tile stabilizer then needs its own 5 frames on
+ * the new keys — so a wired board takes roughly twice the frames of a bare one
+ * to reach its final circuit (about a second at booth frame rates).
+ */
+function settle(pipe: PocketPipeline, frame: GrayImage, frames = 14) {
   let last = pipe.processFrame(frame);
   for (let i = 1; i < frames; i++) last = pipe.processFrame(frame);
   return last;
 }
 
-describe('PocketPipeline over scale × layout', () => {
+/** `count` evenly spread wire positions inside a board `height` mm tall. */
+function wireYsFor(height: number, count: number): number[] {
+  const top = BOARD.gridOffsetY + BOARD.cellSize / 2;
+  const bottom = height - top;
+  if (count === 1) return [(top + bottom) / 2];
+  const step = (bottom - top) / (count - 1);
+  return Array.from({ length: count }, (_, i) => top + step * i);
+}
+
+describe('PocketPipeline over scale × layout × wire count', () => {
   const scales: Array<[string, number, number]> = [
     ['mat', 1.0, 1.5],
     ['1.3×', 1.3, 1.2],
     ['2×', 2.0, 0.9],
   ];
   const layouts: BoardLayout[] = ['stretch', 'grid'];
+  const wireCounts = [0, 3, 5];
 
   for (const [label, scale, ppm] of scales) {
     for (const layout of layouts) {
-      it(`detects a Bell pair on a ${label} board, ${layout}`, () => {
-        const rect = rectOf(scale, scale);
-        const model = buildBoardModel(rect, layout);
-        const frame = renderBoard(
-          model,
-          [
-            [10, 0, 0],
-            [14, 0, 1],
-            [15, 1, 1],
-          ],
-          ppm,
-        );
+      for (const count of wireCounts) {
+        it(`detects a Bell pair on a ${label} board, ${layout}, ${count} wire blocks`, () => {
+          const rect = rectOf(scale, scale);
+          const wireYs = count === 0 ? [] : wireYsFor(rect.heightMm, count);
+          const model = buildBoardModel(rect, layout, count === 0 ? null : wireYs);
+          const frame = renderBoard(
+            model,
+            [
+              [10, 0, 0],
+              [14, 0, 1],
+              [15, 1, 1],
+            ],
+            wireYs,
+            ppm,
+          );
 
-        const pipe = new PocketPipeline({ boardLayout: layout });
-        const result = settle(pipe, frame);
+          const pipe = new PocketPipeline({ boardLayout: layout });
+          const result = settle(pipe, frame);
 
-        expect(result.boardFound).toBe(true);
-        expect(result.model.kind).toBe(scale === 1 ? 'mat' : layout);
-        expect(result.circuit.qubits).toBe(model.rows);
-        expect(result.circuit.gates.map((g) => [g.type, g.position])).toEqual([
-          ['H', 0],
-          ['CNOT', 1],
-        ]);
-        expect(result.circuit.gates[1].control).toBe(0);
-        expect(result.circuit.gates[1].target).toBe(1);
-        expect(result.warnings).toEqual([]);
-      });
+          expect(result.boardFound).toBe(true);
+          expect(result.model.kind).toBe(scale === 1 ? 'mat' : layout);
+          expect(result.model.wireCount).toBe(count === 0 ? null : count);
+          expect(result.circuit.qubits).toBe(count === 0 ? model.rows : count);
+          expect(result.circuit.gates.map((g) => [g.type, g.position])).toEqual([
+            ['H', 0],
+            ['CNOT', 1],
+          ]);
+          expect(result.circuit.gates[1].control).toBe(0);
+          expect(result.circuit.gates[1].target).toBe(1);
+          expect(result.warnings).toEqual([]);
+        });
+      }
     }
   }
 
@@ -351,6 +457,7 @@ describe('PocketPipeline over scale × layout', () => {
         [10, 0, 0],
         [11, 0, far],
       ],
+      [],
       1.0,
     );
     const result = settle(new PocketPipeline({ boardLayout: 'grid' }), frame);
@@ -364,7 +471,7 @@ describe('PocketPipeline over scale × layout', () => {
   it('keeps a mat-sized board on the classic model whatever the switch says', () => {
     for (const layout of layouts) {
       const model = matBoardModel();
-      const frame = renderBoard(model, [[10, 0, 0]], 1.5);
+      const frame = renderBoard(model, [[10, 0, 0]], [], 1.5);
       const result = settle(new PocketPipeline({ boardLayout: layout }), frame);
       expect(result.model.kind).toBe('mat');
       expect(result.model.rect).toEqual(MAT_RECT);

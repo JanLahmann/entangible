@@ -278,7 +278,9 @@ export function GuidePage() {
                 span <b>any rectangle</b> — the camera measures it from the blocks themselves.
                 Settings → <b>Board</b> decides what a bigger table buys: <b>More columns</b>{' '}
                 (the default) keeps the tile pitch and adds columns; <b>Bigger cells</b>{' '}
-                stretches the same eight columns to fill it.
+                stretches the same eight columns to fill it. Lay <b>qubit-wire blocks</b> down
+                the left edge and each one is a wire, so the circuit has exactly as many qubits
+                as you put down — none means the classic five.
               </p>
               <p className="pk-guide-muted pk-guide-tips">
                 Tips: pinch to zoom; the gear opens settings, including golf mode and a debug
@@ -427,7 +429,11 @@ export function GuidePage() {
                 and hands you extra columns to build longer circuits; <b>Bigger cells</b>{' '}
                 stretches the same eight columns across the whole table, which is easier to
                 aim at from across a room. A mat-sized layout ignores the switch and behaves
-                exactly as the printed mat always has.
+                exactly as the printed mat always has. Add <b>qubit-wire blocks</b> down the
+                left edge — up to five identical pieces between UL and LL — and each one
+                declares a wire at its own height: three blocks is a three-qubit circuit,
+                and gate tiles snap to the nearest wire. No wire blocks means the classic
+                five.
               </p>
             </section>
 
@@ -631,7 +637,8 @@ export function GuidePage() {
                 Booth tables are rarely mat-sized, so staff lay the corner blocks to whatever
                 rectangle the table gives them and set <b>Board</b> once from the operator
                 controls; the choice is broadcast, so every screen in the room reads the table
-                the same way.
+                the same way. Qubit-wire blocks along the left edge set how many qubits the
+                board plays — handy for a short demo on two or three wires.
               </p>
               <ul className="pk-guide-links">
                 <li>

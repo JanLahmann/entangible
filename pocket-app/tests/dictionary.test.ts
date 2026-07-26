@@ -7,8 +7,8 @@ describe('marker dictionary (generated, parity-gated by pytest)', () => {
     { bits: number[][]; rotations: number[] }
   >;
 
-  it('covers the 28 live marker ids', () => {
-    expect(Object.keys(markers).length).toBe(28);
+  it('covers the 29 decodable marker ids (28 gate/corner + the wire block)', () => {
+    expect(Object.keys(markers).length).toBe(29);
   });
 
   it('gives every marker a 4×4 bit matrix and four rotation codes', () => {

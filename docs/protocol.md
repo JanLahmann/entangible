@@ -74,7 +74,8 @@ Every message is a JSON object with a `type` discriminator.
     "rectMm": { "widthMm": 720, "heightMm": 500 },  // measured corner span; null when no board
     "layout": "mat",                    // "mat" | "stretch" | "grid" — model that read the frame
     "rows": 5,                          // active lattice size
-    "cols": 8
+    "cols": 8,
+    "wires": null                       // qubit-wire blocks driving the rows, or null
   },
   "markers": [
     { "id": 10, "row": 0, "col": 0 },   // on-grid gate tile
@@ -87,14 +88,15 @@ Every message is a JSON object with a `type` discriminator.
 ```
 
 - Corner markers (IDs 0–3) are **not** listed in `markers`.
-- `board.rectMm` / `layout` / `rows` / `cols` are **additive** (task #94) and
-  absent on older hosts. Since corner *blocks* replaced the
+- `board.rectMm` / `layout` / `rows` / `cols` / `wires` are **additive**
+  (tasks #94/#95) and absent on older hosts. Since corner *blocks* replaced the
   printed mat the four fiducials may span any rectangle: the detector measures
   it (the printed 40 mm marker gives the absolute scale) and reports it the same
   way the mat is measured, margins included — so a mat-sized layout reports
   `720 × 500` and `layout: "mat"`, which is the classic geometry, bit-for-bit.
   Anything outside a ±5 % band around the mat is read under the booth's
-  `layout.boardLayout`.
+  `layout.boardLayout`. `wires` counts the ID-46 qubit-wire blocks along the
+  left edge; when non-null it IS the emitted circuit's qubit count.
 - `warnings[].code` values come from the circuit builder (`lone_control`,
   `lone_target`, `cell_conflict`, `control_ambiguous`, …); `row`/`col` optional.
 - Latest `detection` also replayed on connect (may be stale; `fps: 0` signals
@@ -316,8 +318,8 @@ Pipeline(
 - `DetectionEvent`: `fps: float`, `board_found: bool`, `corners: int`,
   `reprojection_error_mm: float | None`, `markers: list[MarkerObs]`
   (`id`, `row`, `col` | `off_grid`), `warnings: list[BuildWarning]`, plus the
-  board model (#94): `rect_mm: tuple[float, float] | None`,
-  `board_layout: str`, `rows: int`, `cols: int`.
+  board model (#94/#95): `rect_mm: tuple[float, float] | None`,
+  `board_layout: str`, `rows: int`, `cols: int`, `wires: int | None`.
   Snake_case in Python; the host serializes to the camelCase JSON above.
 - `Pipeline(..., board_layout: str = "grid")` and `.set_board_layout(layout)`
   choose how a non-mat rectangle becomes a lattice; the host drives it from

@@ -27,7 +27,12 @@ import tomllib
 from pathlib import Path
 
 from qamposer_assets import marker_bit_matrix
-from qamposer_vision.markers import ARUCO_DICT_NAME, CORNER_IDS, CORNER_ROLES, MARKER_TABLE
+from qamposer_vision.markers import (
+    ARUCO_DICT_NAME,
+    CORNER_IDS,
+    CORNER_ROLES,
+    DETECTABLE_IDS,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VISION_DIR = REPO_ROOT / "pocket-app" / "src" / "vision"
@@ -64,7 +69,9 @@ def _inner_4x4(marker_id: int) -> Matrix:
 
 def build_dictionary() -> dict[str, object]:
     entries: dict[str, object] = {}
-    for marker_id in sorted(MARKER_TABLE):
+    # Every DECODABLE id, not just the gate table: the qubit-wire block (46) is
+    # furniture with no GateSpec, but the browser detector still has to read it.
+    for marker_id in sorted(DETECTABLE_IDS):
         inner = _inner_4x4(marker_id)
         rotations: list[int] = []
         rot = inner

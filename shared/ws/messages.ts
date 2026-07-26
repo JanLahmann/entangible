@@ -32,10 +32,11 @@ export interface CircuitMessage {
 /**
  * Board fiducial state within a `detection` message.
  *
- * Everything below `reprojectionErrorMm` is additive (task #94) and absent on
- * older hosts: since corner *blocks* replaced the printed mat, the four
+ * Everything below `reprojectionErrorMm` is additive (tasks #94/#95) and absent
+ * on older hosts: since corner *blocks* replaced the printed mat, the four
  * fiducials may span any rectangle, so the detector reports the rectangle it
- * measured, which model interpreted the frame and the resulting lattice size.
+ * measured, which model interpreted the frame, the resulting lattice size and
+ * how many qubit-wire blocks (if any) are driving the rows.
  */
 export interface BoardState {
   found: boolean;
@@ -58,6 +59,11 @@ export interface BoardState {
   /** Active lattice size. */
   rows?: number;
   cols?: number;
+  /**
+   * Qubit-wire blocks driving the rows (task #95), or null when the model's own
+   * rows are used. The emitted circuit's qubit count follows this.
+   */
+  wires?: number | null;
 }
 
 /** A detected gate tile (corner markers 0-3 are never listed here). */

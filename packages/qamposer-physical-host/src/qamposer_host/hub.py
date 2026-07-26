@@ -64,7 +64,7 @@ def serialize_detection(event: Any) -> dict:
             entry["col"] = w.col
         warnings.append(entry)
 
-    # Board model (#94) — additive, and tolerant of a pipeline build that
+    # Board model (#94/#95) — additive, and tolerant of a pipeline build that
     # predates it (getattr defaults keep the classic shape).
     rect = getattr(event, "rect_mm", None)
     board: dict[str, Any] = {
@@ -77,6 +77,7 @@ def serialize_detection(event: Any) -> dict:
         "layout": getattr(event, "board_layout", "mat"),
         "rows": getattr(event, "rows", 0),
         "cols": getattr(event, "cols", 0),
+        "wires": getattr(event, "wires", None),
     }
 
     return {

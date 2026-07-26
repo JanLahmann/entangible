@@ -177,6 +177,16 @@ board's left edge between the UL and LL corner blocks. Each block declares one
 qubit wire at its vertical position; blocks are sorted top→bottom into q1…qn.
 No wire blocks on the table = the classic fixed 5 wires.
 
+A block counts as a wire only when its centre falls **left of the grid's first
+column** in board mm, which keeps a block that wandered onto the lattice from
+silently becoming a wire; gate tiles then snap to the nearest wire within half a
+cell height. Because ID 46 carries no `GateSpec` it is absent from
+`MARKER_TABLE` (so it can never be filed into a cell as a gate) but present in
+`markers.DETECTABLE_IDS`, which is what the pocket dictionary export
+(`tools/export_dictionary.py` → `pocket-app/src/vision/dictionary.json`) reads —
+so the browser detector decodes exactly the same IDs `cv2.aruco` does. See
+docs/design.md, "Variable corner placement + qubit-wire blocks".
+
 ## Reserved
 
 IDs **47–49** (`RESERVED_IDS = range(47, 50)`) are reserved for future tiles.

@@ -43,14 +43,19 @@ def test_geometry_json_matches_fresh_export() -> None:
     assert _committed(exp.GEOMETRY_PATH) == exp.build_geometry()
 
 
-def test_dictionary_covers_every_marker_id() -> None:
-    from qamposer_vision.markers import MARKER_TABLE
+def test_dictionary_covers_every_detectable_id() -> None:
+    from qamposer_vision.markers import DETECTABLE_IDS, MARKER_TABLE, QUBIT_WIRE_ID
 
     exported = exp.build_dictionary()["markers"]
-    assert {int(k) for k in exported} == set(MARKER_TABLE)
-    # 28 live IDs (4 corners + 4 single-qubit + 2 CNOT halves + 12 rotations +
-    # S/T + 3 RX/RY/RZ dials + 1 SWAP ×).
-    assert len(exported) == 28
+    assert {int(k) for k in exported} == set(DETECTABLE_IDS)
+    # 29 IDs: the 28 gate/corner table entries (4 corners + 4 single-qubit +
+    # 2 CNOT halves + 12 rotations + S/T + 3 RX/RY/RZ dials + 1 SWAP ×) plus
+    # the qubit-wire block, which the browser must decode but which is NOT a
+    # gate (task #95).
+    assert len(exported) == 29
+    assert len(MARKER_TABLE) == 28
+    assert QUBIT_WIRE_ID in DETECTABLE_IDS
+    assert QUBIT_WIRE_ID not in MARKER_TABLE
 
 
 def test_every_marker_has_four_distinct_rotations_all_ids_unique() -> None:

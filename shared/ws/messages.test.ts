@@ -107,6 +107,7 @@ const detectionSample = {
     layout: 'mat',
     rows: 0,
     cols: 0,
+    wires: null,
   },
   markers: [{ id: 0, row: 0, col: 0, offGrid: true }],
   warnings: [{ code: '', message: '', row: 0, col: 0 }],

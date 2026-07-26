@@ -35,10 +35,12 @@ __all__ = [
     "ARUCO_DICT_NAME",
     "CORNER_IDS",
     "CORNER_ROLES",
+    "DETECTABLE_IDS",
     "DIAL_IDS",
     "GATE_TYPES",
     "GateSpec",
     "MARKER_TABLE",
+    "QUBIT_WIRE_ID",
     "RESERVED_IDS",
     "ROTATION_ANGLES",
     "ROTATION_GATES",
@@ -276,3 +278,11 @@ def _build_marker_table() -> dict[int, GateSpec]:
 #: The single source of truth: ArUco marker ID -> :class:`GateSpec`.
 #: Imported by both the detector and the assets generator.
 MARKER_TABLE: dict[int, GateSpec] = _build_marker_table()
+
+#: Every ID a detector must be able to DECODE: the gate/corner table plus the
+#: qubit-wire block. ID 46 carries no :class:`GateSpec` — it is furniture,
+#: deliberately absent from :data:`MARKER_TABLE` so it can never be mapped to a
+#: cell as a gate — but the board still has to recognise it. The pocket
+#: dictionary export reads this, so the browser detector decodes exactly the
+#: same IDs ``cv2.aruco`` does.
+DETECTABLE_IDS: frozenset[int] = frozenset(MARKER_TABLE) | {QUBIT_WIRE_ID}

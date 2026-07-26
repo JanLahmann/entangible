@@ -35,6 +35,7 @@ import {
   type BoardLayout,
   type BoardModel,
 } from './boardModel';
+import { WireStabilizer, wirePositions } from './wires';
 import { MARKER_TABLE } from './markers';
 import {
   TileStabilizer,
@@ -90,7 +91,8 @@ export interface FrameResult {
   readonly board: BoardResult | null;
   /**
    * The geometry this frame was interpreted in (task #94): the mat, or the
-   * rectangle the corner blocks span under the chosen layout.
+   * rectangle the corner blocks span under the chosen layout — plus the wire
+   * blocks driving its rows (#95).
    */
   readonly model: BoardModel;
   /** Per-frame detection counters for the debug overlay. */
@@ -115,6 +117,7 @@ export interface PipelineOptions {
 
 export class PocketPipeline {
   private readonly stabilizer = new TileStabilizer();
+  private readonly wireStabilizer = new WireStabilizer();
   private lastCircuit: BuildResult['circuit'] | null = null;
   private structuralWarnings: BuildWarning[] = [];
   private emitted = false;
@@ -150,6 +153,7 @@ export class PocketPipeline {
 
   reset(): void {
     this.stabilizer.reset();
+    this.wireStabilizer.reset();
     this.rect = MAT_RECT;
     this.model = matBoardModel();
     this.lastCircuit = null;
@@ -180,8 +184,18 @@ export class PocketPipeline {
     this.updateRect(blind);
     const board = fitBoard(blind, this.rect);
 
-    // 2. Interpret it under the chosen layout.
-    this.model = buildBoardModel(this.rect, this.boardLayout);
+    // 2. Qubit-wire blocks, read in the rectangle's own board frame (#95). The
+    //    pre-wire model supplies the "left of the grid" threshold; the
+    //    stabilized wire set then decides the rows.
+    const base = buildBoardModel(this.rect, this.boardLayout);
+    let wireChanged = false;
+    if (board) {
+      const wires = this.wireStabilizer.update(wirePositions(blind, board, base.grid));
+      wireChanged = wires.changed;
+      this.model = buildBoardModel(this.rect, this.boardLayout, wires.wires);
+    } else {
+      this.model = base;
+    }
     const grid = new GridMapper(this.model.grid);
 
     // Grid-guided redetection: recover markers the blind front end missed in
@@ -205,7 +219,7 @@ export class PocketPipeline {
 
     const result = this.stabilizer.update(observations);
     let changed = false;
-    if (result.changed || !this.emitted) {
+    if (result.changed || wireChanged || !this.emitted) {
       changed = this.rebuild(result.stable);
     }
 
@@ -300,8 +314,8 @@ export class PocketPipeline {
       const [markerId, row, col, rotation] = parseTile(t);
       return { markerId, row, col, rotation };
     });
-    // Qubit count follows the active model: the mat's five rows, or the rows
-    // derived from the board height.
+    // Qubit count follows the active model: the mat's five rows, the rows
+    // derived from the board height, or one per qubit-wire block (#95).
     const build = buildCircuit(placements, this.model.rows);
     this.structuralWarnings = build.warnings;
 
