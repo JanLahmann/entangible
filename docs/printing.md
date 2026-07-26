@@ -191,6 +191,15 @@ sans-serif. For print output that matches the design exactly, install it:
 - The `●`/`⊕` CNOT glyphs and the tile frames are drawn as **vector shapes**,
   not font glyphs, so they render correctly regardless of installed fonts.
 
+## No mat? Corner blocks
+
+The board mat itself is optional: four printed or laser-cut **corner blocks**
+(`UL`/`UR`/`LL`/`LR`, ArUco IDs 0–3) can stand in for it — lay one at each
+corner of the play area and detection gets exactly the fiducials the mat would
+have provided. They ship in the 3D and laser kits (`--corners`); the generated
+`corners.md` documents placement, orientation and spacing. See
+[`hardware/README.md`](../hardware/README.md#corner-blocks-no-mat).
+
 ## SVG → PDF backend
 
 PDFs are rendered from SVG via [`cairosvg`](https://cairosvg.org/), which needs

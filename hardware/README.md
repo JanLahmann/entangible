@@ -46,8 +46,9 @@ uv run qamposer-hardware generate --variant cube --gates H --magnets
 
 Options: `--variant tile|cube|all`, `--gates H,X,RX,CNOT,...|<marker-id>,...|all`,
 `--magnets`, `--mono` (single-colour STLs for non-MMU printers — see
-[No MMU?](#no-mmu-single-colour-routes)), `--out DIR` (default `out/hardware`,
-git-ignored).
+[No MMU?](#no-mmu-single-colour-routes)), `--corners` (the four board-corner
+blocks — see [Corner blocks](#corner-blocks-no-mat)), `--out DIR` (default
+`out/hardware`, git-ignored).
 
 Output per variant lands in `out/hardware/<variant>/`:
 
@@ -243,6 +244,18 @@ On a **cube**, the side-face gate names are **recessed 0.5 mm paint wells in bot
 mono forms**, raised included: a filament swap changes whole layers and therefore
 cannot colour a vertical face, but an acrylic pen can. Leaving them unpainted is
 fine too — the recess alone reads.
+
+## Corner blocks (no mat)
+
+`--corners` (on `generate` and `plates`) adds four blocks — **UL, UR, LL, LR** —
+that replace the printed board mat: each is a literal 60 mm crop of the mat's
+corner, carrying its ArUco corner marker (IDs 0–3) at the mat's exact size,
+offset and orientation, so laid out on any table they give the camera the same
+four fiducials the mat would. Orientation is load-bearing (a turned block skews
+the board homography); the marker sits visibly off-centre toward the *outside*
+corner and the label reads upright when the block is placed correctly. The
+generated **`corners.md`** has the placement rules and outer-corner spacing.
+The left pair (UL/LL) marks the circuit-start edge.
 
 ## Double-faced pieces
 

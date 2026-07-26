@@ -66,6 +66,20 @@ vision detector (`tools/render_cube_art.py`).*
   free bed area consolidates into one region for the wipe tower. Every generated
   plate `.md` and `.3mf` names the commit and date it was built from.
 
+## Downloads
+
+Every printable/cuttable deliverable is built by CI ([`artifacts.yml`](.github/workflows/artifacts.yml))
+and published as release assets, so these URLs always serve the current kit:
+
+- [`entangible-3d-tiles.zip`](https://github.com/JanLahmann/entangible/releases/latest/download/entangible-3d-tiles.zip)
+  — colored 3MFs, mono STLs (paint-well + filament-swap forms), bed-ready MMU
+  and mono plates, and the four UL/UR/LL/LR board-corner blocks, for all four
+  variants (tile, cube, and their double-faced siblings).
+- [`entangible-laser-kit.zip`](https://github.com/JanLahmann/entangible/releases/latest/download/entangible-laser-kit.zip)
+  — red-cut / black-engrave SVGs for wood tiles (corner blocks included).
+- [`entangible-print-kit-A4.pdf`](https://github.com/JanLahmann/entangible/releases/latest/download/entangible-print-kit-A4.pdf)
+  — the one-file paper kit: gate tiles + board mat.
+
 ## Quick start
 
 ```sh
