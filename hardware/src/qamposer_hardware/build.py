@@ -46,6 +46,7 @@ from qamposer_assets.config import AssetsConfig
 from .face import (
     FaceLayout,
     Rect,
+    corner_face_layout,
     double_color_name,
     double_notch_rects,
     face_layout,
@@ -57,6 +58,7 @@ __all__ = [
     "DoubleTileParts",
     "SideLabel",
     "build_tile",
+    "build_corner_block",
     "build_double_tile",
     "footprint_area",
     "has_side_labels",
@@ -620,6 +622,71 @@ def build_tile(
     side_labels = _clip_to_body(side_label_solids(layout, height, params), body)
 
     # White body = everything that is neither accent nor marker nor side label.
+    white_body = body - accent - marker
+    for sl in side_labels:
+        white_body = white_body - sl.solid
+
+    return TileParts(
+        layout=layout,
+        variant=variant,
+        height=height,
+        body=white_body,
+        marker=marker,
+        accent=accent,
+        side_labels=side_labels,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Board-corner blocks — the printable stand-in for the mat's corner markers
+# --------------------------------------------------------------------------- #
+
+
+def corner_label_sketch(layout: FaceLayout, config: AssetsConfig):
+    """The UL/UR/LL/LR label as a top-face sketch, centred in its strip.
+
+    Cap height is the gate band's, shrunk to the strip (the strip is whatever
+    the mat geometry leaves outside the marker's quiet zone — see
+    :func:`~qamposer_hardware.face.corner_label_band`).
+    """
+    band = layout.band
+    cap = min(config.typography.band_cap_height, band.h - 2.0)
+    return Pos(band.cx, band.cy) * _fit_text(layout.label, cap, band.w, band.h - 1.0)
+
+
+def build_corner_block(
+    marker_id: int,
+    config: AssetsConfig,
+    *,
+    variant: str,
+    height: float,
+    params: HardwareParams | None = None,
+    magnets: bool = False,
+) -> TileParts:
+    """Build one board-corner block (marker IDs 0-3) as :class:`TileParts`.
+
+    Same three-part colour split as a gate tile — but the "accent" is the black
+    block label, not a gate colour, so a corner block never adds a filament
+    slot. There is no colour band and no frame: the top face is plain white
+    with the mat's 40 mm corner marker and the label, so a camera sees exactly
+    what the printed mat shows. A cube-height block additionally carries the
+    label on all four vertical faces (the #62 side-letter inlay, in black).
+    """
+    params = params or HardwareParams()
+    layout = corner_face_layout(marker_id, config)
+    fd = params.face_depth
+
+    body = extrude(_footprint(layout), amount=height)
+    body = _chamfer_bottom(body, params.bottom_chamfer)
+    if height > params.hollow_min_height:
+        body = _hollow(body, layout, params, height)
+    if magnets:
+        body = _magnet_pockets(body, layout, params)
+
+    accent = _extrude_top(corner_label_sketch(layout, config), height, fd)
+    marker = _marker_solid(layout, height, fd, params.marker_bleed)
+    side_labels = _clip_to_body(side_label_solids(layout, height, params), body)
+
     white_body = body - accent - marker
     for sl in side_labels:
         white_body = white_body - sl.solid

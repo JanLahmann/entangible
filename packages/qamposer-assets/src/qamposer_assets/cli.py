@@ -24,12 +24,14 @@ from pathlib import Path
 from .board import board_svg, board_tiled_svgs
 from .cheatsheet import cheatsheet_svgs
 from .config import AssetsConfig, load_config
+from .corner_block import corner_block_ids
 from .laser import (
     DEFAULT_BED,
     DEFAULT_KERF_MM,
     DEFAULT_MARGIN_MM,
     DEFAULT_SPACING_MM,
     laser_bed_grid,
+    laser_corner_svg,
     laser_notes_text,
     laser_sheet_svgs,
     laser_tile_svg,
@@ -88,6 +90,14 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_SPACING_MM,
         help=f"mm gap between nested tiles (default: {DEFAULT_SPACING_MM}).",
+    )
+    laser_group.add_argument(
+        "--corners",
+        action="store_true",
+        help=(
+            "also export the four board-corner blocks (marker IDs 0-3) that "
+            "replace the printed mat (default: off)."
+        ),
     )
     laser_group.add_argument(
         "--kerf",
@@ -184,11 +194,14 @@ def generate_laser(
     *,
     spacing: float,
     kerf: float,
+    corners: bool = False,
 ) -> list[Path]:
     """Write the laser export (SVG-only): nested sheets, per-gate tiles, README.
 
     Laser output is always SVG (never PDF): laser shops import vector SVG, and
-    the red/black stroke convention must survive verbatim.
+    the red/black stroke convention must survive verbatim. With ``corners`` the
+    four board-corner blocks join the nested sheets and get their own one-off
+    SVGs, exactly like a gate tile.
     """
     bed_w, bed_h = bed
     written: list[Path] = []
@@ -200,8 +213,9 @@ def generate_laser(
 
     # --- Nested kit sheets ---------------------------------------------------
     cols, rows = laser_bed_grid(cfg, bed_w, bed_h, spacing=spacing)
+    sheet_ids = kit_tile_ids(cfg) + (corner_block_ids() if corners else [])
     sheets = laser_sheet_svgs(
-        cfg, kit_tile_ids(cfg), bed_w, bed_h, spacing=spacing, kerf=kerf
+        cfg, sheet_ids, bed_w, bed_h, spacing=spacing, kerf=kerf
     )
     stem = f"kit-bed{int(bed_w)}x{int(bed_h)}"
     multi = len(sheets) > 1
@@ -216,6 +230,14 @@ def generate_laser(
             out_dir / "laser" / "tiles" / f"tile-{marker_id}.svg",
         )
 
+    # --- One SVG per corner block (opt-in) -----------------------------------
+    if corners:
+        for marker_id in corner_block_ids():
+            _write(
+                laser_corner_svg(marker_id, cfg, kerf=kerf),
+                out_dir / "laser" / "corners" / f"corner-{marker_id}.svg",
+            )
+
     # --- Shop README ---------------------------------------------------------
     _write(
         laser_notes_text(
@@ -226,6 +248,7 @@ def generate_laser(
             kerf=kerf,
             cols=cols,
             rows=rows,
+            cfg=cfg if corners else None,
         ),
         out_dir / "laser" / "README.txt",
     )
@@ -269,7 +292,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "laser":
         # Laser export is SVG-only; no PDF backend involved.
         written = generate_laser(
-            cfg, args.out, args.bed, spacing=args.spacing, kerf=args.kerf
+            cfg, args.out, args.bed, spacing=args.spacing, kerf=args.kerf,
+            corners=args.corners,
         )
         _report(written, args.out, "laser SVG file(s)")
         return 0

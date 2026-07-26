@@ -35,6 +35,12 @@ from qamposer_vision.markers import (
 )
 
 from .config import AssetsConfig
+from .corner_block import (
+    corner_block_ids,
+    corner_block_label,
+    corner_block_label_strip,
+    corner_block_marker_origin,
+)
 from .marker_svg import marker_group
 from .svgbase import esc, fmt, rect, svg_document
 from .symbols import control_dot, swap_cross, target_cross, text
@@ -51,6 +57,9 @@ __all__ = [
     "DEFAULT_KERF_MM",
     "laser_tile_body",
     "laser_tile_svg",
+    "laser_corner_body",
+    "laser_corner_svg",
+    "laser_piece_body",
     "laser_bed_grid",
     "laser_sheet_svgs",
     "laser_notes_text",
@@ -282,6 +291,95 @@ def laser_tile_svg(marker_id: int, cfg: AssetsConfig, *, kerf: float = 0.0) -> s
 
 
 # ---------------------------------------------------------------------------
+# One board-corner block
+# ---------------------------------------------------------------------------
+
+
+def laser_corner_body(marker_id: int, cfg: AssetsConfig, *, kerf: float = 0.0) -> str:
+    """Inner SVG for one board-corner block: a ``#cut`` and an ``#engrave`` group.
+
+    Same 60 mm outline and the same red-cut / black-engrave convention as a gate
+    tile, but the face is the mat's corner instead of a gate: the mat-sized
+    (40 mm) marker at the mat's own corner inset, plus the UL/UR/LL/LR label in
+    the strip along the block's inner edge (see
+    :mod:`~qamposer_assets.corner_block`).
+
+    There is deliberately **no border score**: the frame line would run
+    ``frame_width`` from the edge, i.e. inside the marker's ``min_quiet_zone``
+    on the two outer sides, and engraved ink there can cost detections.
+    """
+    spec = MARKER_TABLE[marker_id]
+    if spec.kind != "corner":
+        raise ValueError(f"marker {marker_id} is not a board corner ({spec.label})")
+
+    t = cfg.tile
+    k2 = kerf / 2.0
+
+    cut = (
+        '<g id="cut">'
+        + rect(
+            -k2,
+            -k2,
+            t.size + kerf,
+            t.size + kerf,
+            fill="none",
+            stroke=CUT_COLOR,
+            stroke_width=CUT_STROKE_MM,
+            rx=t.corner_radius + k2,
+        )
+        + "</g>"
+    )
+
+    mx, my = corner_block_marker_origin(marker_id, cfg)
+    marker = marker_group(
+        marker_id,
+        mx,
+        my,
+        cfg.board.corner_marker_size,
+        dictionary=cfg.aruco_dictionary,
+        group_id="marker",
+        with_background=False,
+    )
+    sx, sy, sw, sh = corner_block_label_strip(marker_id, cfg)
+    label = corner_block_label(marker_id)
+    font = _fit_font(label, sw, min(cfg.typography.band_cap_height, sh - 2.0) * _CAP_TO_EM)
+    caption = text(
+        sx + sw / 2.0,
+        sy + sh / 2.0,
+        label,
+        size=font,
+        color=ENGRAVE_COLOR,
+        family=cfg.typography.font_family,
+        letter_spacing=font * 0.06,
+    )
+    engrave = f'<g id="engrave">{marker}{caption}</g>'
+    return f'<g id="laser-corner-{marker_id}">{cut}{engrave}</g>'
+
+
+def laser_corner_svg(marker_id: int, cfg: AssetsConfig, *, kerf: float = 0.0) -> str:
+    """A standalone single corner-block laser SVG document."""
+    k2 = kerf / 2.0
+    t = cfg.tile
+    body = (
+        f'<g transform="translate({fmt(k2)},{fmt(k2)})">'
+        f"{laser_corner_body(marker_id, cfg, kerf=kerf)}</g>"
+    )
+    return svg_document(
+        t.size + kerf,
+        t.size + kerf,
+        body,
+        title=f"Laser corner block {esc(corner_block_label(marker_id))}",
+    )
+
+
+def laser_piece_body(marker_id: int, cfg: AssetsConfig, *, kerf: float = 0.0) -> str:
+    """Dispatch to the gate-tile or corner-block body by marker kind."""
+    if MARKER_TABLE[marker_id].kind == "corner":
+        return laser_corner_body(marker_id, cfg, kerf=kerf)
+    return laser_tile_body(marker_id, cfg, kerf=kerf)
+
+
+# ---------------------------------------------------------------------------
 # Sheets (grid nesting onto a laser bed)
 # ---------------------------------------------------------------------------
 
@@ -347,7 +445,7 @@ def laser_sheet_svgs(
             y = margin + r * pitch
             parts.append(
                 f'<g transform="translate({fmt(x)},{fmt(y)})">'
-                f"{laser_tile_body(marker_id, cfg, kerf=kerf)}</g>"
+                f"{laser_piece_body(marker_id, cfg, kerf=kerf)}</g>"
             )
         title = (
             f"Laser sheet {i + 1}/{total} — {fmt(bed_w)}×{fmt(bed_h)} mm bed "
@@ -371,8 +469,14 @@ def laser_notes_text(
     kerf: float,
     cols: int,
     rows: int,
+    cfg: AssetsConfig | None = None,
 ) -> str:
-    """Plain-text README for the laser shop, emitted next to the SVGs."""
+    """Plain-text README for the laser shop, emitted next to the SVGs.
+
+    Pass ``cfg`` to append the board-corner-block section (the ``--corners``
+    export); its numbers come from ``assets.toml`` so the note can never quote a
+    stale margin or mat size.
+    """
     kerf_line = (
         f"Cut paths are OUTSET by kerf/2 = {fmt(kerf / 2.0)} mm "
         f"(kerf = {fmt(kerf)} mm), so finished pieces land at nominal size."
@@ -380,6 +484,34 @@ def laser_notes_text(
         else "Cut paths are drawn at NOMINAL size (kerf = 0). Apply your kerf "
         "offset in the cutter software."
     )
+    corner_section = ""
+    if cfg is not None:
+        b = cfg.board
+        labels = " / ".join(corner_block_label(m) for m in corner_block_ids())
+        corner_section = f"""
+Board-corner blocks (corners/corner-*.svg)
+------------------------------------------
+Four extra {fmt(cfg.tile.size)} mm pieces carrying the board's corner ArUco
+markers (IDs 0-3), labelled {labels}. They REPLACE the printed mat: lay one at
+each corner of the play area, the block's outer corner on the corner of the
+play area, and the app sees the same four fiducials the mat would have given
+it.
+
+  * The marker is {fmt(b.corner_marker_size)} mm (not the tiles'
+    {fmt(cfg.tile.marker_size)} mm) and sits OFF-CENTRE: {fmt(b.corner_margin)}
+    mm from the block's two outer edges, more from the inner two. That offset is
+    the orientation cue — the short margins point out of the board.
+  * The label reads upright and sits along the block's INNER edge, i.e. facing
+    the middle of the board.
+  * ROTATION MATTERS. The app fits the board transform from each marker's four
+    corner points, so a block turned 90 degrees skews the whole board. Engrave
+    the label; do not omit it.
+  * No border score on these pieces (it would fall inside the marker's quiet
+    zone). Leave the field bare, as on the gate tiles.
+
+Outer-corner spacing when laid out: {fmt(b.mat_width)} mm left-to-right,
+{fmt(b.mat_height)} mm top-to-bottom.
+"""
     return f"""Entangible — laser-cut wood gate-tile kit
 ============================================
 
@@ -430,4 +562,4 @@ Board mat
 ---------
 The board mat is NOT part of the laser export — it stays printed paper/PDF
 (see docs/printing.md). Only gate tiles are laser-cut here.
-"""
+{corner_section}"""

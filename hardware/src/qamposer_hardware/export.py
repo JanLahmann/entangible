@@ -21,6 +21,7 @@ from qamposer_vision.markers import MARKER_TABLE, GateSpec, pretty_angle
 from .build import (
     DoubleTileParts,
     TileParts,
+    build_corner_block,
     build_double_mono_raised,
     build_double_mono_recessed,
     build_double_tile,
@@ -28,9 +29,15 @@ from .build import (
     build_mono_recessed,
     build_tile,
 )
-from .face import accent_color_name, double_color_name
-from .pack import FOOTPRINT, Bed, plan_batches
-from .params import HardwareParams
+from .face import (
+    CORNER_LABEL_BY_ROLE,
+    accent_color_name,
+    corner_block_ids,
+    corner_block_label,
+    double_color_name,
+)
+from .pack import FOOTPRINT, Bed, bed_capacity, plan_batches
+from .params import DOUBLE_FACED_KIT, HardwareParams
 
 __all__ = [
     "tile_slug",
@@ -50,7 +57,10 @@ __all__ = [
     "BatchInfo",
     "export_single_batches",
     "export_double_batches",
+    "export_corner_batches",
     "write_batch_plates_md",
+    "write_corner_plates_md",
+    "write_corners_md",
     "provenance",
 ]
 
@@ -134,7 +144,9 @@ def _angle_slug(param: float) -> str:
 
 
 def tile_slug(spec: GateSpec) -> str:
-    """Filename-safe identifier for a gate tile (ASCII, lowercase)."""
+    """Filename-safe identifier for a gate tile or corner block (ASCII, lower)."""
+    if spec.kind == "corner":
+        return CORNER_LABEL_BY_ROLE[spec.role or ""].lower()
     if spec.gate == "CNOT":
         return f"cnot-{spec.role}"
     if spec.parameter is not None:
@@ -804,8 +816,6 @@ def _write_batch_3mf(
 
 
 def _cols_rows(bed: Bed, spacing: float) -> tuple[int, int]:
-    from .pack import bed_capacity
-
     return bed_capacity(bed, FOOTPRINT, spacing)
 
 
@@ -819,13 +829,16 @@ def _export_batches(
     plate_accents: list[list[str]] | None = None,
     name_accent=accent_color_name,
     max_per_bed: int | None = None,
+    stem_fmt: str = "plate{plate}-batch{batch}",
 ) -> list[BatchInfo]:
     """Shared driver: build each filament plate's pieces, pack, write batch 3MFs.
 
     ``plate_accents[i]`` is plate ``i``'s accent order (from the same
     plate-grouping source plates.md uses); every batch of that plate reuses it so
     a colour keeps its slot across the plate's batches. Defaults to per-batch
-    encounter order when omitted.
+    encounter order when omitted. ``stem_fmt`` names the files (``{plate}`` /
+    ``{batch}``); the corner-block plate uses its own stem so it can never be
+    confused with a numbered gate plate.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     cols, rows = _cols_rows(bed, spacing)
@@ -841,7 +854,7 @@ def _export_batches(
             take = len(positions)
             batch = pieces[idx : idx + take]
             idx += take
-            path = out_dir / f"plate{pi}-batch{bi}.3mf"
+            path = out_dir / f"{stem_fmt.format(plate=pi, batch=bi)}.3mf"
             n_obj = _write_batch_3mf(
                 batch, positions, path, accents=accents, name_accent=name_accent
             )
@@ -910,6 +923,58 @@ def export_double_batches(
         plate_accents=[g["families"] for g in groups],
         name_accent=double_color_name,
         max_per_bed=max_per_bed,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Board-corner blocks — an opt-in extra plate (white + black only)
+# --------------------------------------------------------------------------- #
+
+
+def _corner_piece(
+    mid: int, config: AssetsConfig, variant: str, height: float, params: HardwareParams
+) -> _Piece:
+    parts = build_corner_block(
+        mid, config, variant=variant, height=height, params=params
+    )
+    slug = tile_slug(parts.layout.spec)
+    cp = [
+        _ColoredPart(_part_color_hex(role, parts.layout), f"{slug}-{role}-{cn}", solid)
+        for role, cn, solid in parts.named_parts()
+    ]
+    return _Piece(slug, cp)
+
+
+def export_corner_batches(
+    config: AssetsConfig,
+    *,
+    variant: str,
+    height: float,
+    bed: Bed,
+    spacing: float,
+    out_dir: Path,
+    params: HardwareParams | None = None,
+    max_per_bed: int | None = None,
+    ids: list[int] | None = None,
+) -> list[BatchInfo]:
+    """Write bed-ready batch 3MFs for the four board-corner blocks.
+
+    Their own plate: the label and side letters print in the marker black that
+    slot 2 already holds, so the plate needs **no accent filament** and can
+    never disturb the gate plates' slot assignment.
+    """
+    params = params or HardwareParams()
+    members = corner_block_ids() if ids is None else list(ids)
+    return _export_batches(
+        lambda mid: _corner_piece(mid, config, variant, height, params),
+        [members],
+        bed,
+        spacing,
+        out_dir,
+        plate_accents=[[]],
+        name_accent=accent_color_name,
+        max_per_bed=max_per_bed,
+        stem_fmt="corners-batch{batch}",
     )
 
 
@@ -1004,3 +1069,129 @@ def write_batch_plates_md(
     with base_md.open("a", encoding="utf-8") as fh:
         fh.write("\n".join(lines))
     return base_md
+
+
+def write_corner_plates_md(base_md: Path, infos: list[BatchInfo]) -> Path:
+    """Append the **corner blocks** plate section to an existing ``plates.md``.
+
+    Their own plate because they need no accent filament at all — white bodies,
+    black markers, black labels. Appended (never inserted) so the numbered gate
+    plates above keep the exact slot assignment they had without ``--corners``.
+    """
+    lines: list[str] = [
+        "",
+        "---",
+        "",
+        "## Plate — board-corner blocks (opt-in)",
+        "",
+        "| Slot | Filament | Hex |",
+        "| ---- | -------- | --- |",
+        f"| 1 | white (bodies) | `{WHITE_HEX}` |",
+        f"| 2 | black (markers + labels) | `{BLACK_HEX}` |",
+        "",
+        "The four corner blocks replace the printed board mat. They carry **no "
+        "gate colour**: the UL/UR/LL/LR label and the side letters print in the "
+        "same black as the marker, so this plate needs only two filaments and "
+        "the gate plates above keep their slots unchanged.",
+        "",
+        "See `corners.md` for which block goes where and which way up.",
+        "",
+    ]
+    for info in infos:
+        lines.append(f"### `{info.path.name}` — corner blocks, batch {info.batch}")
+        lines.append("")
+        lines.append(
+            f"{len(info.slugs)} block(s), {info.object_count} coloured objects: "
+            + ", ".join(f"`{s}`" for s in info.slugs)
+        )
+        lines.append("")
+        lines.extend(_ascii_layout(info))
+        lines.append("")
+    with base_md.open("a", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+    return base_md
+
+
+def write_corners_md(config: AssetsConfig, out_dir: Path) -> Path:
+    """Emit ``corners.md``: what the four blocks are, and how to place them.
+
+    Placement and *rotation* are load-bearing: the board homography is fitted
+    from each marker's four corner points, so a block turned by 90° skews the
+    whole board transform. This documents both cues that make the correct
+    orientation obvious on the printed part.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    b = config.board
+    size = config.tile.size
+    inner = size - b.corner_margin - b.corner_marker_size
+
+    lines: list[str] = [
+        "# Board-corner blocks — the printed mat, in four pieces",
+        "",
+        _md_stamp(),
+        "",
+        "Four blocks carrying the board's ArUco corner markers (IDs 0-3). Put "
+        "one at each corner of the play area and the vision pipeline gets "
+        "exactly the fiducials the printed mat would have given it — no mat "
+        "needed. They are **opt-in**: generate them with `--corners`.",
+        "",
+        "| Block | Marker ID | Detector role | Corner of the board |",
+        "| ----- | --------- | ------------- | ------------------- |",
+    ]
+    where = {
+        0: "upper left — the circuit **start** side",
+        1: "upper right — the circuit **end** side",
+        2: "lower right",
+        3: "lower left",
+    }
+    for mid in corner_block_ids():
+        spec = MARKER_TABLE[mid]
+        lines.append(
+            f"| **{corner_block_label(mid)}** | {mid} | {spec.role} | {where[mid]} |"
+        )
+    lines += [
+        "",
+        "## Which way up (read this before printing labels off)",
+        "",
+        "The board transform is fitted from each marker's **four corner "
+        "points**, so a block placed at the right corner but turned 90° does "
+        "not just look wrong — it skews the whole board and every tile lands in "
+        "the wrong cell. Each block's top face therefore carries two cues, and "
+        "they agree:",
+        "",
+        f"1. **The marker is off-centre.** It sits "
+        f"**{b.corner_margin:g} mm** from the block's two *outer* edges and "
+        f"**{inner:g} mm** from the two *inner* ones — exactly where the mat "
+        "has it. The short margins point out of the board, the long ones point "
+        "into it.",
+        "2. **The label reads upright.** `UL` / `UR` / `LL` / `LR` sits in the "
+        "strip along the block's *inner* edge (the label always faces the "
+        "middle of the board) and reads the right way up when the block is "
+        "correctly placed. On a cube-height block the same label is repeated on "
+        "all four vertical faces, so it is readable from any seat.",
+        "",
+        "The marker artwork itself is the mat's, unrotated and byte-identical "
+        "(same ArUco dictionary, same bit matrix) — the label is the only thing "
+        "telling the four blocks apart at a glance.",
+        "",
+        "## Placement",
+        "",
+        f"Each block is a **{size:g} × {size:g} mm crop of the mat's corner**. "
+        f"Line the block's outer corner up with the corner of your play area "
+        f"and the marker lands where the mat's does. The mat is "
+        f"**{b.mat_width:g} × {b.mat_height:g} mm** measured over the outer "
+        "corners of the four blocks, so:",
+        "",
+        f"- outer edges of UL↔UR (and LL↔LR): **{b.mat_width:g} mm** apart;",
+        f"- outer edges of UL↔LL (and UR↔LR): **{b.mat_height:g} mm** apart;",
+        "- keep all four blocks flat and coplanar (the homography assumes a "
+        "plane), and keep the whole rectangle in frame.",
+        "",
+        "Blocks do not draw the grid, the wires or the qubit labels — only the "
+        "corners. The circuit still reads left → right from the UL/LL side. If "
+        "you want the printed guides, use the mat (`qamposer-assets board`).",
+        "",
+    ]
+    path = out_dir / "corners.md"
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path

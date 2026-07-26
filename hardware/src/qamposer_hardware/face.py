@@ -21,6 +21,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from qamposer_assets.config import AssetsConfig
+from qamposer_assets.corner_block import (
+    CORNER_BLOCK_LABELS,
+    CORNER_LABEL_BY_ROLE,
+    corner_block_crop_origin,
+    corner_block_ids,
+    corner_block_label,
+    corner_block_label_strip,
+    corner_block_marker_origin,
+)
 from qamposer_assets.marker_svg import marker_bit_matrix
 from qamposer_vision.markers import (
     MARKER_TABLE,
@@ -41,6 +50,17 @@ __all__ = [
     "double_notch_rects",
     "side_label_text",
     "COLOR_NAMES",
+    # Board-corner blocks — geometry re-exported from qamposer_assets so the
+    # hardware side has one import surface for "everything about a face".
+    "CORNER_BLOCK_LABELS",
+    "CORNER_LABEL_BY_ROLE",
+    "CORNER_INK_HEX",
+    "corner_block_ids",
+    "corner_block_label",
+    "corner_block_crop_origin",
+    "corner_block_marker_origin",
+    "corner_label_band",
+    "corner_face_layout",
 ]
 
 #: Depth of the coloured top face (last N mm of tile height) — the MMU colour
@@ -350,6 +370,94 @@ def face_layout(marker_id: int, config: AssetsConfig) -> FaceLayout:
         notches=notches,
         label=label,
         side_label=side_label_text(spec),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Board-corner blocks — a printable stand-in for the mat's four corner markers
+# --------------------------------------------------------------------------- #
+#
+# The four blocks (IDs 0-3) replace the printed board mat: put one at each
+# corner of the play area and the vision pipeline gets exactly the fiducials the
+# mat would have given it. Everything about *where* the marker sits and *which
+# way up* the block goes is derived once, in
+# :mod:`qamposer_assets.corner_block`, and shared with the laser-cut wood block
+# — this module only lifts that SVG geometry into the 3D face frame.
+#
+# Corner blocks carry no gate colour: the label and the cube's side letters
+# print in the marker black that is already on the plate, so a corner block adds
+# geometry but never a filament slot.
+
+CORNER_INK_HEX = "#000000"
+
+
+def corner_label_band(marker_id: int, config: AssetsConfig) -> Rect:
+    """The UL/UR/LL/LR label strip on a corner block's top face (3D coords)."""
+    x, y, w, h = corner_block_label_strip(marker_id, config)
+    size = config.tile.size
+    return Rect(cx=x + w / 2.0, cy=_flip_y(size, y + h / 2.0), w=w, h=h)
+
+
+def corner_face_layout(marker_id: int, config: AssetsConfig) -> FaceLayout:
+    """:class:`FaceLayout` for a board-corner block (marker IDs 0-3).
+
+    Unlike a gate tile there is no colour band and no frame: the face is plain
+    body-white with the mat's black corner marker and the black block label, so
+    a camera sees the same thing it sees on the mat. The marker is the mat's
+    ``corner_marker_size``, unrotated, at the mat's own corner inset (see
+    :mod:`qamposer_assets.corner_block`).
+    """
+    spec = MARKER_TABLE[marker_id]
+    if spec.kind != "corner":
+        raise ValueError(f"marker {marker_id} is not a board corner ({spec.label})")
+
+    t = config.tile
+    b = config.board
+    size = t.size
+    inner_radius = max(t.corner_radius - t.frame_width, 0.0)
+    field_w = size - 2 * t.frame_width
+    centre = size / 2.0
+    white_field = Rect(cx=centre, cy=centre, w=field_w, h=field_w)
+
+    band = corner_label_band(marker_id, config)
+
+    matrix = marker_bit_matrix(marker_id, config.aruco_dictionary)
+    n = len(matrix)
+    module = b.corner_marker_size / n
+    mx, my = corner_block_marker_origin(marker_id, config)
+    cells: list[ModuleCell] = []
+    for r, row in enumerate(matrix):
+        for c, bit in enumerate(row):
+            cx = mx + c * module + module / 2.0
+            cy = _flip_y(size, my + r * module + module / 2.0)
+            cells.append(
+                ModuleCell(
+                    row=r,
+                    col=c,
+                    bit=int(bit),
+                    rect=Rect(cx=cx, cy=cy, w=module, h=module),
+                )
+            )
+
+    label = corner_block_label(marker_id)
+    return FaceLayout(
+        marker_id=marker_id,
+        spec=spec,
+        size=size,
+        corner_radius=t.corner_radius,
+        frame_width=t.frame_width,
+        band_height=band.h,
+        accent_hex=CORNER_INK_HEX,
+        accent_name="black",
+        white_field=white_field,
+        inner_radius=inner_radius,
+        band=band,
+        module_size=module,
+        modules=tuple(cells),
+        notch_count=0,
+        notches=(),
+        label=label,
+        side_label=label,
     )
 
 

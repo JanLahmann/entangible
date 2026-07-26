@@ -1,11 +1,14 @@
 """``qamposer-hardware`` CLI — generate 3D-printable multi-colour gate tiles.
 
     qamposer-hardware generate [--variant tile|cube|all] [--gates H,X,...|all]
-                               [--magnets] [--out DIR]
+                               [--magnets] [--mono] [--corners] [--out DIR]
+    qamposer-hardware plates   [--variant tile|cube] [--bed WxH] [--corners]
+                               [--out DIR]
 
 Writes, per variant, ``out/hardware/<variant>/`` containing per-colour STL
 parts and a coloured 3MF for every requested tile, plus a ``plates.md`` MMU
-guide.
+guide. ``--corners`` adds the four board-corner blocks that replace the printed
+mat — opt-in, so the default kit is exactly what it was.
 """
 
 from __future__ import annotations
@@ -18,9 +21,10 @@ from pathlib import Path
 from qamposer_assets.config import AssetsConfig, load_config
 from qamposer_vision.markers import MARKER_TABLE, GateSpec
 
-from .build import build_double_tile, build_tile
+from .build import build_corner_block, build_double_tile, build_tile
 from .export import (
     double_slug,
+    export_corner_batches,
     export_double_batches,
     export_double_mono_stls,
     export_double_tile_3mf,
@@ -31,10 +35,13 @@ from .export import (
     export_tile_stls,
     tile_slug,
     write_batch_plates_md,
+    write_corner_plates_md,
+    write_corners_md,
     write_double_plates_md,
     write_mono_md,
     write_plates_md,
 )
+from .face import corner_block_ids
 from .pack import parse_bed
 from .params import (
     DOUBLE_FACED_KIT,
@@ -135,6 +142,45 @@ def _resolve_variants(arg: str) -> list[str]:
     return [arg]
 
 
+def _emit_corner_blocks(
+    config: AssetsConfig,
+    variant: str,
+    height: float,
+    vdir: Path,
+    params: HardwareParams,
+    *,
+    mono: bool,
+    magnets: bool = False,
+) -> tuple[int, int]:
+    """Write the four board-corner blocks into ``vdir``; return (files, bytes).
+
+    Corner blocks are single-faced by nature (one marker face), so they are the
+    same four pieces whether the run is a single- or double-faced kit — only the
+    body height follows the kit.
+    """
+    total_files = 0
+    total_bytes = 0
+    for mid in corner_block_ids():
+        t0 = time.time()
+        parts = build_corner_block(
+            mid, config, variant=variant, height=height,
+            params=params, magnets=magnets,
+        )
+        stls = export_tile_stls(parts, vdir)
+        tmf = export_tile_3mf(parts, vdir)
+        mono_stls = export_mono_stls(parts, vdir, params) if mono else []
+        dt = time.time() - t0
+        files = list(stls) + ([tmf] if tmf else []) + list(mono_stls)
+        nbytes = sum(p.stat().st_size for p in files)
+        total_files += len(files)
+        total_bytes += nbytes
+        print(
+            f"    {tile_slug(parts.layout.spec):16s} id={mid:<3d} "
+            f"{len(files)} files {nbytes/1024:7.1f} KiB  {dt:4.2f}s  (corner)"
+        )
+    return total_files, total_bytes
+
+
 def _generate(
     config: AssetsConfig,
     variants: list[str],
@@ -143,6 +189,7 @@ def _generate(
     *,
     magnets: bool,
     mono: bool,
+    corners: bool = False,
 ) -> int:
     params = HardwareParams()
     total_files = 0
@@ -154,7 +201,8 @@ def _generate(
         vdir = out_root / variant
         vdir.mkdir(parents=True, exist_ok=True)
         print(f"[{variant}] height={height:g} mm -> {vdir}"
-              + ("  (+mono)" if mono else ""))
+              + ("  (+mono)" if mono else "")
+              + ("  (+corners)" if corners else ""))
         for mid in ids:
             spec = MARKER_TABLE[mid]
             t0 = time.time()
@@ -174,8 +222,17 @@ def _generate(
                 f"    {tile_slug(spec):16s} id={mid:<3d} "
                 f"{len(files)} files {nbytes/1024:7.1f} KiB  {dt:4.2f}s"
             )
+        if corners:
+            n, nb = _emit_corner_blocks(
+                config, variant, height, vdir, params, mono=mono, magnets=magnets
+            )
+            total_files += n
+            total_bytes += nb
         write_plates_md(config, vdir)
         total_files += 1
+        if corners:
+            write_corners_md(config, vdir)
+            total_files += 1
         if mono:
             write_mono_md(vdir, faces="single", height=height, params=params)
             total_files += 1
@@ -195,6 +252,7 @@ def _generate_double(
     out_root: Path,
     *,
     mono: bool,
+    corners: bool = False,
 ) -> int:
     params = HardwareParams()
     total_files = 0
@@ -210,6 +268,7 @@ def _generate_double(
             f"[{variant}-double] height={height:g} mm  "
             f"{len(kit)} designs / {n_pieces} pieces -> {vdir}"
             + ("  (+mono)" if mono else "")
+            + ("  (+corners)" if corners else "")
         )
         for a, b, qty in kit:
             mb = a if b is None else b
@@ -230,8 +289,15 @@ def _generate_double(
                 f"    {slug:20s} ×{qty}  "
                 f"{len(files)} files {nbytes/1024:7.1f} KiB  {dt:4.2f}s"
             )
+        if corners:
+            n, nb = _emit_corner_blocks(config, variant, height, vdir, params, mono=mono)
+            total_files += n
+            total_bytes += nb
         write_double_plates_md(config, kit, vdir)
         total_files += 1
+        if corners:
+            write_corners_md(config, vdir)
+            total_files += 1
         if mono:
             write_mono_md(vdir, faces="double", height=height, params=params)
             total_files += 1
@@ -253,6 +319,7 @@ def _plates(
     spacing: float,
     max_per_plate: int,
     out_root: Path,
+    corners: bool = False,
 ) -> int:
     """Generate bed-ready multi-piece batch 3MFs + a Print jobs plates.md."""
     bed = parse_bed(bed_text)
@@ -267,6 +334,7 @@ def _plates(
     print(
         f"[{subdir}] bed {bed.width:g}x{bed.height:g} mm  spacing {spacing:g} mm  "
         f"height {height:g} mm{cap_note} -> {vdir}"
+        + ("  (+corners)" if corners else "")
     )
 
     if faces == "double":
@@ -287,19 +355,36 @@ def _plates(
         max_per_bed=cap,
     )
 
+    corner_infos: list = []
+    if corners:
+        corner_infos = export_corner_batches(
+            config, variant=variant, height=height,
+            bed=bed, spacing=spacing, out_dir=vdir, max_per_bed=cap,
+        )
+        write_corner_plates_md(base_md, corner_infos)
+        write_corners_md(config, vdir)
+
     total_bytes = 0
     for info in infos:
         nbytes = info.path.stat().st_size
         total_bytes += nbytes
         print(
-            f"    {info.path.name:22s} plate{info.plate} batch{info.batch}  "
+            f"    {info.path.name:24s} plate{info.plate} batch{info.batch}  "
             f"{len(info.slugs)} pieces  {info.object_count} objs  "
             f"{nbytes/1024:7.1f} KiB"
         )
-
+    for info in corner_infos:
+        nbytes = info.path.stat().st_size
+        total_bytes += nbytes
+        print(
+            f"    {info.path.name:24s} corners  batch{info.batch}  "
+            f"{len(info.slugs)} pieces  {info.object_count} objs  "
+            f"{nbytes/1024:7.1f} KiB"
+        )
+    n_files = len(infos) + len(corner_infos)
     dt = time.time() - t0
     print(
-        f"\nDone: {len(infos)} batch 3MF(s) + plates.md, "
+        f"\nDone: {n_files} batch 3MF(s) + plates.md, "
         f"{total_bytes/1024/1024:.2f} MiB, {dt:.1f}s."
     )
     return 0
@@ -335,6 +420,11 @@ def main(argv: list[str] | None = None) -> int:
              "filament-swap) for printers without an MMU (default: off)",
     )
     gen.add_argument(
+        "--corners", action="store_true",
+        help="also emit the four board-corner blocks (UL/UR/LL/LR, marker IDs "
+             "0-3) that replace the printed mat (default: off)",
+    )
+    gen.add_argument(
         "--out", default=str(_DEFAULT_OUT), type=Path,
         help=f"output root (default: {_DEFAULT_OUT})",
     )
@@ -364,6 +454,11 @@ def main(argv: list[str] | None = None) -> int:
              "(default: 8; 0 = fill the bed)",
     )
     plates.add_argument(
+        "--corners", action="store_true",
+        help="also pack the four board-corner blocks onto their own plate "
+             "(white + black only, no accent slot) (default: off)",
+    )
+    plates.add_argument(
         "--out", default=str(_DEFAULT_OUT), type=Path,
         help=f"output root (default: {_DEFAULT_OUT})",
     )
@@ -374,10 +469,14 @@ def main(argv: list[str] | None = None) -> int:
         variants = _resolve_variants(args.variant)
         if args.faces == "double":
             kit = _resolve_double_kit(args.gates)
-            return _generate_double(config, variants, kit, args.out, mono=args.mono)
+            return _generate_double(
+                config, variants, kit, args.out, mono=args.mono,
+                corners=args.corners,
+            )
         ids = _resolve_gates(args.gates)
         return _generate(
-            config, variants, ids, args.out, magnets=args.magnets, mono=args.mono
+            config, variants, ids, args.out, magnets=args.magnets, mono=args.mono,
+            corners=args.corners,
         )
     if args.command == "plates":
         config = load_config()
@@ -389,6 +488,7 @@ def main(argv: list[str] | None = None) -> int:
             spacing=args.spacing,
             max_per_plate=args.max_per_plate,
             out_root=args.out,
+            corners=args.corners,
         )
     parser.error("unknown command")
     return 2

@@ -14,9 +14,16 @@ from qamposer_assets.laser import (
     CUT_STROKE_MM,
     ENGRAVE_COLOR,
     laser_bed_grid,
+    laser_corner_body,
+    laser_corner_svg,
     laser_sheet_svgs,
     laser_tile_body,
     laser_tile_svg,
+)
+from qamposer_assets.corner_block import (
+    corner_block_ids,
+    corner_block_label,
+    corner_block_marker_origin,
 )
 from qamposer_assets.marker_svg import marker_group
 from qamposer_assets.sheets import kit_tile_ids
@@ -25,6 +32,7 @@ from qamposer_assets.tile_face import gate_marker_ids
 
 CFG = load_config()
 GATE_IDS = gate_marker_ids()
+CORNER_IDS_LIST = corner_block_ids()
 
 # Every #rrggbb hex colour token that appears anywhere in an SVG string.
 _HEX = re.compile(r"#[0-9a-fA-F]{6}")
@@ -206,3 +214,94 @@ def test_cli_laser_respects_bed_and_kerf(tmp_path):
     assert "600x400" in sheets[0].name
     # Kerf outset propagated into the sheet's tile cuts.
     assert f'x="{fmt(-0.15 / 2.0)}"' in sheets[0].read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Board-corner blocks (opt-in): the mat's corner, cut in wood
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("marker_id", CORNER_IDS_LIST)
+def test_corner_block_has_cut_and_engrave_layers(marker_id):
+    svg = laser_corner_svg(marker_id, CFG)
+    assert 'id="cut"' in svg
+    assert 'id="engrave"' in svg
+    colours = set(_HEX.findall(svg))
+    assert colours == {CUT_COLOR, ENGRAVE_COLOR}, colours
+    assert "#ffffff" not in svg
+
+
+@pytest.mark.parametrize("marker_id", CORNER_IDS_LIST)
+def test_corner_block_marker_is_the_mats_corner_marker(marker_id):
+    """40 mm, at the mat's own inset, unrotated — byte-identical artwork."""
+    x, y = corner_block_marker_origin(marker_id, CFG)
+    expected = marker_group(
+        marker_id,
+        x,
+        y,
+        CFG.board.corner_marker_size,
+        dictionary=CFG.aruco_dictionary,
+        group_id="marker",
+        with_background=False,
+    )
+    assert expected in laser_corner_body(marker_id, CFG)
+
+
+@pytest.mark.parametrize("marker_id", CORNER_IDS_LIST)
+def test_corner_block_engraves_its_label(marker_id):
+    body = laser_corner_body(marker_id, CFG)
+    label = corner_block_label(marker_id)
+    engrave = body.split('id="engrave"', 1)[1]
+    assert f">{label}</text>" in engrave
+
+
+def test_corner_block_has_no_border_score():
+    """A frame score would fall inside the marker's quiet zone on two sides."""
+    for marker_id in CORNER_IDS_LIST:
+        engrave = laser_corner_body(marker_id, CFG).split('id="engrave"', 1)[1]
+        assert f'stroke="{ENGRAVE_COLOR}"' not in engrave  # fills only, no score
+
+
+def test_corner_block_rejects_a_gate_marker():
+    with pytest.raises(ValueError):
+        laser_corner_body(10, CFG)
+
+
+def test_sheet_nesting_dispatches_corner_blocks():
+    """``laser_sheet_svgs`` handles corner IDs exactly like gate IDs."""
+    svgs = laser_sheet_svgs(CFG, [10, 0, 2], 300.0, 200.0)
+    assert len(svgs) == 1
+    assert 'id="laser-tile-10"' in svgs[0]
+    assert 'id="laser-corner-0"' in svgs[0]
+    assert 'id="laser-corner-2"' in svgs[0]
+
+
+def test_cli_laser_corners_are_opt_in(tmp_path):
+    rc = cli.main(["--out", str(tmp_path), "laser"])
+    assert rc == 0
+    assert not (tmp_path / "laser" / "corners").exists()
+    notes = (tmp_path / "laser" / "README.txt").read_text(encoding="utf-8")
+    assert "Board-corner blocks" not in notes
+
+
+def test_cli_laser_corners_emit_svgs_and_notes(tmp_path):
+    rc = cli.main(["--out", str(tmp_path), "--corners", "laser"])
+    assert rc == 0
+    corners = sorted((tmp_path / "laser" / "corners").glob("*.svg"))
+    assert [p.name for p in corners] == [
+        "corner-0.svg",
+        "corner-1.svg",
+        "corner-2.svg",
+        "corner-3.svg",
+    ]
+    for path in corners:
+        assert path.stat().st_size > 500
+    notes = (tmp_path / "laser" / "README.txt").read_text(encoding="utf-8")
+    assert "Board-corner blocks" in notes
+    assert "ROTATION MATTERS" in notes
+    assert f"{fmt(CFG.board.corner_margin)}" in notes
+    # The blocks join the nested sheets too (4 more pieces than the plain run).
+    sheets = sorted((tmp_path / "laser" / "sheets").glob("*.svg"))
+    nested = "".join(p.read_text(encoding="utf-8") for p in sheets)
+    for marker_id in CORNER_IDS_LIST:
+        assert f'id="laser-corner-{marker_id}"' in nested
