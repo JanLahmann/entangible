@@ -1888,6 +1888,27 @@ body,
 
 /* Random course (#70): the header chip that says "these 18 holes were dealt,
    not authored", and the two-button course picker above the scorecard. */
+/* The course CODE (#78): the seed in base 36, and a tap copies a link that
+   reopens exactly these eighteen holes. Quiet — it sits beside the round chip,
+   not in front of the hole you are playing. */
+.pk-golf-code {
+  display: inline-block;
+  margin-left: 0.3rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 0.62rem;
+  cursor: pointer;
+}
+
+.pk-golf-code:active {
+  color: var(--text);
+  border-color: var(--entangle);
+}
+
 .pk-golf-random {
   display: inline-block;
   margin-left: 0.4rem;

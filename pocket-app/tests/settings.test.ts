@@ -19,6 +19,17 @@ function fakeStorage(initial: Record<string, string> = {}) {
 }
 
 describe('parseUrlOverrides', () => {
+  it('takes a golf course code from ?course= (#78)', () => {
+    expect(parseUrlOverrides('?course=1z9k4h').courseCode).toBe('1z9k4h');
+    // Case-folded, so a code retyped from a photo still opens the same course.
+    expect(parseUrlOverrides('?course=1Z9K4H').courseCode).toBe('1z9k4h');
+    // Shape-checked here; `parseCourseCode` is the authority on the value.
+    expect(parseUrlOverrides('?course=').courseCode).toBeUndefined();
+    expect(parseUrlOverrides('?course=not%20a%20code').courseCode).toBeUndefined();
+    expect(parseUrlOverrides('?course=123456789').courseCode).toBeUndefined();
+    expect(parseUrlOverrides('?mode=golf').courseCode).toBeUndefined();
+  });
+
   it('parses the full recognized param set', () => {
     const o = parseUrlOverrides('?mode=golf&debug=1&panels=camera,results&side=left&lowpower=1');
     expect(o).toEqual({
@@ -75,9 +86,18 @@ describe('sanitize', () => {
       wires: 'compact',
       cameraId: null,
       boothUrl: null,
+      courseCode: null,
       noise: 'off',
       menu: 'coffee',
     });
+  });
+
+  it('keeps a stored golf course code only if it still looks like one (#78)', () => {
+    expect(sanitize({ courseCode: '1z9k4h' }).courseCode).toBe('1z9k4h');
+    expect(sanitize({ courseCode: '1Z9K4H' }).courseCode).toBe('1z9k4h');
+    expect(sanitize({ courseCode: 'not a code' }).courseCode).toBeNull();
+    expect(sanitize({ courseCode: 42 }).courseCode).toBeNull();
+    expect(sanitize({}).courseCode).toBeNull();
   });
 
   it('accepts runner as a valid mode (task #52)', () => {

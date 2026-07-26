@@ -8,6 +8,8 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup, screen, fireEvent } from '@testing-library/react';
 import { SettingsControl } from './SettingsDrawer';
 import { boothLink } from './boothLink';
+import { settingsStore } from './settings';
+import { courseCode, parseCourseCode } from '@quantum/golfRandom';
 
 function openDrawer() {
   render(<SettingsControl />);
@@ -16,6 +18,7 @@ function openDrawer() {
 
 afterEach(() => {
   boothLink.disconnect();
+  settingsStore.update({ mode: 'composer', courseCode: null });
   cleanup();
 });
 
@@ -35,5 +38,42 @@ describe('SettingsDrawer PANELS section', () => {
       expect((screen.getByRole('switch', { name }) as HTMLButtonElement).disabled).toBe(true);
     }
     expect(screen.getByText('Controlled by booth.')).toBeTruthy();
+  });
+});
+
+describe('SettingsDrawer golf course code (#78)', () => {
+  it('applies a typed code, and clearing the field returns to the classic course', () => {
+    settingsStore.update({ mode: 'golf' });
+    openDrawer();
+    const input = screen.getByLabelText('Golf course code') as HTMLInputElement;
+    expect(input.value).toBe('');
+
+    fireEvent.change(input, { target: { value: ' 1Z9K4H ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    // Stored in the canonical spelling, so the card and a copied link agree.
+    expect(settingsStore.get().courseCode).toBe('1z9k4h');
+    expect(parseCourseCode('1z9k4h')).toBe(Number.parseInt('1z9k4h', 36));
+
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.blur(input);
+    expect(settingsStore.get().courseCode).toBeNull();
+  });
+
+  it('refuses a code that is not one, rather than dealing a different course', () => {
+    settingsStore.update({ mode: 'golf', courseCode: courseCode(4242) });
+    openDrawer();
+    const input = screen.getByLabelText('Golf course code') as HTMLInputElement;
+    expect(input.value).toBe(courseCode(4242));
+
+    fireEvent.change(input, { target: { value: 'not a code' } });
+    expect(input.className).toContain('is-invalid');
+    fireEvent.blur(input);
+    expect(settingsStore.get().courseCode).toBe(courseCode(4242)); // unchanged
+  });
+
+  it('is a golf-mode control — absent in the other modes', () => {
+    settingsStore.update({ mode: 'composer' });
+    openDrawer();
+    expect(screen.queryByLabelText('Golf course code')).toBeNull();
   });
 });

@@ -78,6 +78,15 @@ export interface Settings {
    */
   readonly boothUrl: string | null;
   /**
+   * The RANDOM golf course in play, as its shareable code (#78) — the base seed
+   * in base 36, or `null` for the classic course. Persisted, so a round you were
+   * sent survives a reload, and URL-overridable via `?course=<code>`, which is
+   * what a shared link carries. Choosing "New random 18" rewrites it; choosing
+   * "Classic 18" clears it, so the code on the card is always the course you are
+   * actually playing.
+   */
+  readonly courseCode: string | null;
+  /**
    * In-browser noise model preset (docs/design.md). 'off' (default) = ideal
    * results only. Persisted; URL-overridable via
    * `?noise=falcon|eagle|heron|nighthawk`.
@@ -107,6 +116,7 @@ export const DEFAULT_SETTINGS: Settings = {
   wires: 'compact',
   cameraId: null,
   boothUrl: null,
+  courseCode: null,
   noise: 'off',
   menu: 'coffee',
 };
@@ -163,6 +173,9 @@ function parsePanels(v: string | null): PanelId[] | undefined {
   return out;
 }
 
+/** Shape of a golf course code in the URL: 1–7 base-36 digits (#78). */
+const COURSE_CODE_RE = /^[0-9a-zA-Z]{1,7}$/;
+
 /** A mutable settings patch (Settings fields are readonly). */
 type MutableSettings = { -readonly [K in keyof Settings]?: Settings[K] };
 
@@ -186,6 +199,13 @@ export function parseUrlOverrides(search: string): Partial<Settings> {
 
   const input = params.get('input');
   if (input === 'camera' || input === 'manual') out.input = input;
+
+  // `?course=<base36>` reopens a shared random golf course (#78). Only the SHAPE
+  // is checked here; `parseCourseCode` in `@quantum/golfRandom` is the authority
+  // on whether a code is real, and a code that fails there is ignored rather
+  // than dealing some other course.
+  const course = params.get('course');
+  if (course !== null && COURSE_CODE_RE.test(course)) out.courseCode = course.toLowerCase();
 
   const side = params.get('side');
   if (side === 'left' || side === 'right') out.side = side;
@@ -256,7 +276,14 @@ export function sanitize(raw: unknown): Settings {
     r.noise === 'falcon' || r.noise === 'eagle' || r.noise === 'heron' || r.noise === 'nighthawk'
       ? r.noise
       : 'off';
+  // A stored course code is kept only if it still LOOKS like one; the seed it
+  // names is parsed where it is used (#78).
+  const courseCode: string | null =
+    typeof r.courseCode === 'string' && COURSE_CODE_RE.test(r.courseCode)
+      ? r.courseCode.toLowerCase()
+      : null;
   return {
+    courseCode,
     mode,
     input,
     panels,

@@ -73,7 +73,7 @@ import {
   type GolfCourse,
   type GolfState,
 } from '@quantum/golf';
-import { courseHoles, randomBaseSeed } from '@quantum/golfRandom';
+import { courseCode, courseHoles, parseCourseCode, randomBaseSeed } from '@quantum/golfRandom';
 import {
   detectEnv,
   exitFullscreen,
@@ -409,7 +409,15 @@ export function App() {
   const [strip, setStrip] = useState<StripMessage | null>(null);
   const [celebration, setCelebration] = useState<CelebrationRequest | null>(null);
   const [hintIndex, setHintIndex] = useState(0);
-  const [golfState, setGolfState] = useState<GolfState>(() => initialGolfState(loadBest(storage)));
+  // A shared course code (#78) — from `?course=`, the settings drawer, or a
+  // previous session — opens golf straight onto that generated course. The code
+  // IS the seed, so the eighteen holes are the ones the sender played.
+  const [golfState, setGolfState] = useState<GolfState>(() => {
+    const seed = settings.courseCode === null ? null : parseCourseCode(settings.courseCode);
+    return seed === null
+      ? initialGolfState(loadBest(storage))
+      : initialGolfState({}, 'random', seed);
+  });
   const [, setDebugTick] = useState(0);
   // Freeze: session-momentary; starts unfrozen and persists nothing.
   const [frozen, setFrozen] = useState(false);
@@ -985,14 +993,38 @@ export function App() {
   // its surface is operator-layout-driven and unattended, while choosing a
   // random round is a per-visitor decision with nobody there to make it.
   const pickCourse = (course: GolfCourse) => {
+    const seed = course === 'random' ? randomBaseSeed() : null;
     const fresh =
-      course === 'random'
-        ? initialGolfState({}, 'random', randomBaseSeed())
-        : initialGolfState(loadBest(storage));
+      seed === null ? initialGolfState(loadBest(storage)) : initialGolfState({}, 'random', seed);
     golfStateRef.current = fresh;
     setGolfState(fresh);
+    // Keep the shareable code (#78) pointing at the course actually in play, so
+    // the card, the drawer field and a copied link can never disagree.
+    settingsStore.update({ courseCode: seed === null ? null : courseCode(seed) });
     if (manual) manualSourceRef.current.clear();
   };
+
+  // A code typed into the drawer (or arriving in the URL) switches courses. Only
+  // fires when the code names a course we are NOT already playing, so it cannot
+  // fight `pickCourse`, which writes the setting itself.
+  const courseCodeSetting = settings.courseCode;
+  useEffect(() => {
+    const seed = courseCodeSetting === null ? null : parseCourseCode(courseCodeSetting);
+    const cur = golfStateRef.current;
+    if (seed === null) {
+      if (cur.course !== 'random') return;
+      const fresh = initialGolfState(loadBest(storage));
+      golfStateRef.current = fresh;
+      setGolfState(fresh);
+    } else {
+      if (cur.course === 'random' && cur.randomSeed === seed) return;
+      const fresh = initialGolfState({}, 'random', seed);
+      golfStateRef.current = fresh;
+      setGolfState(fresh);
+    }
+    if (manual) manualSourceRef.current.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseCodeSetting]);
 
   // Advance/restart, shared by the scorecard button and the one floating by
   // the sphere (a phone player should not have to scroll down after holing

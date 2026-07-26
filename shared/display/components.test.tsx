@@ -14,11 +14,11 @@ import { Histogram } from './Histogram';
 import { StatePanel } from './StatePanel';
 import { QasmPanel } from './QasmPanel';
 import { MessageStrip } from './MessageStrip';
-import { Scorecard } from './Scorecard';
+import { Scorecard, courseShareLink } from './Scorecard';
 import { MiniCircuit } from './MiniCircuit';
 import { Celebrations } from './Celebrations';
 import { initialGolfState } from '@quantum/golf';
-import { randomCourse } from '@quantum/golfRandom';
+import { courseCode, randomCourse } from '@quantum/golfRandom';
 
 afterEach(cleanup);
 
@@ -436,6 +436,46 @@ describe('Scorecard (shared)', () => {
     // The tooltip carries the same result in words.
     expect(chips[0].getAttribute('title')).toBe('E1 · Superposition · par 3 · best 1 (−2)');
     expect(chips[4].getAttribute('title')).toBe('E5 · GHZ-5 · par 7');
+  });
+
+  it('shows a random round’s course code and copies a share link (#78)', async () => {
+    const writes: string[] = [];
+    const original = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: (t: string) => (writes.push(t), Promise.resolve()) },
+      configurable: true,
+    });
+    const state = initialGolfState({}, 'random', 4242);
+    const { container } = render(<Scorecard state={state} circuit={bell} classPrefix="pk" />);
+    const chip = container.querySelector('.pk-golf-code') as HTMLButtonElement;
+    expect(chip.textContent).toBe(`Course #${courseCode(4242)}`);
+
+    fireEvent.click(chip);
+    expect(writes).toEqual([
+      courseShareLink(location.origin + location.pathname, courseCode(4242)),
+    ]);
+    await waitFor(() => expect(chip.textContent).toBe('link copied'));
+
+    Object.defineProperty(navigator, 'clipboard', { value: original, configurable: true });
+  });
+
+  it('survives a browser with no clipboard, and shows no code on the classic card', () => {
+    const original = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+    const random = render(
+      <Scorecard state={initialGolfState({}, 'random', 7)} circuit={bell} classPrefix="pk" />,
+    );
+    // A tap must not throw where clipboard access is unavailable (http, old iOS).
+    expect(() =>
+      fireEvent.click(random.container.querySelector('.pk-golf-code') as HTMLButtonElement),
+    ).not.toThrow();
+    cleanup();
+    Object.defineProperty(navigator, 'clipboard', { value: original, configurable: true });
+
+    const classic = render(
+      <Scorecard state={initialGolfState()} circuit={bell} classPrefix="pk" />,
+    );
+    expect(classic.container.querySelector('.pk-golf-code')).toBeNull();
   });
 
   it('leaves the classic card free of any course chip', () => {

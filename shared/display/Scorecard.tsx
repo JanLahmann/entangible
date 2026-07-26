@@ -53,7 +53,7 @@ import {
   type GolfState,
   type Hole,
 } from '@quantum/golf';
-import { courseHoles } from '@quantum/golfRandom';
+import { courseCode, courseHoles } from '@quantum/golfRandom';
 import { findOptimalAsync, type OptimalResult } from '@quantum/optimal';
 import { MiniCircuit } from './MiniCircuit';
 
@@ -114,12 +114,58 @@ function useOptimal(state: GolfState, hole: Hole, enabled: boolean): OptimalResu
   return OPTIMAL_CACHE.get(key) ?? null;
 }
 
-/** The "you are not on the fixed course" marker (#70) — rendered only when a
- *  generated round is in play, so the classic card is unchanged. */
-function CourseChip({ p, state }: { p: string; state: GolfState }) {
-  if (state.course !== 'random') return null;
-  return <span className={`${p}-golf-random`}>Random round</span>;
+/** The share link for a course code — what a tap on the code copies (#78). */
+export function courseShareLink(origin: string, code: string): string {
+  return `${origin}?course=${code}`;
 }
+
+/**
+ * The "you are not on the fixed course" marker (#70), plus the round's CODE
+ * (#78) — rendered only when a generated round is in play, so the classic card
+ * is unchanged.
+ *
+ * The code is the seed in base 36, and tapping it copies a link that reopens
+ * this exact eighteen holes. That is the whole point of a generated course
+ * being deterministic: a round you liked is a round you can hand to someone.
+ * Clipboard access is best-effort — an insecure context or a browser without
+ * `navigator.clipboard` simply shows the code and copies nothing, rather than
+ * throwing at a player.
+ */
+function CourseChip({ p, state }: { p: string; state: GolfState }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), COPIED_MS);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  if (state.course !== 'random') return null;
+  const code = courseCode(state.randomSeed);
+
+  const copy = () => {
+    const origin = typeof location === 'undefined' ? '' : location.origin + location.pathname;
+    const link = courseShareLink(origin, code);
+    void navigator?.clipboard?.writeText?.(link)?.catch?.(() => {});
+    setCopied(true);
+  };
+
+  return (
+    <>
+      <span className={`${p}-golf-random`}>Random round</span>
+      <button
+        type="button"
+        className={`${p}-golf-code`}
+        onClick={copy}
+        title="Copy a link to this course"
+      >
+        {copied ? 'link copied' : `Course #${code}`}
+      </button>
+    </>
+  );
+}
+
+/** How long the chip says "link copied" before returning to the code. */
+const COPIED_MS = 1600;
 
 export function Scorecard({
   state,

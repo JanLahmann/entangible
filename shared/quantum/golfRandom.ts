@@ -474,6 +474,32 @@ export function currentHole(
 }
 
 /**
+ * A course's shareable CODE: its base seed in base 36 (#78). Short enough to
+ * read out loud or print on a card ("Course #1z9k4h"), and lossless — the code
+ * IS the seed, so anyone who types it gets the identical eighteen holes.
+ */
+export function courseCode(seed: number): string {
+  return (seed >>> 0).toString(36);
+}
+
+/**
+ * The seed behind a course code, or `null` if the text is not one. Accepts any
+ * case and surrounding space (people retype these from photos and messages) and
+ * a leading '#'. Rejects anything that is not a 32-bit base-36 value, so a
+ * mistyped `?course=` in the URL is ignored rather than dealing a wrong course.
+ */
+export function parseCourseCode(code: string): number | null {
+  const text = code.trim().replace(/^#/, '').toLowerCase();
+  if (!/^[0-9a-z]{1,7}$/.test(text)) return null;
+  const seed = Number.parseInt(text, 36);
+  if (!Number.isFinite(seed) || seed < 0 || seed > 0xffffffff) return null;
+  // Round-trip guard: rejects leading zeros and other spellings that would show
+  // the player a code different from the one they typed.
+  if (courseCode(seed) !== text) return null;
+  return seed >>> 0;
+}
+
+/**
  * A fresh 32-bit base seed for a new random course. Defaults to `cryptoRng` so
  * two visitors never share a round; tests pin a `mulberry32`.
  */

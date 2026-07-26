@@ -27,6 +27,7 @@ import { BUILTIN_PACKS } from '@shared/menu/builtinPacks';
 import { boothLink, useBoothLink } from './boothLink';
 import { cameraRoleLink, useCameraRole } from './cameraRoleLink';
 import { normalizeBoothUrl } from '../sources/boothUrl';
+import { courseCode, parseCourseCode } from '@quantum/golfRandom';
 
 /** One glyph per built-in menu pack for the drawer's Menu picker. */
 const MENU_EMOJI: Record<string, string> = {
@@ -43,6 +44,59 @@ const PANEL_LABELS: Record<PanelId, string> = {
   state: 'State',
   qasm: 'OpenQASM',
 };
+
+/**
+ * Golf course code (#78). A random course is fully determined by its seed, so
+ * the code IS the course: typing one a friend read out deals the identical
+ * eighteen holes. Empty means the classic course; an unparseable code is
+ * refused rather than silently dealing a different round.
+ */
+function GolfCourseSection() {
+  const settings = useSettings();
+  const [draft, setDraft] = useState(settings.courseCode ?? '');
+  const trimmed = draft.trim();
+  const valid = trimmed === '' || parseCourseCode(trimmed) !== null;
+
+  // The card, the URL and "New random 18" all write this setting, so the field
+  // follows whatever the app is actually playing.
+  useEffect(() => setDraft(settings.courseCode ?? ''), [settings.courseCode]);
+
+  const apply = () => {
+    if (trimmed === '') {
+      settingsStore.update({ courseCode: null });
+      return;
+    }
+    const seed = parseCourseCode(trimmed);
+    if (seed !== null) settingsStore.update({ courseCode: courseCode(seed) });
+  };
+
+  return (
+    <section className="pk-drawer-sec">
+      <div className="pk-label">Golf course code</div>
+      <input
+        className={`pk-input${valid ? '' : ' is-invalid'}`}
+        type="text"
+        inputMode="text"
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        placeholder="classic course"
+        aria-label="Golf course code"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={apply}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') apply();
+        }}
+      />
+      <p className="pk-drawer-hint">
+        {settings.courseCode
+          ? 'Playing a shared random course. Clear the field for the classic 18.'
+          : 'Paste a course code to play someone else’s random 18.'}
+      </p>
+    </section>
+  );
+}
 
 function Segmented<T extends string>({
   value,
@@ -332,6 +386,8 @@ export function SettingsControl({
                   onChange={(mode) => settingsStore.update({ mode })}
                 />
               </section>
+
+              {settings.mode === 'golf' && <GolfCourseSection />}
 
               {settings.mode === 'quantina' && (
                 <section className="pk-drawer-sec">

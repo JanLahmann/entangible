@@ -29,6 +29,8 @@ import {
   courseHoles,
   currentHole,
   generateCourse,
+  courseCode,
+  parseCourseCode,
   randomBaseSeed,
   randomCourse,
 } from './golfRandom';
@@ -479,6 +481,30 @@ describe('course selection', () => {
     // The running total is measured against the GENERATED pars.
     expect(courseTotals(step.state.best, holes).par).toBe(holes[0].par);
     expect(courseTotals(step.state.best, holes).vsPar).toBe(genLen - holes[0].par);
+  });
+
+  it('round-trips a course code, and the code IS the course (#78)', () => {
+    for (const seed of [0, 1, 4242, 20260725, 0xffffffff, randomBaseSeed(mulberry32(7))]) {
+      const code = courseCode(seed);
+      expect(code).toMatch(/^[0-9a-z]{1,7}$/);
+      expect(parseCourseCode(code)).toBe(seed >>> 0);
+      // Typed by a human: spaces, a leading '#', shouting.
+      expect(parseCourseCode(`  #${code.toUpperCase()} `)).toBe(seed >>> 0);
+    }
+    // Same code → byte-identical eighteen holes, which is the whole promise.
+    const a = generateCourse(parseCourseCode('1z9k4h')!);
+    const b = generateCourse(parseCourseCode('1z9k4h')!);
+    expect(a.map((h) => shape(h.circuit))).toEqual(b.map((h) => shape(h.circuit)));
+    expect(a.map((h) => h.hole.par)).toEqual(b.map((h) => h.hole.par));
+  });
+
+  it('refuses codes that are not codes, rather than dealing some other course', () => {
+    for (const bad of ['', '   ', 'zzzzzzzz', '00', '0x1f', 'hello world', '-1', '1z9k4h9']) {
+      expect(parseCourseCode(bad), bad).toBeNull();
+    }
+    // Leading zeros would print back differently from what was typed.
+    expect(parseCourseCode('01')).toBeNull();
+    expect(parseCourseCode('1')).toBe(1);
   });
 
   it('keeps random bests off the device card (session-only by policy)', () => {
