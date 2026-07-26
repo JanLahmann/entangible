@@ -396,7 +396,17 @@ body,
   flex-direction: column;
   gap: 0.9rem;
   min-height: 0;
-  overflow: hidden;
+  /* The sidebar is a fixed-height grid track (the viewport minus topbar/footer),
+     so anything taller than it — the golf scorecard's four round rows, the
+     solution/stuck UI, the results histogram — used to be CLIPPED by
+     `overflow: hidden` with no way to reach it (#92). It scrolls now. `-x`
+     stays hidden so a wide ket line can never produce a sideways scrollbar.
+     On phones `.pk-side` is `display: contents` (the panels join the main
+     column, which scrolls) so this is inert there. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .pk-label {
@@ -1054,6 +1064,89 @@ body,
   order: 1;
   border-left: none;
   border-right: 1px solid var(--border);
+}
+
+/* ---- golf + build-on-screen: sphere-forward layout (#92) --------------- */
+/*
+ * In Quantum Golf the Bloch/Q-sphere IS the game, but a hole is a 1–3 wire
+ * circuit — so the classic 2/3 editor column was mostly empty dark space while
+ * the sphere sat small in the 33% sidebar. Under `pk-main--golf-manual`
+ * (App.tsx: golf AND manual input) the split is REBALANCED: the state column
+ * takes ~57%, the stage keeps a guaranteed 30rem so the editor never falls
+ * under the library's 400px min circuit width, and the sphere is allowed to
+ * grow into the room it just gained.
+ *
+ * Scoped to roomy LANDSCAPE screens (≥900x500). Everything else keeps its
+ * current geometry: the phone column (≤699px, `.pk-main` is flex there so
+ * `grid-template-columns` is inert anyway), tablet portrait (the stacked
+ * `orientation: portrait` block) and the short landscape-phone grid
+ * (`max-height: 450px`) are all outside this query.
+ */
+@media (min-width: 900px) and (min-height: 500px) and (orientation: landscape) {
+  .pk-main.pk-main--golf-manual {
+    grid-template-columns: minmax(30rem, 1fr) minmax(20rem, 57%);
+  }
+
+  .pk-main.pk-main--golf-manual.pk-side-left {
+    grid-template-columns: minmax(20rem, 57%) minmax(30rem, 1fr);
+  }
+
+  /* Palette ABOVE the wires instead of a full-height strip beside them (the
+     phone arrangement, and what `.pk-manual-palette`'s margin-bottom always
+     assumed): in the narrower stage every pixel of width belongs to the
+     editor. Capped + internally scrollable so an expanded accordion cannot
+     squeeze the wires. */
+  .pk-main--golf-manual .pk-stage--manual {
+    flex-direction: column;
+  }
+
+  .pk-main--golf-manual .pk-stage--manual .pk-manual-palette {
+    max-height: 40vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* The sphere may finally use the space. Capped by the viewport height too,
+     so it can never push the scorecard out of a short laptop window. */
+  .pk-main--golf-manual .pk-qsphere-svg,
+  .pk-main--golf-manual .pk-qs-svg,
+  .pk-main--golf-manual .pk-bl-svg {
+    max-width: min(100%, 48vh, 30rem);
+  }
+}
+
+/* Wide desktop: the state column is now wide enough to seat the course picker,
+   scorecard and results BESIDE the sphere instead of far below it, so the whole
+   card is on screen without scrolling (scrolling still works — see `.pk-side`).
+   The hero spans a generous row count (more panels than the mode can render);
+   `row-gap: 0` + a per-child margin keeps those spanned-but-empty rows from
+   adding dead space, which a real row gap would.
+   Threshold: below ~1150px the two tracks' minimums (18rem + 15rem + gap) no
+   longer fit the state column, so it stays a single stacked (scrolling) one. */
+@media (min-width: 1150px) and (min-height: 500px) and (orientation: landscape) {
+  .pk-main--golf-manual .pk-side {
+    display: grid;
+    grid-template-columns: minmax(18rem, 1.25fr) minmax(15rem, 1fr);
+    column-gap: 0.9rem;
+    row-gap: 0;
+    align-content: start;
+  }
+
+  .pk-main--golf-manual .pk-side > * {
+    min-width: 0;
+    margin-bottom: 0.9rem;
+  }
+
+  .pk-main--golf-manual .pk-side > .pk-side-hero {
+    grid-column: 1;
+    grid-row: 1 / span 12;
+    align-self: start;
+    margin-bottom: 0;
+  }
+
+  .pk-main--golf-manual .pk-side > :not(.pk-side-hero) {
+    grid-column: 2;
+  }
 }
 
 /* ---- topbar: mode pill + gear ----------------------------------------- */

@@ -137,6 +137,25 @@ export function stageClassName(manual: boolean): string {
 }
 
 /**
+ * Main-grid variant classes (#92). Two independent knobs:
+ *   - `pk-side-left`        — the sidebar-side setting (unchanged behaviour).
+ *   - `pk-main--golf-manual` — Quantum Golf played WITH the on-screen editor.
+ *     A hole is a 1–3 wire circuit, so the editor does not need the wide 2/3
+ *     column while the Bloch/Q-sphere — the actual game — is squeezed into the
+ *     narrow one. The class flips the landscape split so the state column is
+ *     dominant (pocket.css scopes it to roomy landscape screens; the phone
+ *     stack, tablet portrait and short landscape phones are untouched).
+ * Golf-in-camera-mode keeps the classic split: there the physical board is the
+ * "editor" and the stage is the recognised-circuit read-out.
+ * Pure and exported so the seam is unit-testable without a DOM.
+ */
+export function mainClassName(sideLeft: boolean, golfManual: boolean): string {
+  return ['pk-main', sideLeft ? 'pk-side-left' : '', golfManual ? 'pk-main--golf-manual' : '']
+    .filter(Boolean)
+    .join(' ');
+}
+
+/**
  * Effective panel set: while connected the booth's broadcast `panels` (registry
  * names, display order) override the local `settings.panels`; standalone (or
  * before a layout arrives, `boothPanels` null) the local set stands. Booth
@@ -1074,7 +1093,10 @@ export function App() {
   const sidebar = isGolf ? (
     <>
       {showCamera && cameraPanel}
-      <div key="golfview">
+      {/* `pk-side-hero` marks the sphere as THE panel of the mode: in golf +
+          build-on-screen the wide-desktop CSS seats it in its own tall column
+          of the sidebar with the course/scorecard/results beside it (#92). */}
+      <div key="golfview" className="pk-side-hero">
         {/* The view names itself now (EvolvingState's view-label) — no extra
             panel label, it would double up. */}
         <div className="pk-well">
@@ -1305,7 +1327,7 @@ export function App() {
           config={qamposerConfig}
           onCircuitChange={manual ? onEditorChange : undefined}
         >
-          <main className={`pk-main ${settings.side === 'left' ? 'pk-side-left' : ''}`}>
+          <main className={mainClassName(settings.side === 'left', isGolf && manual)}>
             {/* Phone-only amber toast (footer hint ticker is hidden on phones);
                 CSS reveals it only under the phone breakpoints. */}
             {warnings.length > 0 && (
