@@ -42,17 +42,17 @@ export function CourseChallenge({ code, link }: { code: string; link: string }) 
         type="button"
         className="pk-golf-challenge"
         onClick={() => setOpen(true)}
-        aria-label="Challenge a friend to this course"
+        aria-label="Multi player — share this course"
         title="Show a QR code for this course"
       >
-        Challenge
+        Multi player
       </button>
 
       {open && (
         <div
           className="pk-qr-overlay"
           role="dialog"
-          aria-label="Challenge a friend — QR code for this course"
+          aria-label="Multi player — QR code for this course"
           onClick={close}
         >
           <div className="pk-qr-card" onClick={(e) => e.stopPropagation()}>

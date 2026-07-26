@@ -19,7 +19,7 @@ describe('CourseChallenge (#84)', () => {
     // Closed to begin with — it is an offer, not an interruption.
     expect(screen.queryByRole('dialog')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Challenge a friend to this course' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Multi player — share this course' }));
     const dialog = screen.getByRole('dialog');
     expect(dialog).toBeTruthy();
 
@@ -42,7 +42,7 @@ describe('CourseChallenge (#84)', () => {
     // Two different courses must produce two different QRs; the component never
     // reconstructs the URL, so what is scanned is exactly what was shared.
     const first = render(<CourseChallenge code={CODE} link={LINK} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Challenge a friend to this course' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Multi player — share this course' }));
     let markup = '';
     await waitFor(() => {
       markup = first.container.querySelector('.pk-qr-code')!.innerHTML;
@@ -51,7 +51,7 @@ describe('CourseChallenge (#84)', () => {
     cleanup();
 
     const other = render(<CourseChallenge code="zzz" link="https://entangible.org/?course=zzz" />);
-    fireEvent.click(screen.getByRole('button', { name: 'Challenge a friend to this course' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Multi player — share this course' }));
     await waitFor(() => {
       const second = other.container.querySelector('.pk-qr-code')!.innerHTML;
       expect(second.length).toBeGreaterThan(100);
@@ -62,7 +62,7 @@ describe('CourseChallenge (#84)', () => {
   it('closes on the X and on a tap outside, like every other pocket overlay', async () => {
     render(<CourseChallenge code={CODE} link={LINK} />);
     const open = () =>
-      fireEvent.click(screen.getByRole('button', { name: 'Challenge a friend to this course' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Multi player — share this course' }));
 
     open();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
