@@ -34,6 +34,13 @@ export interface CelebrationRequest extends Celebration {
   readonly token: number;
   /** Optional banner text override (golf hole-in: "EAGLE!/BIRDIE!/…"). */
   readonly banner?: string;
+  /**
+   * Multiplier on the kind's particle budget (#80) — a course finished 20 under
+   * par should not look like one finished three over. Defaults to 1. The
+   * `maxParticles` ceiling still applies afterwards, so low-power mode caps a
+   * doubled burst exactly as it caps a normal one.
+   */
+  readonly intensity?: number;
 }
 
 interface Particle {
@@ -77,7 +84,7 @@ export function Celebrations({
   useEffect(() => {
     if (!celebration) return;
 
-    spawnBurst(celebration.kind);
+    spawnBurst(celebration.kind, celebration.intensity ?? 1);
     startLoop();
 
     const text =
@@ -112,9 +119,9 @@ export function Celebrations({
     return { w: window.innerWidth, h: window.innerHeight };
   }
 
-  function spawnBurst(kind: Celebration['kind']) {
+  function spawnBurst(kind: Celebration['kind'], intensity = 1) {
     const { w, h } = canvasSize();
-    const budget = budgetRef.current(kind);
+    const budget = Math.round(budgetRef.current(kind) * intensity);
     const ceiling = maxParticlesRef.current;
     const now = performance.now();
     const half = Math.ceil(budget / 2);

@@ -690,6 +690,48 @@ export function courseTotals(
   return { completed, strokes, par, vsPar: strokes - par };
 }
 
+/** How a finished round is celebrated (#80) — the tiers a course-end burst is
+ *  scaled and worded by. */
+export type CompletionTier = 'legendary' | 'under' | 'even' | 'over';
+
+/** Under this vs-par a round stops being good and starts being a story. */
+export const LEGENDARY_VS_PAR = -18;
+
+export interface CompletionCelebration {
+  readonly tier: CompletionTier;
+  /** Multiplier on the celebration's particle budget — the burst should feel
+   *  like the round did, not identical for a triumph and a slog. */
+  readonly intensity: number;
+  /** Banner copy, naming the result rather than just saying "well done". */
+  readonly copy: string;
+}
+
+/**
+ * The course-end celebration for a finished round (#80). Pure and display-free:
+ * it decides tier, intensity and words from the score alone, and the two
+ * drivers hand the result to the celebration machinery they already own.
+ *
+ * −18 is the legendary line because it is what playing every hole at the
+ * minimum earns on the classic course (18 holes × 2 under a par of minimum + 2),
+ * so it means "you found the best line, or something like it, all the way round".
+ */
+export function completionCelebration(vsPar: number): CompletionCelebration {
+  if (vsPar <= LEGENDARY_VS_PAR) {
+    return {
+      tier: 'legendary',
+      intensity: 2,
+      copy: `Legendary round — ${Math.abs(vsPar)} under par!`,
+    };
+  }
+  if (vsPar < 0) {
+    return { tier: 'under', intensity: 1.5, copy: `${Math.abs(vsPar)} under par!` };
+  }
+  if (vsPar === 0) {
+    return { tier: 'even', intensity: 1, copy: 'Even par — course complete!' };
+  }
+  return { tier: 'over', intensity: 0.6, copy: `Course complete — ${formatVsPar(vsPar)}.` };
+}
+
 /** Format a vs-par delta golf-style: "E" (even), "+3", "−2". */
 export function formatVsPar(vsPar: number): string {
   if (vsPar === 0) return 'E';

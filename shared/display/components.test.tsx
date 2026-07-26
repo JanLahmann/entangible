@@ -17,7 +17,13 @@ import { MessageStrip } from './MessageStrip';
 import { Scorecard, courseShareLink } from './Scorecard';
 import { MiniCircuit } from './MiniCircuit';
 import { Celebrations } from './Celebrations';
-import { initialGolfState } from '@quantum/golf';
+import {
+  HOLES,
+  completionCelebration,
+  courseTotals,
+  golfStep,
+  initialGolfState,
+} from '@quantum/golf';
 import { courseCode, randomCourse } from '@quantum/golfRandom';
 
 afterEach(cleanup);
@@ -636,6 +642,84 @@ describe('MiniCircuit (shared)', () => {
     const high = circuit([g({ type: 'H', qubit: 4, position: 0 })]);
     const grown = render(<MiniCircuit circuit={high} n={2} classPrefix="pk" />);
     expect(grown.container.querySelectorAll('.pk-mini-circ-wire').length).toBe(5);
+  });
+});
+
+describe('course-end celebration wiring (#80)', () => {
+  /** The driver logic both apps run on a golf step, in miniature: fire once per
+   *  completion, scaled and worded by the round, and re-arm after a restart. */
+  function driveToCompletion(best: Record<number, number>) {
+    const fired: { banner?: string; intensity?: number }[] = [];
+    let completed = false;
+    let state = { ...initialGolfState(best), levelIndex: 17, holedIn: true };
+    const empty: Circuit = { qubits: 5, gates: [] };
+    const push = (s: typeof state) => {
+      const step = golfStep(s, empty);
+      if (step.justCompleted && !completed) {
+        completed = true;
+        const done = completionCelebration(courseTotals(step.state.best).vsPar);
+        fired.push({ banner: done.copy, intensity: done.intensity });
+      }
+      if (!step.state.complete) completed = false;
+      return step.state;
+    };
+    state = push(state); // the clear that finishes the course
+    state = push(state); // a replayed identical frame must not re-fire
+    return { fired, state, push };
+  }
+
+  it('fires once per completion, worded by the score', () => {
+    // Every hole at par − 2 (the minimum): the legendary tier.
+    const perfect: Record<number, number> = {};
+    for (const h of HOLES) perfect[h.hole] = h.par - 2;
+    const { fired, state, push } = driveToCompletion(perfect);
+    expect(fired.length).toBe(1);
+    expect(fired[0].banner).toBe('Legendary round — 36 under par!');
+    expect(fired[0].intensity).toBeGreaterThan(1);
+
+    // Restarting re-arms it: a second round can be celebrated again.
+    const restarted = push(state);
+    expect(restarted.complete).toBe(false);
+  });
+
+  it('still celebrates a round played over par, modestly', () => {
+    const scrappy: Record<number, number> = {};
+    for (const h of HOLES) scrappy[h.hole] = h.par + 1;
+    const { fired } = driveToCompletion(scrappy);
+    expect(fired.length).toBe(1);
+    expect(fired[0].banner).toBe('Course complete — +18.');
+    expect(fired[0].intensity).toBeLessThan(1);
+  });
+
+  it('scales the particle budget by intensity, under the low-power ceiling', () => {
+    const budgets: number[] = [];
+    const render1 = (intensity: number, maxParticles: number) => {
+      cleanup();
+      const { rerender } = render(
+        <Celebrations
+          celebration={null}
+          classPrefix="pk"
+          particleBudget={() => 100}
+          maxParticles={maxParticles}
+        />,
+      );
+      rerender(
+        <Celebrations
+          celebration={{ kind: 'ghz', k: 5, banner: 'x', intensity, token: 1 }}
+          classPrefix="pk"
+          particleBudget={(k) => {
+            budgets.push(k === 'ghz' ? 100 : 50);
+            return 100;
+          }}
+          maxParticles={maxParticles}
+        />,
+      );
+    };
+    // The budget function is consulted for every burst; the ceiling still caps.
+    render1(2, 1000);
+    expect(budgets.length).toBe(1);
+    render1(0.6, 10);
+    expect(budgets.length).toBe(2);
   });
 });
 

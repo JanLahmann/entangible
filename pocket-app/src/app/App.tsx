@@ -63,6 +63,8 @@ import { HINTS, HINT_ROTATE_MS } from '@shared/display/hints';
 import { editorFit, editorNaturalHeight, type EditorFit } from './editorFit';
 import {
   golfStep,
+  completionCelebration,
+  courseTotals,
   initialGolfState,
   loadBest,
   saveBest,
@@ -408,6 +410,8 @@ export function App() {
   const [corners, setCorners] = useState(0);
   const [strip, setStrip] = useState<StripMessage | null>(null);
   const [celebration, setCelebration] = useState<CelebrationRequest | null>(null);
+  /** One course-end celebration per completion (#80); cleared on restart. */
+  const completedRef = useRef(false);
   const [hintIndex, setHintIndex] = useState(0);
   // A shared course code (#78) — from `?course=`, the settings drawer, or a
   // previous session — opens golf straight onto that generated course. The code
@@ -501,6 +505,24 @@ export function App() {
             : step.state;
         golfStateRef.current = nextGolf;
         setGolfState(nextGolf);
+        // Course finished (#80): one burst, scaled and worded by the round.
+        // Guarded by a ref like the moment engine's dedupe, so a replayed frame
+        // or a StrictMode double-invoke cannot fire it twice; the guard clears
+        // on restart, so playing again can earn it again.
+        if (step.justCompleted && !completedRef.current) {
+          completedRef.current = true;
+          const done = completionCelebration(
+            courseTotals(step.state.best, courseHoles(step.state)).vsPar,
+          );
+          setCelebration({
+            kind: 'ghz',
+            k: 5,
+            banner: done.copy,
+            intensity: done.intensity,
+            token: ++tokenRef.current,
+          });
+        }
+        if (!step.state.complete) completedRef.current = false;
         if (step.justHoledIn && step.scoreName) {
           // Random bests are session-only — a generated hole 7 is a different
           // hole on every seed, so writing it would corrupt the device's card.

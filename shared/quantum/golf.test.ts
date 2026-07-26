@@ -13,6 +13,8 @@ import {
   strokeDelta,
   scoreName,
   scoreKind,
+  completionCelebration,
+  LEGENDARY_VS_PAR,
   ROUND_CODE,
   golfStep,
   initialGolfState,
@@ -261,6 +263,36 @@ describe('scoreName', () => {
         const kind = scoreKind(s, par);
         expect(named.startsWith(kind === 'over' ? 'HOLE IN' : kind.toUpperCase())).toBe(true);
       }
+    }
+  });
+});
+
+describe('course-end celebration (#80)', () => {
+  it('tiers the round by vs-par, and names the result in the copy', () => {
+    // Every hole played at the minimum on the classic course is −36; the
+    // legendary line is −18, i.e. "you found the good line most of the way".
+    expect(completionCelebration(-36).tier).toBe('legendary');
+    expect(completionCelebration(LEGENDARY_VS_PAR).tier).toBe('legendary');
+    expect(completionCelebration(LEGENDARY_VS_PAR + 1).tier).toBe('under');
+    expect(completionCelebration(-1).tier).toBe('under');
+    expect(completionCelebration(0).tier).toBe('even');
+    expect(completionCelebration(1).tier).toBe('over');
+
+    expect(completionCelebration(-20).copy).toBe('Legendary round — 20 under par!');
+    expect(completionCelebration(-4).copy).toBe('4 under par!');
+    expect(completionCelebration(0).copy).toBe('Even par — course complete!');
+    expect(completionCelebration(3).copy).toBe('Course complete — +3.');
+  });
+
+  it('scales the burst with the round, and never inverts the ordering', () => {
+    const tiers = [-36, -4, 0, 5].map((v) => completionCelebration(v).intensity);
+    expect(tiers).toEqual([...tiers].sort((a, b) => b - a));
+    expect(completionCelebration(-36).intensity).toBeGreaterThan(1);
+    expect(completionCelebration(9).intensity).toBeLessThan(1);
+    // A modest round still gets a burst — finishing 18 holes is finishing.
+    for (const v of [-36, -1, 0, 12]) {
+      expect(completionCelebration(v).intensity).toBeGreaterThan(0);
+      expect(completionCelebration(v).copy.length).toBeGreaterThan(0);
     }
   });
 });

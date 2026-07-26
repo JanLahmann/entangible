@@ -69,6 +69,8 @@ import { HINTS, HINT_ROTATE_MS } from '@shared/display/hints';
 import { EvolvingState } from '@shared/display/EvolvingState';
 import {
   golfStep,
+  completionCelebration,
+  courseTotals,
   initialGolfState,
   HOLES,
   holeHighlight,
@@ -211,6 +213,8 @@ export function KioskView() {
   const tokenRef = useRef(0);
   const [strip, setStrip] = useState<StripMessage | null>(null);
   const [celebration, setCelebration] = useState<CelebrationRequest | null>(null);
+  /** One course-end celebration per completion (#80); cleared on restart. */
+  const completedRef = useRef(false);
 
   // --- golf engine (kiosk mode === 'golf'; best-of-session in memory) ------
   // (state declared above, next to the wire trim that reads it)
@@ -254,6 +258,19 @@ export function KioskView() {
       const step = golfStep(golfStateRef.current, next);
       golfStateRef.current = step.state;
       setGolfState(step.state);
+      // Course finished (#80): one burst, scaled and worded by the round.
+      if (step.justCompleted && !completedRef.current) {
+        completedRef.current = true;
+        const done = completionCelebration(courseTotals(step.state.best).vsPar);
+        setCelebration({
+          kind: 'ghz',
+          k: 5,
+          banner: done.copy,
+          intensity: done.intensity,
+          token: ++tokenRef.current,
+        });
+      }
+      if (!step.state.complete) completedRef.current = false;
       if (step.justHoledIn && step.scoreName) {
         setCelebration({
           kind: step.hole.qubits >= 3 ? 'ghz' : 'bell',
