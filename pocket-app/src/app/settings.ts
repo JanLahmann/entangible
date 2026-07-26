@@ -98,6 +98,15 @@ export interface Settings {
    */
   readonly courseCode: string | null;
   /**
+   * Which round the golf competition is over (#102), as the round's own letter
+   * — 'E' | 'M' | 'D' | 'X' — or `null` for the full eighteen. Persisted, so a
+   * table that has settled on the easy round stays there across a reload, and
+   * URL-overridable via `?scope=<letter>`, which is how a challenge QR hands a
+   * friend the same competition. `parseScope` in `@quantum/golf` is the
+   * authority; anything unrecognized reads as the full course.
+   */
+  readonly courseScope: string | null;
+  /**
    * In-browser noise model preset (docs/design.md). 'off' (default) = ideal
    * results only. Persisted; URL-overridable via
    * `?noise=falcon|eagle|heron|nighthawk`.
@@ -135,6 +144,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cameraId: null,
   boothUrl: null,
   courseCode: null,
+  courseScope: null,
   noise: 'off',
   menu: 'coffee',
   boardLayout: 'grid',
@@ -194,6 +204,8 @@ function parsePanels(v: string | null): PanelId[] | undefined {
 
 /** Shape of a golf course code in the URL: 1–7 base-36 digits (#78). */
 const COURSE_CODE_RE = /^[0-9a-zA-Z]{1,7}$/;
+/** Shape of a competition scope in the URL: one round letter (#102). */
+const COURSE_SCOPE_RE = /^[EMDXemdx]$/;
 
 /** A mutable settings patch (Settings fields are readonly). */
 type MutableSettings = { -readonly [K in keyof Settings]?: Settings[K] };
@@ -225,6 +237,11 @@ export function parseUrlOverrides(search: string): Partial<Settings> {
   // than dealing some other course.
   const course = params.get('course');
   if (course !== null && COURSE_CODE_RE.test(course)) out.courseCode = course.toLowerCase();
+
+  // `?scope=<letter>` sets the competition scope (#102). Absent means the full
+  // course, which is what every pre-#102 link says — so old QRs keep working.
+  const scope = params.get('scope');
+  if (scope !== null && COURSE_SCOPE_RE.test(scope)) out.courseScope = scope.toUpperCase();
 
   const side = params.get('side');
   if (side === 'left' || side === 'right') out.side = side;
@@ -304,10 +321,15 @@ export function sanitize(raw: unknown): Settings {
     typeof r.courseCode === 'string' && COURSE_CODE_RE.test(r.courseCode)
       ? r.courseCode.toLowerCase()
       : null;
+  const courseScope: string | null =
+    typeof r.courseScope === 'string' && COURSE_SCOPE_RE.test(r.courseScope)
+      ? r.courseScope.toUpperCase()
+      : null;
   const boardLayout: BoardLayout = r.boardLayout === 'stretch' ? 'stretch' : 'grid';
   return {
     boardLayout,
     courseCode,
+    courseScope,
     mode,
     input,
     panels,

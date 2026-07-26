@@ -50,6 +50,12 @@
  * a RANDOM round renders its generated holes (names, kets and optimal-derived
  * pars, #76) through the same layout, plus a "Random round" chip in the header.
  *
+ * It is also SCOPE-aware (#102). A competition may be over the full eighteen or
+ * over one round of them; everything scored — the hole count in the header, the
+ * total, par, the finish line and the share link — follows `state.scope`, and
+ * the holes outside it stay drawn but dimmed and inert, because the course is
+ * still the course even when the contest is five holes of it.
+ *
  * `monoKet` toggles the one pre-SC2 difference: pocket adds `pk-mono` to the
  * target-ket span; the booth does not tint its ket.
  */
@@ -66,9 +72,14 @@ import {
   scoreKind,
   scoreName,
   courseTotals,
+  inScope,
+  scopeHoles,
+  scopeLabel,
+  scopeCode,
   formatVsPar,
   formatDuration,
   type GolfRound,
+  type GolfScope,
   type GolfState,
   type Hole,
 } from '@quantum/golf';
@@ -134,9 +145,18 @@ function useOptimal(state: GolfState, hole: Hole, enabled: boolean): OptimalResu
   return OPTIMAL_CACHE.get(key) ?? null;
 }
 
-/** The share link for a course code — what a tap on the code copies (#78). */
-export function courseShareLink(origin: string, code: string): string {
-  return `${origin}?course=${code}`;
+/**
+ * The share link for a course code — what a tap on the code copies (#78), and
+ * what the challenge QR encodes (#84).
+ *
+ * A round SCOPE travels with it (#102) so both players compete over the same
+ * holes, but only when there is one: the full course adds no parameter, which
+ * is exactly what every link already in the wild looks like, so they keep
+ * meaning what they meant.
+ */
+export function courseShareLink(origin: string, code: string, scope: GolfScope = 'full'): string {
+  const round = scopeCode(scope);
+  return `${origin}?course=${code}${round === null ? '' : `&scope=${round}`}`;
 }
 
 /**
@@ -151,6 +171,13 @@ export function courseShareLink(origin: string, code: string): string {
  * `navigator.clipboard` simply shows the code and copies nothing, rather than
  * throwing at a player.
  */
+/** What is being competed over, when it is not the whole course (#102) — the
+ *  card must never leave a player guessing which round their result is for. */
+function ScopeChip({ p, scope }: { p: string; scope: GolfScope }) {
+  if (scope === 'full') return null;
+  return <span className={`${p}-golf-scope`}>{scopeLabel(scope)} round only</span>;
+}
+
 function CourseChip({
   p,
   state,
@@ -174,6 +201,7 @@ function CourseChip({
     courseShareLink(
       typeof location === 'undefined' ? '' : location.origin + location.pathname,
       code,
+      state.scope,
     );
 
   const copy = () => {
@@ -192,7 +220,7 @@ function CourseChip({
       >
         {copied ? 'link copied' : `Course #${code}`}
       </button>
-      {challenge?.({ code, link: shareLink() })}
+      {challenge?.({ code, link: shareLink(), scope: state.scope })}
     </>
   );
 }
@@ -205,7 +233,13 @@ function CourseChip({
  * it, and the kiosk — classic course only, so no code to share — simply passes
  * nothing and renders nothing.
  */
-export type ChallengeRenderer = (args: { code: string; link: string }) => ReactNode;
+export type ChallengeRenderer = (args: {
+  code: string;
+  link: string;
+  /** What the challenge is a competition over (#102) — the full eighteen or one
+   *  round — so the invitation can say which. */
+  scope: GolfScope;
+}) => ReactNode;
 
 /** How long the chip says "link copied" before returning to the code. */
 const COPIED_MS = 1600;
@@ -350,22 +384,34 @@ export function Scorecard({
   const paidFor = state.revealed[hole.hole] === true;
   const revealed = (state.holedIn || stuck) && !state.complete && solutionFor === hole.hole;
   const optimal = useOptimal(state, hole, revealed);
-  const totals = courseTotals(state.best, holes);
+  // What is being competed over (#102): the whole card — totals, par, the hole
+  // count in the header, the finish — is scored over the SCOPE's holes, so an
+  // Easy round reads "hole 3/5 · par 25" and means it.
+  const playing = scopeHoles(holes, state.scope);
+  const totals = courseTotals(state.best, playing);
   const totalLabel = totals.completed > 0 ? formatVsPar(totals.vsPar) : 'E';
-  // A generated course sums its own pars; the fixed one keeps the constant.
-  const fullPar = state.course === 'random' ? coursePar(holes) : COURSE_PAR;
+  // A generated course sums its own pars; the fixed FULL round keeps the
+  // constant, which is what makes par 101 a number people quote.
+  const fullPar =
+    state.course === 'random' || state.scope !== 'full' ? coursePar(playing) : COURSE_PAR;
 
   // Course finished — show the final scorecard summary.
   if (state.complete) {
     return (
       <div>
         <div className={`${p}-label`}>
-          Scorecard · course complete
+          Scorecard · {state.scope === 'full' ? 'course' : `${scopeLabel(state.scope)} round`}{' '}
+          complete
+          <ScopeChip p={p} scope={state.scope} />
           <CourseChip p={p} state={state} challenge={challenge} />
         </div>
         <div className={`${p}-well ${p}-golf`}>
           <div className={`${p}-golf-hole`}>
-            <span className={`${p}-golf-name`}>Course complete! ⛳</span>
+            <span className={`${p}-golf-name`}>
+              {state.scope === 'full'
+                ? 'Course complete! ⛳'
+                : `${scopeLabel(state.scope)} round complete! ⛳`}
+            </span>
             <span className={`${p}-golf-qubits`}>
               {totals.strokes} strokes · par {fullPar}
             </span>
@@ -387,7 +433,14 @@ export function Scorecard({
               'clear the board to play again'
             )}
           </div>
-          <ChipStrip p={p} holes={holes} currentHole={-1} best={state.best} onJump={onJump} />
+          <ChipStrip
+            p={p}
+            holes={holes}
+            currentHole={-1}
+            best={state.best}
+            scope={state.scope}
+            onJump={onJump}
+          />
         </div>
       </div>
     );
@@ -401,7 +454,9 @@ export function Scorecard({
   return (
     <div>
       <div className={`${p}-label`}>
-        Scorecard · {ROUND_LABEL[hole.round]} · hole {hole.hole}/{holes.length}
+        Scorecard · {ROUND_LABEL[hole.round]} · hole{' '}
+        {playing.findIndex((h) => h.hole === hole.hole) + 1}/{playing.length}
+        <ScopeChip p={p} scope={state.scope} />
         <CourseChip p={p} state={state} challenge={challenge} />
       </div>
       <div className={`${p}-well ${p}-golf`}>
@@ -498,6 +553,7 @@ export function Scorecard({
           holes={holes}
           currentHole={hole.hole}
           best={state.best}
+          scope={state.scope}
           onJump={onJump}
         />
       </div>
@@ -647,13 +703,17 @@ function ChipStrip({
   holes,
   currentHole,
   best,
+  scope,
   onJump,
 }: {
   p: string;
   holes: readonly Hole[];
   currentHole: number;
   best: Readonly<Record<number, number>>;
-  /** When set, every chip is a way onto that hole (#101). */
+  /** What is being competed over (#102). Holes outside it stay on the card —
+   *  the course is still the course — but they are not a way in. */
+  scope: GolfScope;
+  /** When set, every IN-SCOPE chip is a way onto that hole (#101). */
   onJump?: (holeNumber: number) => void;
 }) {
   return (
@@ -668,10 +728,12 @@ function ChipStrip({
               const kind = done ? scoreKind(strokes, h.par) : null;
               const vsPar = done ? formatVsPar(strokes - h.par) : null;
               const current = h.hole === currentHole;
+              const outside = !inScope(h, scope);
               const className = [
                 `${p}-golf-chip`,
                 current ? 'is-current' : '',
                 done ? 'is-done' : '',
+                outside ? 'is-outside' : '',
                 kind ? `${p}-golf-chip--${kind}` : '',
               ]
                 .filter(Boolean)
@@ -691,7 +753,7 @@ function ChipStrip({
               // A chip is a BUTTON wherever jumping is offered (#101), so it is
               // reachable by keyboard and announced as the control it is; the
               // read-only surfaces keep the plain element they always had.
-              return onJump ? (
+              return onJump && !outside ? (
                 <button
                   key={h.hole}
                   type="button"

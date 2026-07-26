@@ -38,6 +38,20 @@
  * It is display data only — nothing here reads it, and it is never applied to
  * the board, so it can never touch strokes (#68).
  *
+ * Three things besides `golfStep` move the state, and they are actions here
+ * rather than arithmetic in a card, because the engine owns strokes and scores
+ * (#68, #73): `golfWipe` sweeps the on-screen board for one flat stroke (#100),
+ * `golfReveal` takes the mid-hole answer at the price of a double-par floor on
+ * that hole's record (#99), and `golfJumpTo` walks straight to any hole, parking
+ * the one it leaves (#101).
+ *
+ * A round need not be all eighteen holes (#102). `GolfState.scope` is the
+ * competition: the full course, or one of its four rounds played as a contest
+ * of its own, with its own par, its own first hole and its own finish.
+ * `golfStep` advances within the scope and completes at its last hole, so the
+ * clock, the celebration and a shared result all mean the same thing to both
+ * players.
+ *
  * Bit convention: leftmost ket bit = first arrangement qubit, matching
  * shared/display/outcomes.ts. Internally targets live in the little-endian
  * statevector basis (index i has qubit q set when (i >> q) & 1).
@@ -806,6 +820,79 @@ export function formatVsPar(vsPar: number): string {
  */
 export type GolfCourse = 'classic' | 'random';
 
+/**
+ * How much of the course counts (#102) — the competition's scope.
+ *
+ * `'full'` is the round everyone knows: eighteen holes, par 101 on the classic
+ * course. The four others each play ONE round of the course as a competition in
+ * its own right — five easy holes, or the three extra ones — with their own par,
+ * their own clock and their own finish. A table of beginners can race the easy
+ * round in five minutes; two people who have played for an hour can settle it
+ * over Difficult without replaying the tutorial.
+ *
+ * The scope is part of the state, not a view filter, because it decides where
+ * the round ENDS: `golfStep` advances within it and completes at its last hole,
+ * which is what makes the celebration, the clock and the comparison mean the
+ * same thing to both players.
+ */
+export type GolfScope = 'full' | GolfRound;
+
+/** Every scope, in picker order. */
+export const GOLF_SCOPES: readonly GolfScope[] = ['full', 'easy', 'medium', 'difficult', 'extra'];
+
+/** What a scope is called on the card and in the picker. */
+export function scopeLabel(scope: GolfScope): string {
+  return scope === 'full' ? 'Full 18' : ROUND_LABEL[scope];
+}
+
+/** Is this hole part of the round being competed over? */
+export function inScope(hole: Hole, scope: GolfScope): boolean {
+  return scope === 'full' || hole.round === scope;
+}
+
+/** The holes a scope plays, in course order. */
+export function scopeHoles(holes: readonly Hole[], scope: GolfScope): readonly Hole[] {
+  return scope === 'full' ? holes : holes.filter((h) => h.round === scope);
+}
+
+/** Index of the scope's first hole (0 if the scope somehow has none). */
+export function firstInScope(holes: readonly Hole[], scope: GolfScope): number {
+  const i = holes.findIndex((h) => inScope(h, scope));
+  return i < 0 ? 0 : i;
+}
+
+/** Index of the next hole IN SCOPE after `from`, or `null` at the scope's end —
+ *  which is where a round finishes and the celebration fires. */
+export function nextInScope(
+  holes: readonly Hole[],
+  from: number,
+  scope: GolfScope,
+): number | null {
+  for (let i = from + 1; i < holes.length; i++) {
+    if (inScope(holes[i], scope)) return i;
+  }
+  return null;
+}
+
+/**
+ * A scope as it travels in a link or a QR (#102) — the round's own letter from
+ * `ROUND_CODE`, the same one its holes are named after (E2, M5, X3). The full
+ * course carries NO scope parameter at all, which is what makes every link and
+ * QR already in the wild keep meaning exactly what it meant.
+ */
+export function scopeCode(scope: GolfScope): string | null {
+  return scope === 'full' ? null : ROUND_CODE[scope];
+}
+
+/** The scope a code names, or `'full'` — for an absent, unknown or malformed
+ *  one, since a link that says nothing about scope is a full round (#102). */
+export function parseScope(code: string | null | undefined): GolfScope {
+  if (!code) return 'full';
+  const want = code.trim().toUpperCase();
+  const round = (Object.keys(ROUND_CODE) as GolfRound[]).find((r) => ROUND_CODE[r] === want);
+  return round ?? 'full';
+}
+
 export interface GolfState {
   /** Which course the hole indices refer to (`courseHoles` resolves it). */
   readonly course: GolfCourse;
@@ -850,6 +937,12 @@ export interface GolfState {
    * somebody else's card.
    */
   readonly parked: Readonly<Record<number, HoleProgress>>;
+  /**
+   * How much of the course is being competed over (#102). `'full'` is the
+   * eighteen-hole round; a round scope plays only that round's holes, ends at
+   * the last of them, and is scored against ITS par.
+   */
+  readonly scope: GolfScope;
 }
 
 /** What a hole was costing when it was left (#101). */
@@ -881,11 +974,16 @@ export function initialGolfState(
   course: GolfCourse = 'classic',
   randomSeed = 0,
   revealed: Record<number, boolean> = {},
+  scope: GolfScope = 'full',
 ): GolfState {
   return {
     course,
     randomSeed,
-    levelIndex: 0,
+    // A scoped round tees off on its own first hole. `HOLES` is safe to ask
+    // even for a generated course: the random one is dealt into the SAME
+    // eighteen slots (see `golfRandom`'s `SLOTS`), so round boundaries sit at
+    // the same indices on both.
+    levelIndex: firstInScope(HOLES, scope),
     holedIn: false,
     complete: false,
     best,
@@ -893,6 +991,7 @@ export function initialGolfState(
     gateKeys: NO_GATES,
     revealed,
     parked: {},
+    scope,
   };
 }
 
@@ -925,6 +1024,9 @@ export function golfJumpTo(
 ): GolfState {
   const levelIndex = holes.findIndex((h) => h.hole === holeNumber);
   if (levelIndex < 0) return state;
+  // Inside a round scope the other rounds are not this competition (#102):
+  // they are shown on the card, but they are not somewhere you can go.
+  if (!inScope(holes[levelIndex], state.scope)) return state;
   const from = holes[state.levelIndex];
   if (from !== undefined && from.hole === holeNumber && !state.complete) return state;
 
@@ -1076,7 +1178,7 @@ export function golfStep(
     if (circuit.gates.length === 0) {
       const state: GolfState = {
         ...prev,
-        levelIndex: 0,
+        levelIndex: firstInScope(holes, prev.scope),
         holedIn: false,
         complete: false,
         best: prev.best,
@@ -1090,7 +1192,7 @@ export function golfStep(
       };
       return {
         state,
-        hole: holes[0],
+        hole: holes[state.levelIndex],
         fidelity: 0,
         strokes: 0,
         score: 0,
@@ -1130,8 +1232,9 @@ export function golfStep(
   // Every branch tees the next hole off from zero strokes and an EMPTY baseline.
   if (ev.gateCount === 0) {
     if (prev.holedIn) {
-      // Finished the last hole → the course is complete.
-      if (prev.levelIndex >= holes.length - 1) {
+      // Finished the last hole OF THE SCOPE → the round is complete (#102).
+      const levelIndex = nextInScope(holes, prev.levelIndex, prev.scope);
+      if (levelIndex === null) {
         return {
           state: {
             ...prev,
@@ -1154,7 +1257,6 @@ export function golfStep(
           scoreName: null,
         };
       }
-      const levelIndex = prev.levelIndex + 1;
       const nextHole = holes[levelIndex];
       const nextEv = evaluate(circuit, nextHole);
       return {

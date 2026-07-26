@@ -34,7 +34,9 @@ export function Scorecard({
       circuit={circuit}
       classPrefix="pk"
       monoKet
-      challenge={({ code, link }) => <CourseChallenge code={code} link={link} />}
+      challenge={({ code, link, scope }) => (
+        <CourseChallenge code={code} link={link} scope={scope} />
+      )}
       onNextLevel={onNextLevel}
       onReveal={onReveal}
       onWipe={onWipe}

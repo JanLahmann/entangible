@@ -12,12 +12,29 @@
  * — never pulls the QR dependency in.
  */
 import { useEffect, useState } from 'react';
+import { scopeLabel, type GolfScope } from '@quantum/golf';
 import { renderQrSvg } from './composerQrCode';
 
-const HINT = 'Scan to play the same course — same 18 holes, same pars.';
 const SUBHINT = 'Compare strokes and time when you both finish.';
 
-export function CourseChallenge({ code, link }: { code: string; link: string }) {
+/** What the invitation promises — the same holes, whichever set of them the
+ *  challenger is competing over (#102). */
+function hint(scope: GolfScope): string {
+  return scope === 'full'
+    ? 'Scan to play the same course — same 18 holes, same pars.'
+    : `Scan to play the same ${scopeLabel(scope).toLowerCase()} round — same holes, same pars.`;
+}
+
+export function CourseChallenge({
+  code,
+  link,
+  scope = 'full',
+}: {
+  code: string;
+  link: string;
+  /** The competition the QR opens (#102); the link carries it too. */
+  scope?: GolfScope;
+}) {
   const [open, setOpen] = useState(false);
   const [svg, setSvg] = useState('');
 
@@ -64,8 +81,11 @@ export function CourseChallenge({ code, link }: { code: string; link: string }) 
               // qrcode emits a self-contained SVG string; safe, locally generated.
               dangerouslySetInnerHTML={{ __html: svg }}
             />
-            <p className="pk-qr-caption">{HINT}</p>
-            <p className="pk-golf-challenge-code">Course #{code}</p>
+            <p className="pk-qr-caption">{hint(scope)}</p>
+            <p className="pk-golf-challenge-code">
+              Course #{code}
+              {scope !== 'full' && ` · ${scopeLabel(scope)} round`}
+            </p>
             <p className="pk-qr-disclaimer">{SUBHINT}</p>
           </div>
         </div>

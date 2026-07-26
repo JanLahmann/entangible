@@ -873,6 +873,80 @@ describe('Scorecard (shared)', () => {
     expect(chips[4].getAttribute('title')).toBe('E5 · GHZ-5 · par 7');
   });
 
+  it('scores the card over the competition’s scope, not the whole course (#102)', () => {
+    // Difficult round, third hole: the header counts within the round, and the
+    // total is measured against the round's par (30), not the course's 101.
+    const dPar = (n: number) => HOLES[n - 1].par;
+    const best: Record<number, number> = { 11: dPar(11) - 1, 12: dPar(12) }; // D1 birdie, D2 par
+    const state = {
+      ...initialGolfState(best, 'classic', 0, {}, 'difficult'),
+      levelIndex: 12, // D3
+      strokes: 2,
+    };
+    const { container } = render(<Scorecard state={state} circuit={bell} classPrefix="pk" />);
+    expect(container.querySelector('.pk-label')?.textContent).toContain('hole 3/5');
+    expect(container.querySelector('.pk-golf-scope')?.textContent).toBe('Difficult round only');
+    const stats = Array.from(container.querySelectorAll('.pk-stat')).map((n) => n.textContent);
+    // Two holes recorded, one of them a birdie: one under the ROUND's par.
+    expect(stats).toContain('total −1');
+    cleanup();
+
+    // The finished card names the round and totals its par.
+    const done = { ...initialGolfState(best, 'classic', 0, {}, 'difficult'), complete: true };
+    const summary = render(<Scorecard state={done} circuit={bell} classPrefix="pk" />);
+    expect(summary.container.querySelector('.pk-golf-name')?.textContent).toBe(
+      'Difficult round complete! ⛳',
+    );
+    expect(summary.container.querySelector('.pk-golf-qubits')?.textContent).toBe(
+      `${dPar(11) - 1 + dPar(12)} strokes · par 30`,
+    );
+  });
+
+  it('shows out-of-scope holes but makes them no way in (#101 × #102)', () => {
+    const jumps: number[] = [];
+    const state = initialGolfState({}, 'classic', 0, {}, 'easy');
+    const { container } = render(
+      <Scorecard state={state} circuit={bell} classPrefix="pk" onJump={(h) => jumps.push(h)} />,
+    );
+    // The whole course is still drawn — a competition over one round does not
+    // pretend the others do not exist.
+    const chips = Array.from(container.querySelectorAll('.pk-golf-chip'));
+    expect(chips.length).toBe(18);
+    // The five easy holes are buttons; the other thirteen are dimmed and inert.
+    expect(chips.filter((c) => c.tagName === 'BUTTON').length).toBe(5);
+    expect(chips.filter((c) => c.className.includes('is-outside')).length).toBe(13);
+    fireEvent.click(chips[3] as HTMLButtonElement);
+    expect(jumps).toEqual([4]);
+  });
+
+  it('carries the scope in the share link, and leaves a full round’s link alone (#102)', () => {
+    const origin = 'https://entangible.org/';
+    // Back-compat, load-bearing: every QR already in the wild is scope-less.
+    expect(courseShareLink(origin, 'abc')).toBe('https://entangible.org/?course=abc');
+    expect(courseShareLink(origin, 'abc', 'full')).toBe('https://entangible.org/?course=abc');
+    expect(courseShareLink(origin, 'abc', 'medium')).toBe(
+      'https://entangible.org/?course=abc&scope=M',
+    );
+
+    // And the card hands the challenge control the scoped link.
+    const seen: { code: string; link: string }[] = [];
+    render(
+      <Scorecard
+        state={initialGolfState({}, 'random', 4242, {}, 'extra')}
+        circuit={bell}
+        classPrefix="pk"
+        challenge={(args) => {
+          seen.push(args);
+          return <b className="pk-golf-challenge" />;
+        }}
+      />,
+    );
+    expect(seen[0].link).toBe(
+      courseShareLink(location.origin + location.pathname, courseCode(4242), 'extra'),
+    );
+    expect(seen[0].link).toContain('&scope=X');
+  });
+
   it('shows a random round’s course code and copies a share link (#78)', async () => {
     const writes: string[] = [];
     const original = navigator.clipboard;
@@ -927,11 +1001,13 @@ describe('Scorecard (shared)', () => {
         }}
       />,
     );
-    // It is handed the course's own code and the exact share link.
+    // It is handed the course's own code, the exact share link, and what the
+    // challenge is a competition over (#102).
     expect(seen).toEqual([
       {
         code: courseCode(4242),
         link: courseShareLink(location.origin + location.pathname, courseCode(4242)),
+        scope: 'full',
       },
     ]);
     expect(container.querySelector('.pk-golf-challenge')).not.toBeNull();

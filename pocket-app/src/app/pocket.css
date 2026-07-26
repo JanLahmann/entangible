@@ -2153,6 +2153,57 @@ body,
   filter: brightness(1.15);
 }
 
+/* Competition scope (#102) — a second, quieter row under the course pick: the
+   course is the bigger decision, and five buttons at course-button weight would
+   read as five courses. Wraps rather than shrinking to nothing on a phone. */
+.pk-scope-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+}
+
+.pk-scope-btn {
+  flex: 1 1 auto;
+  padding: 0.28rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pk-scope-btn.is-active {
+  border-color: var(--entangle);
+  color: var(--text);
+}
+
+@media (pointer: coarse) {
+  .pk-scope-btn {
+    min-height: 44px;
+  }
+}
+
+/* The scope, named on the card itself (#102) — a result has to say which
+   competition it is for. */
+.pk-golf-scope {
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.62rem;
+  color: var(--muted);
+}
+
+/* Holes outside the scope stay on the card — the course is still the course —
+   but they are not somewhere you can go, so they read as background. */
+.pk-golf-chip.is-outside {
+  opacity: 0.4;
+}
+
 /* ---- debug panel ------------------------------------------------------ */
 
 .pk-debug {

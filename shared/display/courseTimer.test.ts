@@ -69,15 +69,19 @@ describe('course timer (#83)', () => {
     expect(tickCourseTimer(at(1), 300_000).startedAt).toBe(300_000);
   });
 
-  it('gives every course its own clock, so a new deal starts fresh (course)', () => {
-    expect(courseKey(at(0, false, 42, 'random'))).toBe('random:42');
-    expect(courseKey(at(0))).toBe('classic:0');
+  it('gives every course AND scope its own clock, so a new deal starts fresh', () => {
+    expect(courseKey(at(0, false, 42, 'random'))).toBe('random:42:full');
+    expect(courseKey(at(0))).toBe('classic:0:full');
+    // A scoped competition is a different one, with its own clock (#102).
+    expect(courseKey({ ...at(0), scope: 'easy' })).toBe('classic:0:easy');
 
     tickCourseTimer(at(1, false, 42, 'random'), 1_000);
     // A different seed is a different course: its clock has not begun.
     expect(tickCourseTimer(at(0, false, 43, 'random'), 5_000).startedAt).toBeNull();
     // Switching to the classic course likewise.
     expect(tickCourseTimer(at(0), 5_000).startedAt).toBeNull();
+    // A scope switch on the same course likewise starts fresh (#102).
+    expect(tickCourseTimer({ ...at(1), scope: 'easy' }, 6_000).startedAt).toBe(6_000);
     // …and the original round is still running, untouched.
     expect(tickCourseTimer(at(2, false, 42, 'random'), 9_000).startedAt).toBe(1_000);
   });

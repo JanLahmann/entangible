@@ -23,9 +23,9 @@
  * calling it twice with the same state changes nothing — so both callers may
  * drive it on every update without coordinating.
  *
- * Keyed by course identity, so switching courses (or drawing a new random seed)
- * starts a fresh clock, while advancing between holes of the same course keeps
- * the one that is running.
+ * Keyed by course identity, so switching courses (or drawing a new random seed,
+ * or changing what is being competed over) starts a fresh clock, while
+ * advancing between holes of the same round keeps the one that is running.
  */
 import type { GolfState } from '@quantum/golf';
 
@@ -43,8 +43,10 @@ const NOT_STARTED: CourseTiming = { startedAt: null, finishedAt: null };
  * round shares one key, and a restart is detected from the state transition
  * instead (see `tickCourseTimer`).
  */
-export function courseKey(state: Pick<GolfState, 'course' | 'randomSeed'>): string {
-  return `${state.course}:${state.randomSeed}`;
+export function courseKey(
+  state: Pick<GolfState, 'course' | 'randomSeed' | 'scope'>,
+): string {
+  return `${state.course}:${state.randomSeed}:${state.scope}`;
 }
 
 /** Live timings, one per course seen. Bounded: a session cannot leak clocks. */
@@ -66,7 +68,7 @@ const TIMINGS_LIMIT = 8;
  *    `golfStep` reports `justCompleted`, i.e. the eighteenth hole-in.
  */
 export function tickCourseTimer(
-  state: Pick<GolfState, 'course' | 'randomSeed' | 'strokes' | 'complete'>,
+  state: Pick<GolfState, 'course' | 'randomSeed' | 'scope' | 'strokes' | 'complete'>,
   now: number,
 ): CourseTiming {
   const key = courseKey(state);

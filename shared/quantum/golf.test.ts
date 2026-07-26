@@ -31,6 +31,12 @@ import {
   golfReveal,
   golfWipe,
   golfJumpTo,
+  GOLF_SCOPES,
+  scopeLabel,
+  scopeHoles,
+  scopeCode,
+  parseScope,
+  coursePar,
   loadRevealed,
   saveRevealed,
 } from './golf';
@@ -900,5 +906,92 @@ describe('jump straight to a hole (#101)', () => {
   it('starts a restarted course with nothing parked', () => {
     const finished = { ...initialGolfState(), complete: true, parked: { 4: { strokes: 9, holedIn: false } } };
     expect(golfStep(finished, empty).state.parked).toEqual({});
+  });
+});
+
+describe('per-round competition scope (#102)', () => {
+  it('names, selects and sums the holes of each scope', () => {
+    expect(GOLF_SCOPES).toEqual(['full', 'easy', 'medium', 'difficult', 'extra']);
+    expect(scopeLabel('full')).toBe('Full 18');
+    expect(scopeLabel('difficult')).toBe('Difficult');
+
+    expect(scopeHoles(HOLES, 'full').length).toBe(18);
+    expect(scopeHoles(HOLES, 'easy').map((h) => h.code)).toEqual(['E1', 'E2', 'E3', 'E4', 'E5']);
+    expect(scopeHoles(HOLES, 'extra').map((h) => h.code)).toEqual(['X1', 'X3', 'X5']);
+
+    // Scope par is the scope's own holes, and the four add back up to the full
+    // course — the constant everybody quotes stays exactly what it was.
+    const pars = (['easy', 'medium', 'difficult', 'extra'] as const).map((s) =>
+      coursePar(scopeHoles(HOLES, s)),
+    );
+    expect(pars).toEqual([25, 29, 30, 17]);
+    expect(pars.reduce((a, b) => a + b, 0)).toBe(COURSE_PAR);
+    expect(coursePar(scopeHoles(HOLES, 'full'))).toBe(COURSE_PAR);
+  });
+
+  it('tees off on the scope’s first hole', () => {
+    expect(initialGolfState().levelIndex).toBe(0);
+    expect(HOLES[initialGolfState({}, 'classic', 0, {}, 'difficult').levelIndex].code).toBe('D1');
+    expect(HOLES[initialGolfState({}, 'classic', 0, {}, 'extra').levelIndex].code).toBe('X1');
+  });
+
+  it('advances within the scope and finishes at its last hole', () => {
+    // Play the whole EXTRA round (X1, X3, X5) and nothing else.
+    let state = initialGolfState({}, 'classic', 0, {}, 'extra');
+    const played: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      played.push(HOLES[state.levelIndex].code);
+      const holed = golfStep(state, refCircuit(HOLES[state.levelIndex].hole));
+      expect(holed.justHoledIn).toBe(true);
+      const cleared = golfStep(holed.state, empty);
+      state = cleared.state;
+      // The third hole-in ENDS the competition — no walk into a fourth round.
+      expect(cleared.justCompleted).toBe(i === 2);
+      expect(cleared.complete).toBe(i === 2);
+    }
+    expect(played).toEqual(['X1', 'X3', 'X5']);
+    expect(state.complete).toBe(true);
+
+    // The card's result is the scope's: three holes against the extra par.
+    const totals = courseTotals(state.best, scopeHoles(HOLES, 'extra'));
+    expect(totals.completed).toBe(3);
+    expect(totals.par).toBe(17);
+  });
+
+  it('restarts a scoped round on the scope’s own first hole', () => {
+    const finished = { ...initialGolfState({}, 'classic', 0, {}, 'difficult'), complete: true };
+    const restarted = golfStep(finished, empty);
+    expect(restarted.restarted).toBe(true);
+    expect(HOLES[restarted.state.levelIndex].code).toBe('D1');
+    expect(restarted.hole.code).toBe('D1');
+  });
+
+  it('keeps a jump inside the competition (#101 × #102)', () => {
+    const state = initialGolfState({}, 'classic', 0, {}, 'easy');
+    // E4 is in the easy round: a legal move.
+    expect(golfJumpTo(state, 4, empty).levelIndex).toBe(3);
+    // M1 is on the card but not in this competition, so it is not a way in.
+    expect(golfJumpTo(state, 6, empty)).toBe(state);
+    // In the full round, everything is reachable.
+    expect(golfJumpTo(initialGolfState(), 6, empty).levelIndex).toBe(5);
+  });
+
+  it('round-trips a scope through a link, and reads a link without one as full', () => {
+    expect(scopeCode('full')).toBeNull();
+    expect(scopeCode('easy')).toBe('E');
+    expect(scopeCode('extra')).toBe('X');
+
+    for (const scope of GOLF_SCOPES) {
+      expect(parseScope(scopeCode(scope))).toBe(scope);
+    }
+    // Case and space are what people retype off a screen.
+    expect(parseScope('d')).toBe('difficult');
+    expect(parseScope(' M ')).toBe('medium');
+    // Back-compat: every link and QR already in the wild says nothing about
+    // scope, and must keep meaning the full course.
+    expect(parseScope(null)).toBe('full');
+    expect(parseScope(undefined)).toBe('full');
+    expect(parseScope('')).toBe('full');
+    expect(parseScope('nonsense')).toBe('full');
   });
 });

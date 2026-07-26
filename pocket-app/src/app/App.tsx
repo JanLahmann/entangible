@@ -81,6 +81,12 @@ import {
   golfWipe,
   golfJumpTo,
   persistsBest,
+  parseScope,
+  scopeCode,
+  scopeHoles,
+  scopeLabel,
+  GOLF_SCOPES,
+  type GolfScope,
   clubGateTypes,
   holeHighlight,
   holeTargetState,
@@ -451,9 +457,12 @@ export function App() {
   // IS the seed, so the eighteen holes are the ones the sender played.
   const [golfState, setGolfState] = useState<GolfState>(() => {
     const seed = settings.courseCode === null ? null : parseCourseCode(settings.courseCode);
+    // A shared link carries the competition scope beside the course (#102);
+    // one without a scope is a full round, as every pre-#102 link was.
+    const scope = parseScope(settings.courseScope);
     return seed === null
-      ? initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage))
-      : initialGolfState({}, 'random', seed);
+      ? initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage), scope)
+      : initialGolfState({}, 'random', seed, {}, scope);
   });
   const [, setDebugTick] = useState(0);
   // Freeze: session-momentary; starts unfrozen and persists nothing.
@@ -535,7 +544,7 @@ export function App() {
         // "play again" on a generated round means a fresh 18, not the same 18.
         const nextGolf =
           step.restarted && prevGolf.course === 'random'
-            ? initialGolfState({}, 'random', randomBaseSeed())
+            ? initialGolfState({}, 'random', randomBaseSeed(), {}, prevGolf.scope)
             : step.state;
         golfStateRef.current = nextGolf;
         setGolfState(nextGolf);
@@ -549,8 +558,13 @@ export function App() {
         if (step.justCompleted && !completedRef.current) {
           completedRef.current = true;
           const timing = tickCourseTimer(step.state, Date.now());
+          // Scored against the SCOPE's par (#102): finishing the easy round is
+          // measured against 25, not against the full course's 101.
           const done = completionCelebration(
-            courseTotals(step.state.best, courseHoles(step.state)).vsPar,
+            courseTotals(
+              step.state.best,
+              scopeHoles(courseHoles(step.state), step.state.scope),
+            ).vsPar,
             courseElapsed(timing, Date.now()),
           );
           setCelebration({
@@ -1059,10 +1073,11 @@ export function App() {
   // random round is a per-visitor decision with nobody there to make it.
   const pickCourse = (course: GolfCourse) => {
     const seed = course === 'random' ? randomBaseSeed() : null;
+    const scope = golfStateRef.current.scope;
     const fresh =
       seed === null
-        ? initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage))
-        : initialGolfState({}, 'random', seed);
+        ? initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage), scope)
+        : initialGolfState({}, 'random', seed, {}, scope);
     golfStateRef.current = fresh;
     setGolfState(fresh);
     // Keep the shareable code (#78) pointing at the course actually in play, so
@@ -1080,12 +1095,12 @@ export function App() {
     const cur = golfStateRef.current;
     if (seed === null) {
       if (cur.course !== 'random') return;
-      const fresh = initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage));
+      const fresh = initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage), cur.scope);
       golfStateRef.current = fresh;
       setGolfState(fresh);
     } else {
       if (cur.course === 'random' && cur.randomSeed === seed) return;
-      const fresh = initialGolfState({}, 'random', seed);
+      const fresh = initialGolfState({}, 'random', seed, {}, cur.scope);
       golfStateRef.current = fresh;
       setGolfState(fresh);
     }
@@ -1104,8 +1119,8 @@ export function App() {
         if (cur.complete) {
           const fresh =
             cur.course === 'random'
-              ? initialGolfState({}, 'random', randomBaseSeed())
-              : initialGolfState(cur.best);
+              ? initialGolfState({}, 'random', randomBaseSeed(), {}, cur.scope)
+              : initialGolfState(cur.best, 'classic', 0, {}, cur.scope);
           // A new round deals every price afresh (#99): holes revealed last
           // time round are not still floored on this one.
           if (persistsBest(fresh)) saveRevealed(storage, fresh.revealed);
@@ -1143,6 +1158,23 @@ export function App() {
         manualSourceRef.current.clear();
       }
     : undefined;
+
+  // Pick what the competition is over (#102). Always a full re-tee on the
+  // scope's first hole: a result only means something if both players played
+  // the same holes from the same start, so switching scope mid-round would be
+  // switching competition mid-competition. The setting is persisted and travels
+  // in the share link, so a challenged friend lands in the same one.
+  const pickScope = (scope: GolfScope) => {
+    const cur = golfStateRef.current;
+    const fresh =
+      cur.course === 'random'
+        ? initialGolfState({}, 'random', cur.randomSeed, {}, scope)
+        : initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage), scope);
+    golfStateRef.current = fresh;
+    setGolfState(fresh);
+    settingsStore.update({ courseScope: scopeCode(scope) });
+    if (manual) manualSourceRef.current.clear();
+  };
 
   // Tap a chip, play that hole (#101). The board is left exactly as it is and
   // becomes the new hole's baseline, so arriving costs nothing (#68) — and the
@@ -1204,6 +1236,21 @@ export function App() {
           >
             {golfState.course === 'random' ? 'New random 18' : 'Random 18'}
           </button>
+        </div>
+        {/* What the round is a competition OVER (#102) — the full course, or
+            one of its four rounds played as a contest of its own. */}
+        <div className="pk-scope-pick" role="group" aria-label="competition scope">
+          {GOLF_SCOPES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              className={`pk-scope-btn${golfState.scope === s ? ' is-active' : ''}`}
+              aria-pressed={golfState.scope === s}
+              onClick={() => pickScope(s)}
+            >
+              {scopeLabel(s)}
+            </button>
+          ))}
         </div>
       </div>
       <Scorecard
