@@ -12,7 +12,7 @@
  *     the final state, so at rest the view always shows the CURRENT state (the
  *     old default behaviour is preserved — the animation just lands there).
  *   - Scrubber: replay + prev/next + step dots to replay / inspect any column,
- *     with a "start" / "after column N" label. Unobtrusive; hidden when the
+ *     with a "start" / "after layer N" label. Unobtrusive; hidden when the
  *     board is empty (a single snapshot has nothing to step through).
  *   - prefers-reduced-motion: no tweening — steps jump instantly; the scrubber
  *     still works, and no travelers are drawn.
@@ -85,7 +85,7 @@ function usePrefersReducedMotion(): boolean {
 }
 
 function stepLabel(i: number): string {
-  return i <= 0 ? 'start' : `after column ${i}`;
+  return i <= 0 ? 'start' : `after layer ${i}`;
 }
 
 export function EvolvingState({

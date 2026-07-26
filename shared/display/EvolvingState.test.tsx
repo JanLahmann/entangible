@@ -57,7 +57,7 @@ describe('EvolvingState scrubber', () => {
     // Under reduced-motion auto-play jumps straight to the last column.
     expect(all[2].className).toContain('pk-evo-dot--active');
     expect(all[0].className).not.toContain('pk-evo-dot--active');
-    expect(getByText('after column 2')).toBeTruthy();
+    expect(getByText('after layer 2')).toBeTruthy();
     // The Q-sphere shows the Bell state: two full-probability nodes.
     const qsDots = Array.from(container.querySelectorAll('.pk-qs-dot')) as SVGCircleElement[];
     const big = qsDots.map((d) => Number(d.getAttribute('r'))).filter((r) => r > 5);
@@ -77,7 +77,7 @@ describe('EvolvingState scrubber', () => {
     expect(qsDots.map((d) => Number(d.getAttribute('r'))).filter((r) => r > 5)).toHaveLength(1);
     // Next advances one column.
     fireEvent.click(getByLabelText('Next step'));
-    expect(getByText('after column 1')).toBeTruthy();
+    expect(getByText('after layer 1')).toBeTruthy();
   });
 
   it('disables prev at the start and next at the end', () => {
@@ -104,7 +104,7 @@ describe('EvolvingState scrubber', () => {
     const all = dots(container, 'pk');
     expect(all[2].getAttribute('aria-current')).toBe('step');
     expect(all[0].getAttribute('aria-current')).toBeNull();
-    expect(getByText('after column 2')).toBeTruthy();
+    expect(getByText('after layer 2')).toBeTruthy();
   });
 
   it('hides the replay button with the rest of the scrubber on an empty board', () => {
