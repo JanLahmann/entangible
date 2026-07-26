@@ -633,7 +633,11 @@ export function GuidePage() {
             section, so it sits outside the switch. */}
         <footer className="pk-guide-foot">
           <p>
-            Open source, Apache-2.0 licensed. Part of the{' '}
+            Open source, Apache-2.0 licensed. Based on{' '}
+            <a href={QAMPOSER_URL} target="_blank" rel="noopener noreferrer">
+              QAMPoser
+            </a>
+            . Part of the{' '}
             <a href={FAMILY_URL} target="_blank" rel="noopener noreferrer">
               Fun with Quantum family
             </a>

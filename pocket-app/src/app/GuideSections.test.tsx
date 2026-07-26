@@ -134,6 +134,25 @@ describe('guide section nav (#82)', () => {
       unmount();
     }
   });
+
+  // #91 — the footer credits what Entangible is built on. Both credits are
+  // load-bearing attribution, so they are asserted as a set: an edit that drops
+  // or reorders one fails here rather than silently shipping.
+  it('credits QAMPoser and the family in the footer of every section', () => {
+    for (const s of GUIDE_SECTIONS) {
+      window.location.hash = guideSectionHash(s.id);
+      const { unmount } = render(<GuidePage />);
+
+      const foot = document.querySelector('.pk-guide-foot');
+      expect(foot).toBeTruthy();
+      const credits = [...foot!.querySelectorAll('a')].slice(0, 2);
+      expect(credits.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+        ['QAMPoser', 'https://qamposer.org'],
+        ['Fun with Quantum family', 'https://fun-with-quantum.org'],
+      ]);
+      unmount();
+    }
+  });
 });
 
 /**
