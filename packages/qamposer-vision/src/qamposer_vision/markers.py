@@ -87,11 +87,19 @@ ROTATION_ANGLES: tuple[float, float, float, float] = (
 #: the angle ``ROTATION_ANGLES[r]``. See :attr:`GateSpec.dial_axis`.
 DIAL_IDS: dict[int, str] = {42: "RX", 43: "RY", 44: "RZ"}
 
+#: The qubit-wire block (#95): a board-furniture block, NOT a gate. Up to five
+#: *identical* blocks (all this one ID — instance count is the signal) sit along
+#: the board's left edge between UL and LL; each block declares one wire at its
+#: vertical position, sorted top→bottom, so the physical board plays 1-5 qubits
+#: instead of a fixed 5. No blocks present = the classic 5 wires.
+QUBIT_WIRE_ID = 46
+
 #: IDs reserved for future tiles. IDs 40/41 are live S/T tiles, 42/43/44 are
-#: live RX/RY/RZ dial tiles and 45 is the live SWAP ``×`` tile; 46–49 stay
-#: reserved — never emitted by the current detector or assets generator, but
-#: claimed here so no other gate is assigned into this range.
-RESERVED_IDS = range(46, 50)
+#: live RX/RY/RZ dial tiles, 45 is the live SWAP ``×`` tile and 46 is the
+#: qubit-wire block; 47–49 stay reserved — never emitted by the current
+#: detector or assets generator, but claimed here so no other gate is assigned
+#: into this range.
+RESERVED_IDS = range(47, 50)
 
 
 def quadrant_rotation(dx: float, dy: float) -> int:

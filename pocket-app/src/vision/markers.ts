@@ -52,6 +52,14 @@ export interface GateSpec {
 /** Dial-tile marker ID → the rotation-gate axis it parameterises. */
 export const DIAL_IDS: Readonly<Record<number, string>> = { 42: 'RX', 43: 'RY', 44: 'RZ' };
 
+/**
+ * The qubit-wire block (#95) — board furniture, not a gate. Up to five
+ * IDENTICAL blocks (all this one ID; the instance count is the signal) sit
+ * along the left edge between UL and LL; each declares one wire at its
+ * vertical position, sorted top→bottom. None present = the classic 5 wires.
+ */
+export const QUBIT_WIRE_ID = 46;
+
 function buildMarkerTable(): Map<number, GateSpec> {
   const table = new Map<number, GateSpec>();
 

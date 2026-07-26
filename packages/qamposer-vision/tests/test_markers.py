@@ -15,6 +15,7 @@ from qamposer_vision.markers import (
     DIAL_IDS,
     GATE_TYPES,
     MARKER_TABLE,
+    QUBIT_WIRE_ID,
     RESERVED_IDS,
     ROTATION_ANGLES,
     GateSpec,
@@ -104,8 +105,12 @@ def test_rotation_angle_values() -> None:
 
 
 def test_no_id_collision_with_reserved_range() -> None:
-    assert RESERVED_IDS == range(46, 50)
+    assert RESERVED_IDS == range(47, 50)
     assert not (set(MARKER_TABLE) & set(RESERVED_IDS))
+    # 46 left the reserved range for the qubit-wire block (#95): board
+    # furniture, so it must NOT be in the gate table either.
+    assert QUBIT_WIRE_ID == 46
+    assert QUBIT_WIRE_ID not in MARKER_TABLE
 
 
 def test_swap_tile() -> None:

@@ -168,13 +168,22 @@ controlled-gate types (upstream wishlist). The build-on-screen manual editor can
 only place what the library's palette offers (`CNOT` among them), so it cannot
 yet express e.g. `CH`.
 
+## Qubit-wire block
+
+ID **46** (`QUBIT_WIRE_ID`) is the **qubit-wire block** — board furniture, not
+a gate. Up to five *identical* blocks (all carrying this one ID — the instance
+count is the signal, so one printed piece is simply duplicated) sit along the
+board's left edge between the UL and LL corner blocks. Each block declares one
+qubit wire at its vertical position; blocks are sorted top→bottom into q1…qn.
+No wire blocks on the table = the classic fixed 5 wires.
+
 ## Reserved
 
-IDs **46–49** (`RESERVED_IDS = range(46, 50)`) are reserved for future tiles.
+IDs **47–49** (`RESERVED_IDS = range(47, 50)`) are reserved for future tiles.
 They are never emitted by the current detector or assets generator, and no
 current gate is assigned into this range. (IDs 40/41 are live S/T tiles,
-42/43/44 are live RX/RY/RZ dial tiles and 45 is the live SWAP × tile — see
-above.)
+42/43/44 are live RX/RY/RZ dial tiles, 45 is the live SWAP × tile and 46 is
+the qubit-wire block — see above.)
 
 ## Notes
 
