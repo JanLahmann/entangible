@@ -46,7 +46,7 @@
  * `monoKet` toggles the one pre-SC2 difference: pocket adds `pk-mono` to the
  * target-ket span; the booth does not tint its ket.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Circuit } from '@qamposer/react';
 import {
   ROUND_LABEL,
@@ -144,7 +144,15 @@ export function courseShareLink(origin: string, code: string): string {
  * `navigator.clipboard` simply shows the code and copies nothing, rather than
  * throwing at a player.
  */
-function CourseChip({ p, state }: { p: string; state: GolfState }) {
+function CourseChip({
+  p,
+  state,
+  challenge,
+}: {
+  p: string;
+  state: GolfState;
+  challenge?: ChallengeRenderer;
+}) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -155,10 +163,14 @@ function CourseChip({ p, state }: { p: string; state: GolfState }) {
   if (state.course !== 'random') return null;
   const code = courseCode(state.randomSeed);
 
+  const shareLink = () =>
+    courseShareLink(
+      typeof location === 'undefined' ? '' : location.origin + location.pathname,
+      code,
+    );
+
   const copy = () => {
-    const origin = typeof location === 'undefined' ? '' : location.origin + location.pathname;
-    const link = courseShareLink(origin, code);
-    void navigator?.clipboard?.writeText?.(link)?.catch?.(() => {});
+    void navigator?.clipboard?.writeText?.(shareLink())?.catch?.(() => {});
     setCopied(true);
   };
 
@@ -173,9 +185,20 @@ function CourseChip({ p, state }: { p: string; state: GolfState }) {
       >
         {copied ? 'link copied' : `Course #${code}`}
       </button>
+      {challenge?.({ code, link: shareLink() })}
     </>
   );
 }
+
+/**
+ * Renders the "challenge a friend" control beside the course code (#84).
+ *
+ * Injected rather than built in, because showing the link as a QR needs the
+ * `qrcode` package that lives in the pocket app. The shared card stays free of
+ * it, and the kiosk — classic course only, so no code to share — simply passes
+ * nothing and renders nothing.
+ */
+export type ChallengeRenderer = (args: { code: string; link: string }) => ReactNode;
 
 /** How long the chip says "link copied" before returning to the code. */
 const COPIED_MS = 1600;
@@ -257,12 +280,16 @@ export function Scorecard({
   circuit,
   classPrefix,
   monoKet = false,
+  challenge,
   onNextLevel,
 }: {
   state: GolfState;
   circuit: Circuit;
   classPrefix: string;
   monoKet?: boolean;
+  /** Renders the challenge-a-friend control beside a random round's course
+   *  code (#84). Pocket passes one; the kiosk does not. */
+  challenge?: ChallengeRenderer;
   /**
    * When set, the holed-in line renders a "Next hole" button calling this
    * instead of the clear-the-board hint (and, on the finished course, a "Play
@@ -301,7 +328,7 @@ export function Scorecard({
       <div>
         <div className={`${p}-label`}>
           Scorecard · course complete
-          <CourseChip p={p} state={state} />
+          <CourseChip p={p} state={state} challenge={challenge} />
         </div>
         <div className={`${p}-well ${p}-golf`}>
           <div className={`${p}-golf-hole`}>
@@ -342,7 +369,7 @@ export function Scorecard({
     <div>
       <div className={`${p}-label`}>
         Scorecard · {ROUND_LABEL[hole.round]} · hole {hole.hole}/{holes.length}
-        <CourseChip p={p} state={state} />
+        <CourseChip p={p} state={state} challenge={challenge} />
       </div>
       <div className={`${p}-well ${p}-golf`}>
         <div className={`${p}-golf-hole`}>

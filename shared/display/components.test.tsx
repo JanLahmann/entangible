@@ -612,6 +612,43 @@ describe('Scorecard (shared)', () => {
     expect(classic.container.querySelector('.pk-golf-code')).toBeNull();
   });
 
+  it('renders an injected challenge control beside the course code (#84)', () => {
+    const seen: { code: string; link: string }[] = [];
+    const state = initialGolfState({}, 'random', 4242);
+    const { container } = render(
+      <Scorecard
+        state={state}
+        circuit={bell}
+        classPrefix="pk"
+        challenge={(args) => {
+          seen.push(args);
+          return <button className="pk-golf-challenge">Challenge</button>;
+        }}
+      />,
+    );
+    // It is handed the course's own code and the exact share link.
+    expect(seen).toEqual([
+      {
+        code: courseCode(4242),
+        link: courseShareLink(location.origin + location.pathname, courseCode(4242)),
+      },
+    ]);
+    expect(container.querySelector('.pk-golf-challenge')).not.toBeNull();
+    cleanup();
+
+    // The classic course has no code to share, so nothing is offered …
+    const classic = render(
+      <Scorecard state={initialGolfState()} circuit={bell} classPrefix="pk" challenge={() => <b />} />,
+    );
+    expect(classic.container.querySelector('.pk-golf-challenge')).toBeNull();
+    cleanup();
+
+    // … and a surface that passes no renderer (the kiosk) shows nothing extra.
+    const kiosk = render(<Scorecard state={state} circuit={bell} classPrefix="bo" />);
+    expect(kiosk.container.querySelector('.bo-golf-code')).not.toBeNull();
+    expect(kiosk.container.querySelector('.bo-golf-challenge')).toBeNull();
+  });
+
   it('leaves the classic card free of any course chip', () => {
     const { container } = render(
       <Scorecard state={initialGolfState()} circuit={bell} classPrefix="pk" />,

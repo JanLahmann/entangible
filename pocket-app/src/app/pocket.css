@@ -1907,6 +1907,36 @@ body,
 
 /* Random course (#70): the header chip that says "these 18 holes were dealt,
    not authored", and the two-button course picker above the scorecard. */
+/* "Challenge a friend" (#84) — sits beside the course code, same quiet weight;
+   the overlay itself reuses the Composer QR card's styles. */
+.pk-golf-challenge {
+  display: inline-block;
+  margin-left: 0.3rem;
+  padding: 0.05rem 0.45rem;
+  border: 1px solid var(--entangle);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--entangle-text);
+  font: inherit;
+  font-size: 0.62rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pk-golf-challenge:active {
+  background: var(--entangle);
+  color: #fff;
+}
+
+.pk-golf-challenge-code {
+  margin: 0.2rem 0 0;
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--entangle-text);
+  text-align: center;
+}
+
 /* The course CODE (#78): the seed in base 36, and a tap copies a link that
    reopens exactly these eighteen holes. Quiet — it sits beside the round chip,
    not in front of the hole you are playing. */
