@@ -1,0 +1,197 @@
+# Entangible kit artifacts — build every printable/cuttable deliverable on a
+# runner and publish them as GitHub Release assets, so the download links in the
+# app and the README can point at a URL that is always current:
+#
+#   https://github.com/JanLahmann/entangible/releases/latest/download/<asset>
+#
+# Assets:
+#   * entangible-3d-tiles.zip     — 3MFs + mono STLs + bed-ready plates, all
+#                                   four variants (tile, cube, and their
+#                                   double-faced siblings)
+#   * entangible-laser-kit.zip    — red-cut / black-engrave SVGs for wood tiles
+#   * entangible-print-kit-A4.pdf — the one-file paper kit (tiles + board mat)
+#
+# Trigger it from the Actions tab (optionally naming the tag) or by pushing a
+# `kit-*` tag. Generation is CAD-heavy (build123d/OpenCASCADE), so the four
+# variants — and then the four plate runs — are built in parallel across the
+# runner's cores; expect ~15-25 min.
+name: artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (blank = kit-<run number>)"
+        required: false
+        default: ""
+  push:
+    tags: ["kit-*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: artifacts
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build kit artifacts + release
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      # The provenance stamp (#63) reads `git rev-parse --short HEAD`, so the
+      # generated plates.md / 3MF metadata name the commit this kit was built
+      # from. Fail loudly here rather than shipping `unknown` in every file.
+      - name: Resolve tag and provenance commit
+        id: meta
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag="${{ inputs.tag }}"
+            [ -n "$tag" ] || tag="kit-${{ github.run_number }}"
+          fi
+          commit="$(git rev-parse --short HEAD)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "Building kit '$tag' from $commit"
+
+      # libcairo2: cairosvg's native backend (SVG -> PDF for the print kit).
+      # fonts-ibm-plex: the 2D faces declare 'IBM Plex Sans' (assets.toml), and
+      # cairo resolves that through fontconfig — without the family installed
+      # the paper kit prints in a substitute and stops matching the on-screen
+      # gate labels. (The 3D side is unaffected either way: OpenCASCADE ignores
+      # fontconfig and picks its own substitute for 'Helvetica' on Linux.)
+      - name: Install native deps (cairo + fonts)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcairo2 fonts-liberation fonts-ibm-plex
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: uv sync
+        run: uv sync
+
+      # --- 3D: per-piece 3MFs + mono STLs, all four variants ----------------
+      # One process per variant, in parallel; each writes its own log so a
+      # failure is readable, and every exit code is checked.
+      - name: Generate 3D pieces (tile, cube, tile-double, cube-double)
+        run: |
+          set -uo pipefail
+          mkdir -p buildlogs
+          pids=()
+          names=()
+          for faces in single double; do
+            for variant in tile cube; do
+              name="$variant-$faces"
+              uv run --no-sync qamposer-hardware generate \
+                --faces "$faces" --variant "$variant" --gates all --mono \
+                --out out/hardware > "buildlogs/gen-$name.log" 2>&1 &
+              pids+=($!); names+=("$name")
+            done
+          done
+          fail=0
+          for i in "${!pids[@]}"; do
+            if ! wait "${pids[$i]}"; then
+              echo "::error::generate ${names[$i]} failed"; fail=1
+            fi
+          done
+          for f in buildlogs/gen-*.log; do echo "----- $f"; cat "$f"; done
+          exit $fail
+
+      # --- 3D: bed-ready print plates ---------------------------------------
+      # Written to a separate root: `plates` rewrites plates.md with its Print
+      # jobs section, and the per-piece folders keep the plain filament table.
+      - name: Generate print plates
+        run: |
+          set -uo pipefail
+          pids=()
+          names=()
+          for faces in single double; do
+            for variant in tile cube; do
+              name="$variant-$faces"
+              uv run --no-sync qamposer-hardware plates \
+                --faces "$faces" --variant "$variant" \
+                --out out/hardware-plates > "buildlogs/plates-$name.log" 2>&1 &
+              pids+=($!); names+=("$name")
+            done
+          done
+          fail=0
+          for i in "${!pids[@]}"; do
+            if ! wait "${pids[$i]}"; then
+              echo "::error::plates ${names[$i]} failed"; fail=1
+            fi
+          done
+          for f in buildlogs/plates-*.log; do echo "----- $f"; cat "$f"; done
+          exit $fail
+
+      # --- Laser: red-cut / black-engrave SVGs (wood tiles) -----------------
+      - name: Generate laser kit
+        run: uv run qamposer-assets laser --out out/assets
+
+      # --- Paper: A4 print kit ----------------------------------------------
+      # `qamposer-assets all` exits 3 when no SVG->PDF backend is present, so a
+      # missing libcairo fails the job instead of shipping an SVG-only kit.
+      - name: Generate A4 print kit PDF
+        run: |
+          set -euo pipefail
+          uv run qamposer-assets all --out out/assets
+          uv run --with pypdf python tools/make_print_kit.py
+
+      # --- Package ----------------------------------------------------------
+      # The 3D zip ships the *deliverables* only: 3MFs (the colour form), mono
+      # STLs (the single-filament form) and the plate batches. The per-colour
+      # part STLs (body/marker/accent/side) are build intermediates already
+      # bundled inside each 3MF.
+      - name: Package release assets
+        run: |
+          set -euo pipefail
+          rm -rf dist kit3d && mkdir -p dist
+          for variant in tile cube tile-double cube-double; do
+            src="out/hardware/$variant"
+            dest="kit3d/$variant"
+            mkdir -p "$dest"
+            cp "$src"/*.3mf "$dest"/
+            cp "$src"/*-mono-*.stl "$dest"/
+            cp "$src"/plates.md "$src"/mono.md "$dest"/
+            mkdir -p "kit3d/print-jobs/$variant"
+            cp "out/hardware-plates/$variant"/*.3mf \
+               "out/hardware-plates/$variant"/plates.md "kit3d/print-jobs/$variant"/
+          done
+          cp hardware/README.md kit3d/README.md
+          (cd kit3d && zip -q -r -X ../dist/entangible-3d-tiles.zip .)
+
+          (cd out/assets/laser && zip -q -r -X "$GITHUB_WORKSPACE/dist/entangible-laser-kit.zip" .)
+
+          cp examples/print/entangible-print-kit-A4.pdf dist/
+
+          echo "Provenance line in tile/plates.md:"
+          grep -m1 '^> Generated' kit3d/tile/plates.md
+          grep -q '`${{ steps.meta.outputs.commit }}`' kit3d/tile/plates.md
+          ls -l dist
+
+      - name: Publish release ${{ steps.meta.outputs.tag }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.meta.outputs.tag }}"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --title "Entangible kit $tag" \
+              --target "${{ github.sha }}" \
+              --generate-notes --latest
+          fi
+          gh release upload "$tag" --clobber \
+            dist/entangible-3d-tiles.zip \
+            dist/entangible-laser-kit.zip \
+            dist/entangible-print-kit-A4.pdf
