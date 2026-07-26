@@ -2,13 +2,14 @@
 
     qamposer-hardware generate [--variant tile|cube|all] [--gates H,X,...|all]
                                [--magnets] [--mono] [--corners] [--out DIR]
-    qamposer-hardware plates   [--variant tile|cube] [--bed WxH] [--corners]
-                               [--out DIR]
+    qamposer-hardware plates   [--variant tile|cube] [--bed WxH] [--mono]
+                               [--corners] [--out DIR]
 
 Writes, per variant, ``out/hardware/<variant>/`` containing per-colour STL
 parts and a coloured 3MF for every requested tile, plus a ``plates.md`` MMU
-guide. ``--corners`` adds the four board-corner blocks that replace the printed
-mat — opt-in, so the default kit is exactly what it was.
+guide. ``--mono`` adds the single-colour (no-MMU) forms and ``--corners`` the
+four board-corner blocks that replace the printed mat — both opt-in, so the
+default kit is exactly what it was.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from .export import (
     export_double_mono_stls,
     export_double_tile_3mf,
     export_double_tile_stls,
+    export_mono_batches,
     export_mono_stls,
     export_single_batches,
     export_tile_3mf,
@@ -38,6 +40,7 @@ from .export import (
     write_corner_plates_md,
     write_corners_md,
     write_double_plates_md,
+    write_mono_batch_md,
     write_mono_md,
     write_plates_md,
 )
@@ -319,6 +322,7 @@ def _plates(
     spacing: float,
     max_per_plate: int,
     out_root: Path,
+    mono: bool = False,
     corners: bool = False,
 ) -> int:
     """Generate bed-ready multi-piece batch 3MFs + a Print jobs plates.md."""
@@ -334,6 +338,7 @@ def _plates(
     print(
         f"[{subdir}] bed {bed.width:g}x{bed.height:g} mm  spacing {spacing:g} mm  "
         f"height {height:g} mm{cap_note} -> {vdir}"
+        + ("  (+mono)" if mono else "")
         + ("  (+corners)" if corners else "")
     )
 
@@ -364,6 +369,19 @@ def _plates(
         write_corner_plates_md(base_md, corner_infos)
         write_corners_md(config, vdir)
 
+    mono_infos: list = []
+    if mono:
+        mono_md = write_mono_md(vdir, faces=faces, height=height)
+        mono_infos = export_mono_batches(
+            config, faces=faces, variant=variant, height=height,
+            bed=bed, spacing=spacing, out_dir=vdir, max_per_bed=cap,
+            corners=corners,
+        )
+        write_mono_batch_md(
+            mono_md, mono_infos, bed=bed, spacing=spacing, faces=faces,
+            height=height, max_per_bed=cap,
+        )
+
     total_bytes = 0
     for info in infos:
         nbytes = info.path.stat().st_size
@@ -381,7 +399,16 @@ def _plates(
             f"{len(info.slugs)} pieces  {info.object_count} objs  "
             f"{nbytes/1024:7.1f} KiB"
         )
-    n_files = len(infos) + len(corner_infos)
+    for minfo in mono_infos:
+        nbytes = minfo.path.stat().st_size
+        total_bytes += nbytes
+        print(
+            f"    {minfo.path.name:24s} mono-{minfo.form} batch{minfo.batch}  "
+            f"{len(minfo.slugs)} pieces  {minfo.object_count} objs  "
+            f"{nbytes/1024:7.1f} KiB"
+        )
+
+    n_files = len(infos) + len(corner_infos) + len(mono_infos)
     dt = time.time() - t0
     print(
         f"\nDone: {n_files} batch 3MF(s) + plates.md, "
@@ -454,6 +481,11 @@ def main(argv: list[str] | None = None) -> int:
              "(default: 8; 0 = fill the bed)",
     )
     plates.add_argument(
+        "--mono", action="store_true",
+        help="also emit mono batch 3MFs — separate beds per form (all-recessed "
+             "beds, all-raised beds) for printers without an MMU (default: off)",
+    )
+    plates.add_argument(
         "--corners", action="store_true",
         help="also pack the four board-corner blocks onto their own plate "
              "(white + black only, no accent slot) (default: off)",
@@ -488,6 +520,7 @@ def main(argv: list[str] | None = None) -> int:
             spacing=args.spacing,
             max_per_plate=args.max_per_plate,
             out_root=args.out,
+            mono=args.mono,
             corners=args.corners,
         )
     parser.error("unknown command")

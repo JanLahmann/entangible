@@ -55,12 +55,15 @@ __all__ = [
     "single_plate_groups",
     "double_plate_groups",
     "BatchInfo",
+    "MonoBatchInfo",
     "export_single_batches",
     "export_double_batches",
     "export_corner_batches",
+    "export_mono_batches",
     "write_batch_plates_md",
     "write_corner_plates_md",
     "write_corners_md",
+    "write_mono_batch_md",
     "provenance",
 ]
 
@@ -978,6 +981,182 @@ def export_corner_batches(
     )
 
 
+# --------------------------------------------------------------------------- #
+# Single-colour ("mono") plates — separate beds per form
+# --------------------------------------------------------------------------- #
+#
+# A mono piece is ONE solid with no colour, so the filament-plate grouping that
+# drives the coloured batches is meaningless here: what matters is the *form*.
+# A recessed bed is printed in one filament and painted; a raised bed prints
+# two-tone off a single filament swap at the top of the body — one swap for the
+# whole bed, which only works if every piece on it is the same form and height.
+# The two forms therefore never share a bed.
+
+
+@dataclass(slots=True)
+class MonoBatchInfo:
+    """Metadata for one written mono batch 3MF (a single physical print job)."""
+
+    form: str  # recessed | raised
+    batch: int
+    path: Path
+    slugs: list[str]
+    positions: list[tuple[float, float]]
+    object_count: int
+    cols: int
+    rows: int
+
+
+#: The two mono forms, in the order their beds are written.
+MONO_FORMS: tuple[str, str] = ("recessed", "raised")
+
+
+def _mono_forms(parts, params: HardwareParams) -> dict[str, object]:
+    """Both single-colour solids of a piece, keyed by form."""
+    if isinstance(parts, DoubleTileParts):
+        return {
+            "recessed": build_double_mono_recessed(parts, params),
+            "raised": build_double_mono_raised(parts, params),
+        }
+    return {
+        "recessed": build_mono_recessed(parts, params),
+        "raised": build_mono_raised(parts, params),
+    }
+
+
+def _write_mono_batch_3mf(
+    pieces: list[tuple[str, object]],
+    positions: list[tuple[float, float]],
+    path: Path,
+    *,
+    footprint: float = FOOTPRINT,
+) -> int:
+    """Write one mono bed: each piece's single solid translated onto the bed.
+
+    No material group at all — a mono piece carries no colour by construction
+    (that is the whole point of the form), and inventing one would put a
+    misleading filament assignment in the slicer. Meshes are named by slug so a
+    piece is still identifiable in the object list. Returns the mesh count.
+    """
+    mesher = Mesher()
+    n_obj = 0
+    for (slug, solid), (cx, cy) in zip(pieces, positions):
+        dx = cx - footprint / 2.0
+        dy = cy - footprint / 2.0
+        before = len(mesher.meshes)
+        mesher.add_shape(Pos(dx, dy, 0.0) * solid)
+        for mesh_obj in mesher.meshes[before:]:
+            mesh_obj.SetName(slug)
+            n_obj += 1
+    _stamp_3mf(mesher, path.stem)
+    mesher.write(str(path))
+    return n_obj
+
+
+def _mono_entries(
+    config: AssetsConfig,
+    *,
+    faces: str,
+    variant: str,
+    height: float,
+    params: HardwareParams,
+    kit: list[tuple[int, int | None, int]] | None,
+    ids: list[int] | None,
+    corners: bool,
+) -> list[tuple[str, dict[str, object]]]:
+    """``(slug, {form: solid})`` for every physical piece of the mono kit.
+
+    One entry per *piece*, so a double-faced design with ``qty`` 4 contributes
+    four entries (the same two solids, placed four times).
+    """
+    entries: list[tuple[str, dict[str, object]]] = []
+    if faces == "double":
+        for a, b, qty in kit if kit is not None else DOUBLE_FACED_KIT:
+            parts = build_double_tile(
+                a, b, config, variant=variant, height=height, params=params
+            )
+            slug = double_slug(parts.layout_a.spec, parts.layout_b.spec)
+            forms = _mono_forms(parts, params)
+            entries.extend((slug, forms) for _ in range(qty))
+    else:
+        members = [mid for mid, _spec in _gate_tiles()] if ids is None else list(ids)
+        for mid in members:
+            parts = build_tile(
+                mid, config, variant=variant, height=height, params=params
+            )
+            entries.append((tile_slug(parts.layout.spec), _mono_forms(parts, params)))
+    if corners:
+        for mid in corner_block_ids():
+            parts = build_corner_block(
+                mid, config, variant=variant, height=height, params=params
+            )
+            entries.append((tile_slug(parts.layout.spec), _mono_forms(parts, params)))
+    return entries
+
+
+def export_mono_batches(
+    config: AssetsConfig,
+    *,
+    faces: str,
+    variant: str,
+    height: float,
+    bed: Bed,
+    spacing: float,
+    out_dir: Path,
+    params: HardwareParams | None = None,
+    max_per_bed: int | None = None,
+    kit: list[tuple[int, int | None, int]] | None = None,
+    ids: list[int] | None = None,
+    corners: bool = False,
+) -> list[MonoBatchInfo]:
+    """Write bed-ready batch 3MFs for the **mono** kit, one set of beds per form.
+
+    Every piece of the kit appears exactly once on the recessed beds and exactly
+    once on the raised beds; the two forms never share a bed, so a raised bed is
+    a single filament swap (at ``Z = height``) for the whole plate.
+    """
+    params = params or HardwareParams()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    entries = _mono_entries(
+        config,
+        faces=faces,
+        variant=variant,
+        height=height,
+        params=params,
+        kit=kit,
+        ids=ids,
+        corners=corners,
+    )
+    cols, rows = bed_capacity(bed, FOOTPRINT, spacing)
+    infos: list[MonoBatchInfo] = []
+    for form in MONO_FORMS:
+        batches = plan_batches(
+            len(entries), bed, FOOTPRINT, spacing, max_per_bed=max_per_bed
+        )
+        idx = 0
+        for bi, positions in enumerate(batches, start=1):
+            take = len(positions)
+            chunk = entries[idx : idx + take]
+            idx += take
+            path = out_dir / f"mono-{form}-batch{bi}.3mf"
+            n_obj = _write_mono_batch_3mf(
+                [(slug, forms[form]) for slug, forms in chunk], positions, path
+            )
+            infos.append(
+                MonoBatchInfo(
+                    form=form,
+                    batch=bi,
+                    path=path,
+                    slugs=[slug for slug, _f in chunk],
+                    positions=positions,
+                    object_count=n_obj,
+                    cols=cols,
+                    rows=rows,
+                )
+            )
+    return infos
+
+
 def _ascii_layout(info: BatchInfo, cell_w: int = 8) -> list[str]:
     """A tiny boxed grid of the batch's piece slugs, row-major."""
     cols = max(info.cols, 1)
@@ -1195,3 +1374,76 @@ def write_corners_md(config: AssetsConfig, out_dir: Path) -> Path:
     path = out_dir / "corners.md"
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
+
+
+def write_mono_batch_md(
+    mono_md: Path,
+    infos: list[MonoBatchInfo],
+    *,
+    bed: Bed,
+    spacing: float,
+    faces: str,
+    height: float,
+    params: HardwareParams | None = None,
+    max_per_bed: int | None = None,
+) -> Path:
+    """Append a **Print jobs (mono)** section to ``mono.md`` — one bed per form.
+
+    No provenance stamp here: :func:`write_mono_md` already put one under the
+    H1, and a second would read as a contradiction.
+    """
+    params = params or HardwareParams()
+    r = params.mono_raise_height
+    cols = infos[0].cols if infos else 0
+    rows = infos[0].rows if infos else 0
+    swap_z = r + height if faces == "double" else height
+    lines: list[str] = [
+        "",
+        "---",
+        "",
+        "## Print jobs (mono)",
+        "",
+        f"Bed **{bed.width:g} × {bed.height:g} mm**, piece footprint "
+        f"**{FOOTPRINT:g} × {FOOTPRINT:g} mm** + **{spacing:g} mm** spacing → "
+        f"**{cols} × {rows} = {cols * rows}** pieces per bed. The two forms "
+        "**never share a bed**: each is packed onto its own numbered beds, so a "
+        "whole bed is one recipe.",
+        "",
+        f"- `mono-recessed-batch*.3mf` — print in one filament, then paint the "
+        f"{params.mono_pocket_depth:g} mm wells.",
+        f"- `mono-raised-batch*.3mf` — **one filament swap at Z = "
+        f"{swap_z:.3f} mm** switches every piece on the bed from the body "
+        f"colour to the art colour. That is the accent layer height: the art "
+        f"stands a uniform {r:g} mm proud of the "
+        f"{height:g} mm body, so a single M600 does the whole plate.",
+        "",
+    ]
+    if faces == "double":
+        lines += [
+            f"> Double-faced raised pieces have art on **both** faces, so they "
+            f"take the two-swap recipe above ({r:.3f} mm and {swap_z:.3f} mm) — "
+            "still the same two swaps for every piece on the bed.",
+            "",
+        ]
+    if max_per_bed is not None and max_per_bed < cols * rows:
+        lines += [
+            f"> Beds are capped at **{max_per_bed}** pieces and anchored "
+            "front-left, matching the coloured plates. Mono needs no wipe "
+            "tower, so raise the cap (`--max-per-plate 0`) to fill the bed.",
+            "",
+        ]
+    for info in infos:
+        lines.append(
+            f"### `{info.path.name}` — {info.form}, batch {info.batch}"
+        )
+        lines.append("")
+        lines.append(
+            f"{len(info.slugs)} piece(s), {info.object_count} object(s): "
+            + ", ".join(f"`{s}`" for s in info.slugs)
+        )
+        lines.append("")
+        lines.extend(_ascii_layout(info))
+        lines.append("")
+    with mono_md.open("a", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+    return mono_md
