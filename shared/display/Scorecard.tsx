@@ -35,8 +35,8 @@
  * strokes plus vs-par, tinted eagle / birdie / par / over.
  *
  * The card is course-agnostic (#70): the hole list comes from `courseHoles`, so
- * a RANDOM round renders its generated holes (names, kets and generator-sized
- * pars) through the same layout, plus a "Random round" chip in the header.
+ * a RANDOM round renders its generated holes (names, kets and optimal-derived
+ * pars, #76) through the same layout, plus a "Random round" chip in the header.
  *
  * `monoKet` toggles the one pre-SC2 difference: pocket adds `pk-mono` to the
  * target-ket span; the booth does not tint its ket.

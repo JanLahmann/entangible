@@ -20,8 +20,8 @@
  *     hemispheres: they are informational, not depth cues.
  *   - Populated and target nodes get a `|bits⟩` ket label, offset radially
  *     outward so it never covers a stem. The whole 2^n lattice is NOT labelled.
- *   - The view auto-faces the action: a home orientation aimed at the weighted
- *     centroid of the target + live probability mass (see `useSphereRotation`).
+ *   - The view opens NEUTRAL (|0…0⟩ up) and reset returns there (#75; the #58
+ *     auto-face experiment is retired — ghosts and labels point at the goal).
  *
  * Roll-the-ball layer (#57): the optional `travelers` prop draws balls of
  * probability mass in transit across the surface. This view stays DUMB — it
