@@ -187,13 +187,38 @@ cell height. Because ID 46 carries no `GateSpec` it is absent from
 so the browser detector decodes exactly the same IDs `cv2.aruco` does. See
 docs/design.md, "Variable corner placement + qubit-wire blocks".
 
+## Measurement block
+
+ID **47** (`MEASURE_BLOCK_ID`) is the **measurement block** — the right-edge
+counterpart of the qubit-wire block, and board furniture just the same. Up to
+five *identical* blocks (all this one ID) sit along the board's **right** edge
+between the UR and LR corner blocks, so the table reads like a circuit diagram:
+state prep on the left, measurement on the right.
+
+Measurement blocks are a pure **refinement**, never a source of wires:
+
+- A wire exists **iff** its left (ID 46) block exists. The wire count is never
+  derived from the right side.
+- Each right block pairs with the nearest left block by vertical position
+  (within half the wire-block pitch). A **paired** wire runs as the straight
+  segment through *both* block centres — so a board whose left and right blocks
+  sit at slightly different heights gets a tilted wire, and gate tiles snap by
+  distance to that segment rather than to a horizontal line.
+- A right block with no left partner is ignored and reported as an
+  `unpaired_measure` warning (plus a `/debug` entry). Nothing about the circuit
+  changes.
+
+Like ID 46, ID 47 carries no `GateSpec`, so it is absent from `MARKER_TABLE`
+(it can never be filed into a cell as a gate) but present in
+`markers.DETECTABLE_IDS` and therefore in the exported pocket dictionary.
+
 ## Reserved
 
-IDs **47–49** (`RESERVED_IDS = range(47, 50)`) are reserved for future tiles.
+IDs **48–49** (`RESERVED_IDS = range(48, 50)`) are reserved for future tiles.
 They are never emitted by the current detector or assets generator, and no
 current gate is assigned into this range. (IDs 40/41 are live S/T tiles,
-42/43/44 are live RX/RY/RZ dial tiles, 45 is the live SWAP × tile and 46 is
-the qubit-wire block — see above.)
+42/43/44 are live RX/RY/RZ dial tiles, 45 is the live SWAP × tile, 46 is the
+qubit-wire block and 47 the measurement block — see above.)
 
 ## Notes
 

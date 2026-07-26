@@ -15,6 +15,7 @@ from qamposer_vision.markers import (
     DIAL_IDS,
     GATE_TYPES,
     MARKER_TABLE,
+    MEASURE_BLOCK_ID,
     QUBIT_WIRE_ID,
     RESERVED_IDS,
     ROTATION_ANGLES,
@@ -105,12 +106,27 @@ def test_rotation_angle_values() -> None:
 
 
 def test_no_id_collision_with_reserved_range() -> None:
-    assert RESERVED_IDS == range(47, 50)
+    assert RESERVED_IDS == range(48, 50)
     assert not (set(MARKER_TABLE) & set(RESERVED_IDS))
-    # 46 left the reserved range for the qubit-wire block (#95): board
-    # furniture, so it must NOT be in the gate table either.
+    # 46 left the reserved range for the qubit-wire block (#95) and 47 for the
+    # measurement block (#97): both are board furniture, so neither may be in
+    # the gate table.
     assert QUBIT_WIRE_ID == 46
+    assert MEASURE_BLOCK_ID == 47
     assert QUBIT_WIRE_ID not in MARKER_TABLE
+    assert MEASURE_BLOCK_ID not in MARKER_TABLE
+    assert QUBIT_WIRE_ID not in RESERVED_IDS
+    assert MEASURE_BLOCK_ID not in RESERVED_IDS
+
+
+def test_furniture_ids_are_detectable_but_not_gates() -> None:
+    """Both furniture blocks must DECODE but must never resolve to a gate."""
+    from qamposer_vision.markers import DETECTABLE_IDS
+
+    assert {QUBIT_WIRE_ID, MEASURE_BLOCK_ID} <= DETECTABLE_IDS
+    assert DETECTABLE_IDS == set(MARKER_TABLE) | {QUBIT_WIRE_ID, MEASURE_BLOCK_ID}
+    # Furniture is the ONLY thing outside the gate/corner table.
+    assert DETECTABLE_IDS - set(MARKER_TABLE) == {QUBIT_WIRE_ID, MEASURE_BLOCK_ID}
 
 
 def test_swap_tile() -> None:

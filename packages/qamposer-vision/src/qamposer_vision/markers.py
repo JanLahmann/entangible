@@ -22,7 +22,11 @@ Marker scheme (``DICT_4X4_50``):
 * 45    SWAP tile ``×`` — two ``×`` tiles in one column pair into a SWAP between
   their rows; emitted as the 3-CNOT decomposition until ``@qamposer/react`` gains
   a native SWAP type (see ``circuit_builder.emit_swap``)
-* 46–49 reserved for future tiles, see :data:`RESERVED_IDS`
+* 46    qubit-wire block — board furniture on the board's LEFT edge; up to five
+  identical blocks declare the wires, see :data:`QUBIT_WIRE_ID`
+* 47    measurement block — the right-edge counterpart of the wire block, an
+  optional refinement that ends a wire, see :data:`MEASURE_BLOCK_ID`
+* 48–49 reserved for future tiles, see :data:`RESERVED_IDS`
 """
 
 from __future__ import annotations
@@ -40,6 +44,7 @@ __all__ = [
     "GATE_TYPES",
     "GateSpec",
     "MARKER_TABLE",
+    "MEASURE_BLOCK_ID",
     "QUBIT_WIRE_ID",
     "RESERVED_IDS",
     "ROTATION_ANGLES",
@@ -96,12 +101,24 @@ DIAL_IDS: dict[int, str] = {42: "RX", 43: "RY", 44: "RZ"}
 #: instead of a fixed 5. No blocks present = the classic 5 wires.
 QUBIT_WIRE_ID = 46
 
+#: The measurement block (#97): the RIGHT-edge counterpart of
+#: :data:`QUBIT_WIRE_ID`, and board furniture just the same. Up to five
+#: *identical* blocks sit along the board's right edge between UR and LR, so the
+#: table reads like a circuit diagram — state prep on the left, measurement on
+#: the right. Measurement blocks are a pure **refinement**: a wire exists iff
+#: its LEFT block exists, and a right block only says where that wire *ends*, so
+#: a wire that has one runs as the tilted segment through both block centres
+#: instead of a horizontal line. A right block with no left partner is ignored
+#: (warned as ``unpaired_measure``) — the wire count is NEVER derived from the
+#: right side.
+MEASURE_BLOCK_ID = 47
+
 #: IDs reserved for future tiles. IDs 40/41 are live S/T tiles, 42/43/44 are
-#: live RX/RY/RZ dial tiles, 45 is the live SWAP ``×`` tile and 46 is the
-#: qubit-wire block; 47–49 stay reserved — never emitted by the current
-#: detector or assets generator, but claimed here so no other gate is assigned
-#: into this range.
-RESERVED_IDS = range(47, 50)
+#: live RX/RY/RZ dial tiles, 45 is the live SWAP ``×`` tile, 46 is the
+#: qubit-wire block and 47 the measurement block; 48–49 stay reserved — never
+#: emitted by the current detector or assets generator, but claimed here so no
+#: other gate is assigned into this range.
+RESERVED_IDS = range(48, 50)
 
 
 def quadrant_rotation(dx: float, dy: float) -> int:
@@ -280,9 +297,12 @@ def _build_marker_table() -> dict[int, GateSpec]:
 MARKER_TABLE: dict[int, GateSpec] = _build_marker_table()
 
 #: Every ID a detector must be able to DECODE: the gate/corner table plus the
-#: qubit-wire block. ID 46 carries no :class:`GateSpec` — it is furniture,
-#: deliberately absent from :data:`MARKER_TABLE` so it can never be mapped to a
-#: cell as a gate — but the board still has to recognise it. The pocket
-#: dictionary export reads this, so the browser detector decodes exactly the
-#: same IDs ``cv2.aruco`` does.
-DETECTABLE_IDS: frozenset[int] = frozenset(MARKER_TABLE) | {QUBIT_WIRE_ID}
+#: two board-furniture blocks. IDs 46/47 carry no :class:`GateSpec` — they are
+#: furniture, deliberately absent from :data:`MARKER_TABLE` so they can never be
+#: mapped to a cell as a gate — but the board still has to recognise them. The
+#: pocket dictionary export reads this, so the browser detector decodes exactly
+#: the same IDs ``cv2.aruco`` does.
+DETECTABLE_IDS: frozenset[int] = frozenset(MARKER_TABLE) | {
+    QUBIT_WIRE_ID,
+    MEASURE_BLOCK_ID,
+}

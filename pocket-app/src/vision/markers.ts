@@ -60,6 +60,19 @@ export const DIAL_IDS: Readonly<Record<number, string>> = { 42: 'RX', 43: 'RY', 
  */
 export const QUBIT_WIRE_ID = 46;
 
+/**
+ * The measurement block (#97) — the RIGHT-edge counterpart of `QUBIT_WIRE_ID`,
+ * and board furniture just the same. Up to five IDENTICAL blocks sit along the
+ * right edge between UR and LR, so the table reads like a circuit diagram:
+ * state prep on the left, measurement on the right. Measurement blocks are a
+ * pure REFINEMENT — a wire exists iff its LEFT block exists, and a right block
+ * only says where that wire ends, so a paired wire runs as the tilted segment
+ * through both block centres instead of a horizontal line. An unpaired right
+ * block is ignored (warned as `unpaired_measure`); the wire count is NEVER
+ * derived from the right side. Mirrors `markers.MEASURE_BLOCK_ID`.
+ */
+export const MEASURE_BLOCK_ID = 47;
+
 function buildMarkerTable(): Map<number, GateSpec> {
   const table = new Map<number, GateSpec>();
 
@@ -111,7 +124,8 @@ function buildMarkerTable(): Map<number, GateSpec> {
 
   // 45: SWAP tile (×). No native @qamposer/react SWAP type, so two × tiles in
   // one column are emitted by the circuit builder as a 3-CNOT SWAP between their
-  // rows (see circuitBuilder.emitSwap). IDs 46-49 remain reserved.
+  // rows (see circuitBuilder.emitSwap). 46/47 are furniture (wire / measurement
+  // blocks, no GateSpec); IDs 48-49 remain reserved.
   table.set(45, { kind: 'gate', gate: 'SWAP', label: 'SWAP ×' });
 
   return table;
@@ -152,13 +166,14 @@ export const MARKER_TABLE: ReadonlyMap<number, GateSpec> = buildMarkerTable();
 
 /**
  * Every ID a detector must be able to DECODE: the gate/corner table plus the
- * qubit-wire block. ID 46 carries no `GateSpec` — it is furniture, deliberately
- * absent from `MARKER_TABLE` so it can never be mapped to a cell as a gate —
- * but the board still has to recognise it, so `dictionary.json` carries it and
- * the browser decodes exactly the same IDs `cv2.aruco` does. Mirrors
- * `markers.DETECTABLE_IDS`.
+ * two board-furniture blocks. IDs 46/47 carry no `GateSpec` — they are
+ * furniture, deliberately absent from `MARKER_TABLE` so they can never be
+ * mapped to a cell as a gate — but the board still has to recognise them, so
+ * `dictionary.json` carries them and the browser decodes exactly the same IDs
+ * `cv2.aruco` does. Mirrors `markers.DETECTABLE_IDS`.
  */
 export const DETECTABLE_IDS: ReadonlySet<number> = new Set([
   ...MARKER_TABLE.keys(),
   QUBIT_WIRE_ID,
+  MEASURE_BLOCK_ID,
 ]);

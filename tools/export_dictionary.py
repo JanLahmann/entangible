@@ -69,8 +69,9 @@ def _inner_4x4(marker_id: int) -> Matrix:
 
 def build_dictionary() -> dict[str, object]:
     entries: dict[str, object] = {}
-    # Every DECODABLE id, not just the gate table: the qubit-wire block (46) is
-    # furniture with no GateSpec, but the browser detector still has to read it.
+    # Every DECODABLE id, not just the gate table: the qubit-wire block (46) and
+    # the measurement block (47) are furniture with no GateSpec, but the browser
+    # detector still has to read them.
     for marker_id in sorted(DETECTABLE_IDS):
         inner = _inner_4x4(marker_id)
         rotations: list[int] = []
