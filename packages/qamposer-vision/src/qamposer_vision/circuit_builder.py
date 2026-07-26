@@ -31,6 +31,8 @@ __all__ = [
     "BuildResult",
     "build_circuit",
     "emit_swap",
+    "stray_furniture_warnings",
+    "stray_tiles_warning",
 ]
 
 #: The two CNOT marker halves.
@@ -88,6 +90,48 @@ class BuildWarning:
             "col": self.col,
             "marker_ids": list(self.marker_ids),
         }
+
+
+def stray_furniture_warnings(
+    strays: list[tuple[int, float, float]],
+) -> list[BuildWarning]:
+    """One warning for a frame's off-board furniture, or none.
+
+    A *count*, not a list of positions: spare blocks beside the board are the
+    normal state of a booth table, and one line saying "two blocks are not on
+    the board" is the whole of what an operator needs. Per-block warnings would
+    turn a tidy stack of spares into a wall of text.
+    """
+    if not strays:
+        return []
+    ids = tuple(sorted({mid for mid, _x, _y in strays}))
+    return [
+        BuildWarning(
+            kind="stray_furniture",
+            message=(
+                f"{len(strays)} board-furniture block(s) are not on the board; "
+                "ignored. Wire and measurement blocks only count between the "
+                "corner blocks."
+            ),
+            marker_ids=ids,
+        )
+    ]
+
+
+def stray_tiles_warning(count: int) -> BuildWarning:
+    """One warning for a frame's off-board gate tiles — again, just the count.
+
+    Distinct from ``off_grid``: those tiles ARE on the board and missed a cell,
+    which is a mistake worth pointing at. These are simply not in play, which at
+    a booth is what most of the kit is doing at any moment.
+    """
+    return BuildWarning(
+        kind="stray_tiles",
+        message=(
+            f"{count} gate tile(s) are not on the board; ignored. Only tiles "
+            "inside the corner blocks are part of the circuit."
+        ),
+    )
 
 
 @dataclass(slots=True)

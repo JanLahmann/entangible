@@ -71,6 +71,13 @@ export function DebugPanel({ frame, fps }: { frame: FrameResult | null; fps: num
                   : '—'}
               </td>
             </tr>
+            <tr>
+              {/* Off the board entirely: the kit lying beside it. Counts only. */}
+              <td>stray tiles</td>
+              <td>{frame ? frame.strayTiles : '—'}</td>
+              <td>stray blocks</td>
+              <td>{frame ? frame.strayFurniture : '—'}</td>
+            </tr>
           </tbody>
         </table>
 

@@ -77,7 +77,9 @@ Every message is a JSON object with a `type` discriminator.
     "cols": 8,
     "wires": null,                      // qubit-wire blocks driving the rows, or null
     "measures": null,                   // wires with a paired measurement block (refinement)
-    "unpairedMeasures": 0               // measurement blocks that matched no wire; ignored
+    "unpairedMeasures": 0,              // measurement blocks that matched no wire; ignored
+    "strayFurniture": 0,                // wire/measurement blocks seen OFF the board; dropped
+    "strayTiles": 0                     // gate tiles seen OFF the board; dropped, NOT off-grid
   },
   "markers": [
     { "id": 10, "row": 0, "col": 0 },   // on-grid gate tile
@@ -91,8 +93,8 @@ Every message is a JSON object with a `type` discriminator.
 
 - Corner markers (IDs 0–3) are **not** listed in `markers`.
 - `board.rectMm` / `layout` / `rows` / `cols` / `wires` / `measures` /
-  `unpairedMeasures` are **additive** (tasks #94/#95/#97) and absent on older
-  hosts. Since corner *blocks* replaced the
+  `unpairedMeasures` / `strayFurniture` / `strayTiles` are **additive** (tasks
+  #94/#95/#97) and absent on older hosts. Since corner *blocks* replaced the
   printed mat the four fiducials may span any rectangle: the detector measures
   it (the printed 40 mm marker gives the absolute scale) and reports it the same
   way the mat is measured, margins included — so a mat-sized layout reports
@@ -111,9 +113,19 @@ Every message is a JSON object with a `type` discriminator.
   measured left→right run that disagrees with the corner blocks' span by more
   than a column pitch raises `measure_span_mismatch` — informational only, the
   corners stay authoritative.
+- `strayFurniture` / `strayTiles` count pieces whose centre falls **outside the
+  measured rectangle**, grown by a 30 mm margin (half a printed 60 mm piece, so
+  anything still overlapping the board counts as on it). They are dropped before
+  cell mapping and before either stabilizer, so the unused kit heaped on the
+  table beside the board can neither enter the circuit nor churn the hysteresis.
+  Each raises **one counted warning per frame** (`stray_furniture` /
+  `stray_tiles`), never one per piece, and off-board tiles are deliberately NOT
+  reported as `offGrid` — `off_grid` stays what it always was, a tile that IS on
+  the board and landed on no cell.
 - `warnings[].code` values come from the circuit builder (`lone_control`,
   `lone_target`, `cell_conflict`, `control_ambiguous`, …) plus the board-furniture
-  kinds `unpaired_measure` and `measure_span_mismatch` (#97); `row`/`col` optional.
+  kinds `unpaired_measure`, `measure_span_mismatch`, `stray_furniture` and
+  `stray_tiles` (#97); `row`/`col` optional.
 - Latest `detection` also replayed on connect (may be stale; `fps: 0` signals
   a stopped pipeline).
 
@@ -335,7 +347,8 @@ Pipeline(
   (`id`, `row`, `col` | `off_grid`), `warnings: list[BuildWarning]`, plus the
   board model (#94/#95/#97): `rect_mm: tuple[float, float] | None`,
   `board_layout: str`, `rows: int`, `cols: int`, `wires: int | None`,
-  `measures: int | None`, `unpaired_measures: int`.
+  `measures: int | None`, `unpaired_measures: int`, `stray_furniture: int`,
+  `stray_tiles: int`.
   Snake_case in Python; the host serializes to the camelCase JSON above.
 - `Pipeline(..., board_layout: str = "grid")` and `.set_board_layout(layout)`
   choose how a non-mat rectangle becomes a lattice; the host drives it from

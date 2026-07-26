@@ -57,6 +57,45 @@ export interface BoardRect {
  */
 export const MAT_RECT_TOLERANCE = 0.05;
 
+/**
+ * How far outside the measured board rectangle a piece's centre may sit and
+ * still count as being ON the board (mm). Half a printed piece (`TILE.size` is
+ * 60 mm for every tile *and* every furniture block), so a piece whose centre is
+ * within the margin still physically overlaps the play area — the worst a
+ * flush-laid piece can look after a nudge — while a centre further out means the
+ * piece is not touching the board at all. Three orders of magnitude above the
+ * detector's own error (< 0.1 mm RMS reprojection, measured in #94), so it is
+ * placement slop it absorbs, never noise. Mirrors `board.BOARD_MARGIN_MM`.
+ */
+export const BOARD_MARGIN_MM = 30.0;
+
+/**
+ * Is a board-mm point inside the board rectangle, within `margin`?
+ *
+ * The board-mm origin is the rectangle's own top-left corner, so the test is
+ * simply the rectangle grown by `margin` on every side.
+ *
+ * Everything a camera can see that is *not* on the board — the unused kit heaped
+ * on the table next to it at a booth, a furniture block that never made it
+ * between the corners — fails this and is dropped before it can reach cell
+ * mapping, the stabilizers or the warning list. That silence is the point: a
+ * pile of spare tiles beside the board is normal, not an error. Mirrors
+ * `board.on_board`.
+ */
+export function onBoard(
+  xMm: number,
+  yMm: number,
+  rect: BoardRect,
+  margin = BOARD_MARGIN_MM,
+): boolean {
+  return (
+    xMm >= -margin &&
+    xMm <= rect.widthMm + margin &&
+    yMm >= -margin &&
+    yMm <= rect.heightMm + margin
+  );
+}
+
 /** The printed mat's rectangle: the classic geometry and the initial guess. */
 export const MAT_RECT: BoardRect = {
   widthMm: BOARD.matWidth,

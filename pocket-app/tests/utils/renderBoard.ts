@@ -9,6 +9,7 @@
 import { BOARD, TILE, cornerMarkerSquare } from '../../src/vision/geometry';
 import { GridMapper } from '../../src/vision/grid';
 import { MEASURE_BLOCK_ID, QUBIT_WIRE_ID } from '../../src/vision/markers';
+import { FURNITURE_IDS } from '../../src/vision/wires';
 import type { BoardModel } from '../../src/vision/boardModel';
 import type { PocketPipeline } from '../../src/vision/pipeline';
 import type { GrayImage } from '../../src/vision/detect';
@@ -53,19 +54,40 @@ export function paintMarker(
   }
 }
 
+/** Extra pieces at explicit board-mm centres: `[markerId, xMm, yMm]`. */
+export type LoosePiece = readonly [number, number, number];
+
+export interface RenderExtras {
+  /** Measurement-block y positions at the board's right edge (#97). */
+  readonly measureYs?: readonly number[];
+  /**
+   * Pieces placed verbatim at board-mm centres — a gate tile or a furniture
+   * block deliberately dropped OFF the board. Raise `padMm` to keep them on the
+   * canvas. Furniture is drawn at the corner-block size, tiles at tile size.
+   */
+  readonly loose?: readonly LoosePiece[];
+  /** Blank margin around the board rectangle (board mm, default 24). */
+  readonly padMm?: number;
+}
+
 /**
  * Render a board spanning `model.rect`: the four corner fiducials, any wire
  * blocks at the board's left edge, any measurement blocks at its right edge
- * (#97, mirrored inset) and gate tiles at the model's cell centres.
+ * (#97, mirrored inset), gate tiles at the model's cell centres, and any loose
+ * pieces at explicit board-mm centres.
  */
 export function renderBoard(
   model: BoardModel,
   placements: Array<[number, number, number]>,
   wireYs: readonly number[],
   ppm: number,
-  measureYs: readonly number[] = [],
+  extras: readonly number[] | RenderExtras = [],
 ): GrayImage {
-  const padMm = 24;
+  const opts: RenderExtras = Array.isArray(extras)
+    ? { measureYs: extras as readonly number[] }
+    : (extras as RenderExtras);
+  const measureYs = opts.measureYs ?? [];
+  const padMm = opts.padMm ?? 24;
   const pad = Math.round(padMm * ppm);
   const cv = blank(
     Math.round(model.rect.widthMm * ppm) + 2 * pad,
@@ -108,6 +130,13 @@ export function renderBoard(
     const [cx, cy] = mapper.cellCenter(row, col);
     const [x0, y0] = at(cx - half, cy - half);
     paintMarker(cv, id, x0, y0, TILE.markerSize * ppm);
+  }
+
+  // Loose pieces at explicit centres — e.g. the kit heaped beside the board.
+  for (const [id, xMm, yMm] of opts.loose ?? []) {
+    const size = FURNITURE_IDS.has(id) ? BOARD.cornerMarkerSize : TILE.markerSize;
+    const [x0, y0] = at(xMm - size / 2, yMm - size / 2);
+    paintMarker(cv, id, x0, y0, size * ppm);
   }
   return { data: cv.data, width: cv.width, height: cv.height };
 }

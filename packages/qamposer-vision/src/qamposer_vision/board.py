@@ -33,6 +33,7 @@ from .detector import DetectedMarker
 from .markers import CORNER_IDS, CORNER_ROLES, quadrant_rotation
 
 __all__ = [
+    "BOARD_MARGIN_MM",
     "BoardConfig",
     "BoardRect",
     "BoardResult",
@@ -46,6 +47,7 @@ __all__ = [
     "fit_board",
     "is_mat_rect",
     "mat_rect",
+    "on_board",
     "rect_from_center_span",
     "with_rect",
 ]
@@ -60,6 +62,16 @@ MIN_CORNERS_FOR_BOARD = 3
 #: before. It doubles as the hysteresis band of the pipeline's sticky rectangle:
 #: a new estimate has to differ by more than this to replace the current one.
 MAT_RECT_TOLERANCE = 0.05
+
+#: How far outside the measured board rectangle a piece's centre may sit and
+#: still count as being ON the board (mm). Half a printed piece (``tile.size`` is
+#: 60 mm for every tile *and* every furniture block), so a piece whose centre is
+#: within the margin still physically overlaps the play area — the worst a
+#: flush-laid piece can look after a nudge — while a centre further out means the
+#: piece is not touching the board at all. Three orders of magnitude above the
+#: detector's own error (< 0.1 mm RMS reprojection, measured in #94), so it is
+#: placement slop it absorbs, never noise.
+BOARD_MARGIN_MM = 30.0
 
 #: Refinement passes in :func:`estimate_board_rect`. With four corners the very
 #: first pass is already exact (see the docstring); the extra passes only clean
@@ -79,6 +91,30 @@ class BoardRect:
 
     width: float
     height: float
+
+
+def on_board(
+    x_mm: float,
+    y_mm: float,
+    rect: "BoardRect",
+    margin: float = BOARD_MARGIN_MM,
+) -> bool:
+    """Is a board-mm point inside the board rectangle, within ``margin``?
+
+    The board-mm origin is the rectangle's own top-left corner (see
+    :class:`BoardRect`), so the test is simply the rectangle grown by ``margin``
+    on every side.
+
+    Everything a camera can see that is *not* on the board — the unused kit
+    heaped on the table next to it at a booth, a furniture block that never made
+    it between the corners — fails this and is dropped before it can reach cell
+    mapping, the stabilizers or the warning list. That silence is the point: a
+    pile of spare tiles beside the board is normal, not an error.
+    """
+    return (
+        -margin <= x_mm <= rect.width + margin
+        and -margin <= y_mm <= rect.height + margin
+    )
 
 
 @dataclass(frozen=True, slots=True)

@@ -19,9 +19,11 @@
  * left partner is ignored and reported.
  *
  * {@link wirePoints} / {@link wirePositions} decide which detected ID-46
- * markers count as wires (they have to be *left of* the grid, in board mm);
- * {@link measurePoints} asks the mirrored question of ID-47 (*right of* the
- * last column) and {@link pairMeasures} matches the two by y.
+ * markers count as wires (they have to be ON the board and *left of* the grid,
+ * in board mm); {@link measurePoints} asks the mirrored question of ID-47 (on
+ * the board and *right of* the last column), {@link strayFurniture} collects
+ * the blocks those threw away for being off the board entirely, and
+ * {@link pairMeasures} matches the survivors by y.
  * {@link WireStabilizer} applies the same asymmetric hysteresis the tile
  * stabilizer uses to the wire SET, so a hand crossing the left edge cannot
  * resize the circuit frame by frame. Growing the set takes `appearMin` of the
@@ -35,12 +37,22 @@
  */
 import type { BoardResult } from './board';
 import { MAX_WIRES } from './boardModel';
+import { BOARD_MARGIN_MM, onBoard, type BoardRect } from './geometry';
 import { yPitch, type GridConfig } from './grid';
 import { MEASURE_BLOCK_ID, QUBIT_WIRE_ID } from './markers';
 import type { DetectedMarker } from './detect';
 
 /** A board-mm point: `[x, y]`. */
 export type Point = readonly [number, number];
+
+/**
+ * The two board-furniture marker IDs. Neither is a gate; both are placed by
+ * hand at a board edge, so both are subject to the same on-board test.
+ */
+export const FURNITURE_IDS: ReadonlySet<number> = new Set([
+  QUBIT_WIRE_ID,
+  MEASURE_BLOCK_ID,
+]);
 
 /**
  * Half a row pitch: how far a measurement block's centre may sit from a wire
@@ -60,35 +72,81 @@ export function gridRightEdge(grid: GridConfig): number {
   return grid.gridOffsetX + grid.pitch * (grid.cols - 1) + grid.cellSize;
 }
 
+/**
+ * Board-mm `[x, y]` of every ON-BOARD marker with `markerId`.
+ *
+ * The on-board test comes first, before either edge rule, so a block that is not
+ * on the board never reaches the wire set — and therefore never reaches the
+ * hysteresis either. A stray appearing and disappearing at the edge of frame
+ * must not churn the stabilizer; the way to guarantee that is for the stabilizer
+ * never to hear about it.
+ */
 function furniturePoints(
   markers: readonly DetectedMarker[],
   board: BoardResult,
   markerId: number,
+  rect: BoardRect,
+  margin = BOARD_MARGIN_MM,
 ): Point[] {
   const points: Point[] = [];
   for (const marker of markers) {
     if (marker.id !== markerId) continue;
     const [xMm, yMm] = board.imageToBoard(marker.center);
+    if (!onBoard(xMm, yMm, rect, margin)) continue;
     points.push([xMm, yMm]);
   }
   return points;
 }
 
+/** A furniture block found off the board: `[markerId, x, y]` in board mm. */
+export type StrayBlock = readonly [number, number, number];
+
+/**
+ * Furniture blocks whose centre is OFF the board, sorted top-down.
+ *
+ * The complement of what {@link wirePoints} and {@link measurePoints} accept, on
+ * the board-bounds test only: a block that is on the board but on the wrong side
+ * of its edge rule is a *misplacement*, not a stray, and is handled where it
+ * happens. These are the ones that are not on the board at all — the spare
+ * blocks in the box next to it — and all the frame does with them is count them.
+ *
+ * Sorted by `(y, x, id)` so a frame's report is a pure function of what was on
+ * the table, not of detector ordering. Mirrors `wires.stray_furniture`.
+ */
+export function strayFurniture(
+  markers: readonly DetectedMarker[],
+  board: BoardResult,
+  rect: BoardRect,
+  margin = BOARD_MARGIN_MM,
+): StrayBlock[] {
+  const out: StrayBlock[] = [];
+  for (const marker of markers) {
+    if (!FURNITURE_IDS.has(marker.id)) continue;
+    const [xMm, yMm] = board.imageToBoard(marker.center);
+    if (onBoard(xMm, yMm, rect, margin)) continue;
+    out.push([marker.id, xMm, yMm]);
+  }
+  out.sort((a, b) => a[2] - b[2] || a[1] - b[1] || a[0] - b[0]);
+  return out;
+}
+
 /**
  * Board-mm `[x, y]` of every qubit-wire block, sorted top-down.
  *
- * A block counts only when its centre falls **left of the grid's first column**
- * (`x < gridOffsetX`) — that is where the wires start, and it keeps a stray
- * block that wandered onto the lattice from silently becoming a wire. At most
- * `maxWires` are returned (the topmost ones).
+ * A block counts only when it is **on the board** ({@link onBoard} against
+ * `rect`) *and* its centre falls **left of the grid's first column**
+ * (`x < gridOffsetX`). The first rule drops the spares lying on the table beside
+ * the board; the second keeps a block that wandered onto the lattice from
+ * silently becoming a wire. At most `maxWires` are returned (the topmost ones).
  */
 export function wirePoints(
   markers: readonly DetectedMarker[],
   board: BoardResult,
   grid: GridConfig,
+  rect: BoardRect,
   maxWires = MAX_WIRES,
 ): Point[] {
-  const points = furniturePoints(markers, board, QUBIT_WIRE_ID).filter(
+  const points = furniturePoints(markers, board, QUBIT_WIRE_ID, rect).filter(
     ([x]) => x < grid.gridOffsetX,
   );
   points.sort((a, b) => a[1] - b[1]);
@@ -103,27 +161,30 @@ export function wirePositions(
   markers: readonly DetectedMarker[],
   board: BoardResult,
   grid: GridConfig,
+  rect: BoardRect,
   maxWires = MAX_WIRES,
 ): number[] {
-  return wirePoints(markers, board, grid, maxWires).map(([, y]) => y);
+  return wirePoints(markers, board, grid, rect, maxWires).map(([, y]) => y);
 }
 
 /**
  * Board-mm `[x, y]` of every measurement block, sorted top-down.
  *
- * The mirror of {@link wirePoints}: a block counts only when its centre falls
- * **right of the last column**, so a block that wandered onto the lattice can
- * never be read as a wire end. At most `maxWires` are returned — a board tops
- * out at `MAX_WIRES` wires, so more right blocks than that cannot all be ends.
+ * The mirror of {@link wirePoints}: a block counts only when it is on the board
+ * and its centre falls **right of the last column**, so neither a spare off the
+ * board nor one that wandered onto the lattice can be read as a wire end. At
+ * most `maxWires` are returned — a board tops out at `MAX_WIRES` wires, so more
+ * right blocks than that cannot all be ends.
  */
 export function measurePoints(
   markers: readonly DetectedMarker[],
   board: BoardResult,
   grid: GridConfig,
+  rect: BoardRect,
   maxWires = MAX_WIRES,
 ): Point[] {
   const edge = gridRightEdge(grid);
-  const points = furniturePoints(markers, board, MEASURE_BLOCK_ID).filter(
+  const points = furniturePoints(markers, board, MEASURE_BLOCK_ID, rect).filter(
     ([x]) => x > edge,
   );
   points.sort((a, b) => a[1] - b[1]);

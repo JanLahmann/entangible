@@ -39,14 +39,14 @@ def test_pipeline_maps_dial_rotation_into_stability_key() -> None:
         img = render_board(((42, 0, 0, rotation),), config, RenderOptions())
         markers = detector.detect(img)
         board = fit_board(markers, config)
-        observations, _obs, _warn = pipeline._map_markers(markers, board)
+        observations, _obs, _warn, _stray = pipeline._map_markers(markers, board)
         assert observations == {(42, 0, 0, rotation)}
 
     # A non-dial tile always carries rotation 0, whatever way it is turned.
     img = render_board(((10, 0, 0, 2),), config, RenderOptions())
     markers = detector.detect(img)
     board = fit_board(markers, config)
-    observations, _obs, _warn = pipeline._map_markers(markers, board)
+    observations, _obs, _warn, _stray = pipeline._map_markers(markers, board)
     assert observations == {(10, 0, 0, 0)}
 
 

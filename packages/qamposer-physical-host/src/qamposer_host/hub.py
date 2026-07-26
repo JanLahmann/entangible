@@ -80,6 +80,8 @@ def serialize_detection(event: Any) -> dict:
         "wires": getattr(event, "wires", None),
         "measures": getattr(event, "measures", None),
         "unpairedMeasures": getattr(event, "unpaired_measures", 0),
+        "strayFurniture": getattr(event, "stray_furniture", 0),
+        "strayTiles": getattr(event, "stray_tiles", 0),
     }
 
     return {

@@ -110,6 +110,8 @@ const detectionSample = {
     wires: null,
     measures: null,
     unpairedMeasures: 0,
+    strayFurniture: 0,
+    strayTiles: 0,
   },
   markers: [{ id: 0, row: 0, col: 0, offGrid: true }],
   warnings: [{ code: '', message: '', row: 0, col: 0 }],

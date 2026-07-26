@@ -133,6 +133,11 @@ class RenderOptions:
     #: so a scenario can put a pair at slightly different heights and get the
     #: tilted wire the detector is supposed to follow.
     measure_mm: tuple[float, ...] = ()
+    #: Furniture blocks at explicit board-mm centres ``(marker_id, x_mm, y_mm)``,
+    #: drawn at the corner-block size. Unlike :attr:`wire_mm` / :attr:`measure_mm`
+    #: these are placed verbatim, so a scenario can drop a block OFF the board
+    #: (raise :attr:`pad_mm` to keep it on the canvas) and check it is ignored.
+    furniture_mm: tuple[tuple[int, float, float], ...] = ()
 
 
 def _aruco_dictionary() -> "cv2.aruco.Dictionary":
@@ -204,6 +209,14 @@ def render_board(
             y_mm - config.corner_marker_size / 2.0,
         )
         _paste_marker(canvas, dictionary, MEASURE_BLOCK_ID, x0, y0, corner_size_px)
+
+    # Furniture at explicit centres — e.g. a block deliberately off the board.
+    for marker_id, x_mm, y_mm in opt.furniture_mm:
+        x0, y0 = mm_to_px(
+            x_mm - config.corner_marker_size / 2.0,
+            y_mm - config.corner_marker_size / 2.0,
+        )
+        _paste_marker(canvas, dictionary, marker_id, x0, y0, corner_size_px)
 
     # Gate tiles at their cell centres. A placement may carry a 4th element, the
     # clockwise 90° rotation (0-3) — used by dial tiles to select their angle.

@@ -75,6 +75,19 @@ export interface BoardState {
    * Each one also raises an `unpaired_measure` warning.
    */
   unpairedMeasures?: number;
+  /**
+   * Wire / measurement blocks seen OFF the board rectangle and dropped before
+   * they could reach the wire set or its hysteresis. Raises one counted
+   * `stray_furniture` warning per frame — never one per block.
+   */
+  strayFurniture?: number;
+  /**
+   * Gate tiles seen OFF the board rectangle and dropped before cell mapping.
+   * The booth case: the unused kit lies on the table beside the board. NOT
+   * `offGrid` — those tiles are on the board and missed a cell. Raises one
+   * counted `stray_tiles` warning per frame.
+   */
+  strayTiles?: number;
 }
 
 /** A detected gate tile (corner markers 0-3 are never listed here). */

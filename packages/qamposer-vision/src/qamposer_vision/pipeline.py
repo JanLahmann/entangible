@@ -41,6 +41,7 @@ from .board import (
     estimate_board_rect,
     fit_board,
     mat_rect,
+    on_board,
 )
 from .board_model import (
     DEFAULT_BOARD_LAYOUT,
@@ -48,7 +49,13 @@ from .board_model import (
     build_board_model,
     mat_board_model,
 )
-from .circuit_builder import BuildWarning, TilePlacement, build_circuit
+from .circuit_builder import (
+    BuildWarning,
+    TilePlacement,
+    build_circuit,
+    stray_furniture_warnings,
+    stray_tiles_warning,
+)
 from .detector import ArucoDetector
 from .grid import GridConfig, GridMapper
 from .markers import CORNER_IDS, MARKER_TABLE, MEASURE_BLOCK_ID, QUBIT_WIRE_ID
@@ -62,6 +69,7 @@ from .wires import (
     measure_points,
     pair_measures,
     pair_tolerance,
+    stray_furniture,
     wire_points,
 )
 
@@ -133,6 +141,13 @@ class DetectionEvent:
     measures: int | None = None
     #: Measurement blocks that matched no wire and were ignored (task #97).
     unpaired_measures: int = 0
+    #: Furniture blocks seen OFF the board and dropped — the spare wire /
+    #: measurement blocks lying beside it. Never an error, just a count.
+    stray_furniture: int = 0
+    #: Gate tiles seen OFF the board and dropped — the unused kit inventory on
+    #: the table. Deliberately NOT ``off_grid``: they are not misplaced, they
+    #: are simply not in play.
+    stray_tiles: int = 0
 
 
 def _wire_ends(
@@ -308,16 +323,20 @@ class Pipeline:
         base = build_board_model(self._board_config, self._rect, self._board_layout)
         wire_changed = False
         furniture_warnings: list[BuildWarning] = []
+        strays = 0
         if board is not None:
-            wire_obs = wire_points(markers, board, base.grid)
+            wire_obs = wire_points(markers, board, base.grid, base.rect)
             wires = self._wire_stabilizer.update(y for _x, y in wire_obs)
             wire_changed = wires.changed
             measures = self._measure_stabilizer.update(
-                measure_points(markers, board, base.grid)
+                measure_points(markers, board, base.grid, base.rect)
             )
             spans, furniture_warnings = self._pair_measures(
                 wires.wires, wire_obs, measures.points, base
             )
+            stray_blocks = stray_furniture(markers, board, base.rect)
+            strays = len(stray_blocks)
+            furniture_warnings += stray_furniture_warnings(stray_blocks)
             self._model = build_board_model(
                 self._board_config,
                 self._rect,
@@ -329,9 +348,12 @@ class Pipeline:
             self._model = base
 
         grid = GridMapper(self._model.grid)
-        observations, marker_obs, off_grid_warnings = self._map_markers(
-            markers, board, grid
+        rect = base.rect if board is not None else None
+        observations, marker_obs, off_grid_warnings, stray_tiles = self._map_markers(
+            markers, board, grid, rect
         )
+        if stray_tiles:
+            off_grid_warnings.append(stray_tiles_warning(stray_tiles))
 
         result = self._stabilizer.update(observations)
         if result.changed or wire_changed or not self._emitted:
@@ -366,6 +388,8 @@ class Pipeline:
                     unpaired_measures=sum(
                         1 for w in furniture_warnings if w.kind == "unpaired_measure"
                     ),
+                    stray_furniture=strays,
+                    stray_tiles=stray_tiles,
                 )
             )
 
@@ -481,12 +505,28 @@ class Pipeline:
         markers: list[Any],
         board: BoardResult | None,
         grid: GridMapper | None = None,
-    ) -> tuple[set[Tile], list[MarkerObs], list[BuildWarning]]:
+        rect: BoardRect | None = None,
+    ) -> tuple[set[Tile], list[MarkerObs], list[BuildWarning], int]:
+        """Map gate tiles onto cells; also count the ones that are off the board.
+
+        Two different failures, deliberately told apart (#97 follow-up):
+
+        * a tile whose centre is **off the board** (outside ``rect`` by more
+          than :data:`~.board.BOARD_MARGIN_MM`) is dropped *silently* — no
+          warning, no ``MarkerObs``, nothing in the stabilizer. That is the
+          booth case: the unused kit lies on the table right next to the board,
+          and it must not spam warnings or wobble the hysteresis. Only the
+          count leaves this function.
+        * a tile **on the board** that lands on no cell keeps its ``off_grid``
+          warning and its debug-table row. That one is a real "you misplaced a
+          tile" signal and is worth the noise.
+        """
         if grid is None:
             grid = GridMapper(self._model.grid)
         observations: set[Tile] = set()
         marker_obs: list[MarkerObs] = []
         off_grid_warnings: list[BuildWarning] = []
+        stray_tiles = 0
 
         for marker in markers:
             if marker.id in CORNER_IDS or marker.id not in MARKER_TABLE:
@@ -495,6 +535,11 @@ class Pipeline:
                 marker_obs.append(MarkerObs(id=marker.id, off_grid=True))
                 continue
             board_xy = board.image_to_board(marker.center)[0]
+            if rect is not None and not on_board(
+                float(board_xy[0]), float(board_xy[1]), rect
+            ):
+                stray_tiles += 1
+                continue
             cell = grid.assign(float(board_xy[0]), float(board_xy[1]))
             if cell is None:
                 marker_obs.append(MarkerObs(id=marker.id, off_grid=True))
@@ -519,7 +564,7 @@ class Pipeline:
             observations.add((marker.id, row, col, rot))
             marker_obs.append(MarkerObs(id=marker.id, row=row, col=col))
 
-        return observations, marker_obs, off_grid_warnings
+        return observations, marker_obs, off_grid_warnings, stray_tiles
 
     def _rebuild_and_maybe_emit(
         self, stable: frozenset[Tile], source: FrameSource

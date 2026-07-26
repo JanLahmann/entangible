@@ -26,6 +26,7 @@ import {
   CORNER_IDS,
   MAT_RECT,
   MAT_RECT_TOLERANCE,
+  onBoard,
   type BoardRect,
 } from './geometry';
 import {
@@ -41,9 +42,11 @@ import {
   measurePoints,
   pairMeasures,
   pairTolerance,
+  strayFurniture,
   wirePoints,
   type MeasurePairing,
   type Point,
+  type StrayBlock,
   type WireSpan,
 } from './wires';
 import { MARKER_TABLE, MEASURE_BLOCK_ID, QUBIT_WIRE_ID } from './markers';
@@ -115,6 +118,17 @@ export interface FrameResult {
    * (#97).
    */
   readonly model: BoardModel;
+  /**
+   * Board furniture seen OFF the board and dropped (#97 follow-up) — the spare
+   * wire / measurement blocks lying beside it. Never an error, just a count.
+   */
+  readonly strayFurniture: number;
+  /**
+   * Gate tiles seen OFF the board and dropped — the unused kit inventory on the
+   * table. Deliberately NOT `off_grid`: they are not misplaced, they are simply
+   * not in play.
+   */
+  readonly strayTiles: number;
   /** Per-frame detection counters for the debug overlay. */
   readonly stats: FrameStats;
   /** Resolved detector params (read-only), for the debug panel. */
@@ -133,6 +147,52 @@ export interface PipelineOptions {
    * unaffected either way.
    */
   boardLayout?: BoardLayout;
+}
+
+/**
+ * One warning for a frame's off-board furniture, or none.
+ *
+ * A *count*, not a list of positions: spare blocks beside the board are the
+ * normal state of a booth table, and one line saying "two blocks are not on the
+ * board" is the whole of what an operator needs. Per-block warnings would turn a
+ * tidy stack of spares into a wall of text. Mirrors
+ * `circuit_builder.stray_furniture_warnings`.
+ */
+export function strayFurnitureWarnings(strays: readonly StrayBlock[]): BuildWarning[] {
+  if (strays.length === 0) return [];
+  const ids = [...new Set(strays.map(([id]) => id))].sort((a, b) => a - b);
+  return [
+    {
+      kind: 'stray_furniture' as const,
+      message:
+        `${strays.length} board-furniture block(s) are not on the board; ` +
+        'ignored. Wire and measurement blocks only count between the corner ' +
+        'blocks.',
+      row: null,
+      col: null,
+      marker_ids: ids,
+    },
+  ];
+}
+
+/**
+ * One warning for a frame's off-board gate tiles — again, just the count.
+ *
+ * Distinct from `off_grid`: those tiles ARE on the board and missed a cell,
+ * which is a mistake worth pointing at. These are simply not in play, which at a
+ * booth is what most of the kit is doing at any moment. Mirrors
+ * `circuit_builder.stray_tiles_warning`.
+ */
+export function strayTilesWarning(count: number): BuildWarning {
+  return {
+    kind: 'stray_tiles' as const,
+    message:
+      `${count} gate tile(s) are not on the board; ignored. Only tiles inside ` +
+      'the corner blocks are part of the circuit.',
+    row: null,
+    col: null,
+    marker_ids: [],
+  };
 }
 
 export class PocketPipeline {
@@ -214,15 +274,18 @@ export class PocketPipeline {
     const base = buildBoardModel(this.rect, this.boardLayout);
     let wireChanged = false;
     let furnitureWarnings: BuildWarning[] = [];
+    let strays = 0;
     if (board) {
-      const wireObs = wirePoints(blind, board, base.grid);
+      const wireObs = wirePoints(blind, board, base.grid, base.rect);
       const wires = this.wireStabilizer.update(wireObs.map(([, y]) => y));
       wireChanged = wires.changed;
       const measures = this.measureStabilizer.update(
-        measurePoints(blind, board, base.grid),
+        measurePoints(blind, board, base.grid, base.rect),
       );
       const paired = this.pairMeasureBlocks(wires.wires, wireObs, measures.points, base);
-      furnitureWarnings = paired.warnings;
+      const strayBlocks = strayFurniture(blind, board, base.rect);
+      strays = strayBlocks.length;
+      furnitureWarnings = [...paired.warnings, ...strayFurnitureWarnings(strayBlocks)];
       this.model = buildBoardModel(
         this.rect,
         this.boardLayout,
@@ -248,11 +311,13 @@ export class PocketPipeline {
 
     const corners = detected.filter((m) => String(m.id) in CORNER_IDS).length;
 
-    const { observations, markerObs, offGridWarnings } = this.mapMarkers(
+    const { observations, markerObs, offGridWarnings, strayTiles } = this.mapMarkers(
       detected,
       board,
       grid,
+      board ? base.rect : null,
     );
+    if (strayTiles > 0) offGridWarnings.push(strayTilesWarning(strayTiles));
 
     const result = this.stabilizer.update(observations);
     let changed = false;
@@ -273,6 +338,8 @@ export class PocketPipeline {
       detected,
       board,
       model: this.model,
+      strayFurniture: strays,
+      strayTiles,
       stats: {
         candidates: detectStats.candidates,
         blindHits: blind.length,
@@ -306,14 +373,37 @@ export class PocketPipeline {
     this.rect = rect;
   }
 
+  /**
+   * Map gate tiles onto cells; also count the ones that are off the board.
+   *
+   * Two different failures, deliberately told apart (#97 follow-up):
+   *
+   * - a tile whose centre is **off the board** (outside `rect` by more than
+   *   `BOARD_MARGIN_MM`) is dropped *silently* — no warning, no `MarkerObs`,
+   *   nothing in the stabilizer. That is the booth case: the unused kit lies on
+   *   the table right next to the board, and it must not spam warnings or wobble
+   *   the hysteresis. Only the count leaves this method.
+   * - a tile **on the board** that lands on no cell keeps its `off_grid` warning
+   *   and its debug-table row. That one is a real "you misplaced a tile" signal
+   *   and is worth the noise.
+   *
+   * Mirrors `pipeline._map_markers`.
+   */
   private mapMarkers(
     markers: DetectedMarker[],
     board: BoardResult | null,
     grid: GridMapper,
-  ): { observations: Tile[]; markerObs: MarkerObs[]; offGridWarnings: BuildWarning[] } {
+    rect: BoardRect | null = null,
+  ): {
+    observations: Tile[];
+    markerObs: MarkerObs[];
+    offGridWarnings: BuildWarning[];
+    strayTiles: number;
+  } {
     const observations: Tile[] = [];
     const markerObs: MarkerObs[] = [];
     const offGridWarnings: BuildWarning[] = [];
+    let strayTiles = 0;
 
     for (const marker of markers) {
       if (String(marker.id) in CORNER_IDS || !MARKER_TABLE.has(marker.id)) continue;
@@ -322,6 +412,10 @@ export class PocketPipeline {
         continue;
       }
       const [bx, by] = board.imageToBoard(marker.center);
+      if (rect !== null && !onBoard(bx, by, rect)) {
+        strayTiles += 1;
+        continue;
+      }
       const cell = grid.assign(bx, by);
       if (cell === null) {
         markerObs.push({ id: marker.id, row: null, col: null, offGrid: true });
@@ -343,7 +437,7 @@ export class PocketPipeline {
       markerObs.push({ id: marker.id, row: cell.row, col: cell.col, offGrid: false });
     }
 
-    return { observations, markerObs, offGridWarnings };
+    return { observations, markerObs, offGridWarnings, strayTiles };
   }
 
   /**

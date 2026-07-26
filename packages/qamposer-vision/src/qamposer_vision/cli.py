@@ -26,9 +26,21 @@ import cv2
 import numpy as np
 
 from .annotate import annotate_frame
-from .board import BoardConfig, BoardResult, estimate_board_rect, fit_board
+from .board import (
+    BoardConfig,
+    BoardResult,
+    estimate_board_rect,
+    fit_board,
+    on_board,
+)
 from .board_model import DEFAULT_BOARD_LAYOUT, BoardModel, build_board_model
-from .circuit_builder import BuildWarning, TilePlacement, build_circuit
+from .circuit_builder import (
+    BuildWarning,
+    TilePlacement,
+    build_circuit,
+    stray_furniture_warnings,
+    stray_tiles_warning,
+)
 from .detector import ArucoDetector, DetectedMarker
 from .grid import GridMapper
 from .markers import CORNER_IDS, MARKER_TABLE, MEASURE_BLOCK_ID
@@ -37,6 +49,7 @@ from .wires import (
     measure_points,
     pair_measures,
     pair_tolerance,
+    stray_furniture,
     wire_points,
 )
 
@@ -104,13 +117,14 @@ def detect_circuit(
         )
 
     base = build_board_model(board_config, rect, board_layout)
-    wire_pts = wire_points(markers, board, base.grid)
+    wire_pts = wire_points(markers, board, base.grid, base.rect)
     wires = tuple(y for _x, y in wire_pts)
     pairing = pair_measures(
         wire_pts,
-        measure_points(markers, board, base.grid),
+        measure_points(markers, board, base.grid, base.rect),
         pair_tolerance(base.grid),
     )
+    strays = stray_furniture(markers, board, base.rect)
     model = build_board_model(
         board_config,
         rect,
@@ -134,10 +148,18 @@ def detect_circuit(
         )
         for x, y in pairing.unpaired
     ]
+    warnings += stray_furniture_warnings(strays)
+    stray_tiles = 0
     for marker in markers:
         if marker.id in CORNER_IDS or marker.id not in MARKER_TABLE:
             continue  # corner fiducial or unknown ID -> not a gate tile
         board_xy = board.image_to_board(marker.center)[0]
+        # Off the board entirely (the kit heaped on the table beside it) is not
+        # a misplacement: drop it silently and only count it. On the board but
+        # off a cell keeps its off_grid warning below.
+        if not on_board(float(board_xy[0]), float(board_xy[1]), base.rect):
+            stray_tiles += 1
+            continue
         cell = grid.assign(float(board_xy[0]), float(board_xy[1]))
         if cell is None:
             warnings.append(
@@ -160,6 +182,9 @@ def detect_circuit(
         placements.append(
             TilePlacement(marker_id=marker.id, row=row, col=col, rotation=rotation)
         )
+
+    if stray_tiles:
+        warnings.append(stray_tiles_warning(stray_tiles))
 
     result = build_circuit(placements, qubits)
     all_warnings = warnings + result.warnings

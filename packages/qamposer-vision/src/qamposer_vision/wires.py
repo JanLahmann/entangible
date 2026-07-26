@@ -19,10 +19,12 @@ ignored and reported.
 The pieces here:
 
 * :func:`wire_points` / :func:`wire_positions` — which detected ID-46 markers
-  count as wires (they have to be *left of* the grid, in board mm) and where
-  they sit;
+  count as wires (they have to be ON the board and *left of* the grid, in board
+  mm) and where they sit;
 * :func:`measure_points` — the same question for ID-47, mirrored: a block counts
-  only when it falls *right of* the last column;
+  only when it is on the board and falls *right of* the last column;
+* :func:`stray_furniture` — the blocks both of those threw away for being off
+  the board entirely, so the frame can say so once instead of silently;
 * :func:`pair_measures` — nearest-by-y matching of right blocks to left blocks,
   within :data:`PAIR_TOLERANCE_FRACTION` of the row pitch;
 * :class:`WireStabilizer` — the same asymmetric hysteresis the tile stabilizer
@@ -43,23 +45,31 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Any, Iterable, Sequence
 
+from .board import BOARD_MARGIN_MM, BoardRect, on_board
 from .board_model import MAX_WIRES
 from .grid import GridConfig
 from .markers import MEASURE_BLOCK_ID, QUBIT_WIRE_ID
 
 __all__ = [
+    "FURNITURE_IDS",
     "PAIR_TOLERANCE_FRACTION",
     "MeasurePairing",
     "MeasureResult",
     "MeasureStabilizer",
     "WireResult",
     "WireStabilizer",
+    "grid_right_edge",
     "measure_points",
     "pair_measures",
     "pair_tolerance",
+    "stray_furniture",
     "wire_points",
     "wire_positions",
 ]
+
+#: The two board-furniture marker IDs. Neither is a gate; both are placed by
+#: hand at a board edge, so both are subject to the same on-board test.
+FURNITURE_IDS: frozenset[int] = frozenset({QUBIT_WIRE_ID, MEASURE_BLOCK_ID})
 
 #: Half a row pitch: how far a measurement block's centre may sit from a wire
 #: block's and still be read as *that* wire's end. Half the pitch is exactly the
@@ -74,34 +84,80 @@ def pair_tolerance(grid: GridConfig) -> float:
 
 
 def _furniture_points(
-    markers: Iterable[Any], board: Any, marker_id: int
+    markers: Iterable[Any],
+    board: Any,
+    marker_id: int,
+    rect: BoardRect,
+    margin: float = BOARD_MARGIN_MM,
 ) -> list[tuple[float, float]]:
-    """Board-mm ``(x, y)`` of every marker with ``marker_id``, unfiltered."""
+    """Board-mm ``(x, y)`` of every ON-BOARD marker with ``marker_id``.
+
+    The on-board test comes first, before either edge rule, so a block that is
+    not on the board never reaches the wire set — and therefore never reaches
+    the hysteresis either. A stray appearing and disappearing at the edge of
+    frame must not churn the stabilizer; the way to guarantee that is for the
+    stabilizer never to hear about it.
+    """
     points: list[tuple[float, float]] = []
     for marker in markers:
         if marker.id != marker_id:
             continue
         x_mm, y_mm = (float(v) for v in board.image_to_board(marker.center)[0])
+        if not on_board(x_mm, y_mm, rect, margin):
+            continue
         points.append((x_mm, y_mm))
     return points
+
+
+def stray_furniture(
+    markers: Iterable[Any],
+    board: Any,
+    rect: BoardRect,
+    margin: float = BOARD_MARGIN_MM,
+) -> list[tuple[int, float, float]]:
+    """Furniture blocks whose centre is OFF the board — ``(id, x, y)``, top-down.
+
+    The complement of what :func:`wire_points` and :func:`measure_points`
+    accept, on the board-bounds test only: a block that is on the board but on
+    the wrong side of its edge rule is a *misplacement*, not a stray, and is
+    handled where it happens. These are the ones that are not on the board at
+    all — the spare blocks in the box next to it — and all the frame does with
+    them is count them.
+
+    Sorted by ``(y, x, id)`` so a frame's report is a pure function of what was
+    on the table, not of detector ordering.
+    """
+    out: list[tuple[int, float, float]] = []
+    for marker in markers:
+        if marker.id not in FURNITURE_IDS:
+            continue
+        x_mm, y_mm = (float(v) for v in board.image_to_board(marker.center)[0])
+        if on_board(x_mm, y_mm, rect, margin):
+            continue
+        out.append((int(marker.id), x_mm, y_mm))
+    out.sort(key=lambda t: (t[2], t[1], t[0]))
+    return out
 
 
 def wire_points(
     markers: Iterable[Any],
     board: Any,
     grid: GridConfig,
+    rect: BoardRect,
     max_wires: int = MAX_WIRES,
 ) -> list[tuple[float, float]]:
     """Board-mm ``(x, y)`` of every qubit-wire block, sorted top-down.
 
-    A block counts only when its centre falls **left of the grid's first
-    column** (``x < grid_offset_x``) — that is where the wires start, and it
-    keeps a stray block that wandered onto the lattice from silently becoming a
-    wire. At most ``max_wires`` are returned (the topmost ones).
+    A block counts only when it is **on the board** (:func:`~.board.on_board`
+    against ``rect``) *and* its centre falls **left of the grid's first column**
+    (``x < grid_offset_x``). The first rule drops the spares lying on the table
+    beside the board; the second keeps a block that wandered onto the lattice
+    from silently becoming a wire. At most ``max_wires`` are returned (the
+    topmost ones).
     """
     points = [
         (x, y)
-        for x, y in _furniture_points(markers, board, QUBIT_WIRE_ID)
+        for x, y in _furniture_points(markers, board, QUBIT_WIRE_ID, rect)
         if x < grid.grid_offset_x
     ]
     points.sort(key=lambda p: p[1])
@@ -112,6 +168,7 @@ def wire_positions(
     markers: Iterable[Any],
     board: Any,
     grid: GridConfig,
+    rect: BoardRect,
     max_wires: int = MAX_WIRES,
 ) -> list[float]:
     """Board-mm y of every qubit-wire block, sorted top-down.
@@ -119,7 +176,7 @@ def wire_positions(
     The y half of :func:`wire_points` — what decides how many wires the board
     has and where each one starts.
     """
-    return [y for _x, y in wire_points(markers, board, grid, max_wires)]
+    return [y for _x, y in wire_points(markers, board, grid, rect, max_wires)]
 
 
 def grid_right_edge(grid: GridConfig) -> float:
@@ -131,20 +188,22 @@ def measure_points(
     markers: Iterable[Any],
     board: Any,
     grid: GridConfig,
+    rect: BoardRect,
     max_wires: int = MAX_WIRES,
 ) -> list[tuple[float, float]]:
     """Board-mm ``(x, y)`` of every measurement block, sorted top-down.
 
-    The mirror of :func:`wire_points`: a block counts only when its centre falls
-    **right of the last column**, so a block that wandered onto the lattice can
-    never be read as a wire end. At most ``max_wires`` are returned — a board
-    tops out at :data:`~.board_model.MAX_WIRES` wires, so more right blocks than
-    that cannot all be ends.
+    The mirror of :func:`wire_points`: a block counts only when it is on the
+    board and its centre falls **right of the last column**, so neither a spare
+    off the board nor one that wandered onto the lattice can be read as a wire
+    end. At most ``max_wires`` are returned — a board tops out at
+    :data:`~.board_model.MAX_WIRES` wires, so more right blocks than that cannot
+    all be ends.
     """
     edge = grid_right_edge(grid)
     points = [
         (x, y)
-        for x, y in _furniture_points(markers, board, MEASURE_BLOCK_ID)
+        for x, y in _furniture_points(markers, board, MEASURE_BLOCK_ID, rect)
         if x > edge
     ]
     points.sort(key=lambda p: p[1])

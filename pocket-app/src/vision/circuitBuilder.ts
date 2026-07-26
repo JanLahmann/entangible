@@ -48,7 +48,13 @@ export type WarningKind =
   // a measured left→right run that disagrees with the corner blocks' span.
   // Both are informational — neither changes the emitted circuit.
   | 'unpaired_measure'
-  | 'measure_span_mismatch';
+  | 'measure_span_mismatch'
+  // Pieces seen OFF the board and dropped before they could reach cell mapping
+  // or the stabilizers — at a booth the unused kit lies on the table right next
+  // to the board. One counted line per frame, never one per piece, and never
+  // `off_grid`: those tiles ARE on the board and missed a cell.
+  | 'stray_furniture'
+  | 'stray_tiles';
 
 export interface BuildWarning {
   readonly kind: WarningKind;

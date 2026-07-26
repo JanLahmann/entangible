@@ -22,17 +22,27 @@ from __future__ import annotations
 
 import pytest
 
-from qamposer_vision.board import BoardConfig, BoardRect
+from qamposer_vision.board import (
+    BOARD_MARGIN_MM,
+    BoardConfig,
+    BoardRect,
+    mat_rect,
+    on_board,
+)
 from qamposer_vision.board_model import build_board_model, mat_board_model
 from qamposer_vision.cli import detect_circuit
 from qamposer_vision.detector import ArucoDetector
 from qamposer_vision.grid import GridConfig, GridMapper
 from qamposer_vision.wires import (
+    FURNITURE_IDS,
     PAIR_TOLERANCE_FRACTION,
     MeasureStabilizer,
     grid_right_edge,
+    measure_points,
     pair_measures,
     pair_tolerance,
+    stray_furniture,
+    wire_points,
 )
 
 from tests.utils.render_board import RenderOptions, render_board
@@ -434,3 +444,249 @@ def test_end_to_end_zero_right_blocks_is_the_pre_97_result(
         ("CNOT", 1),
     ]
     assert result.warnings == []
+
+
+# ---------------------------------------------------------------------------
+# Off the board entirely: the kit lying on the table beside it
+# ---------------------------------------------------------------------------
+#
+# Every rule above is about pieces ON the board. This section is about the ones
+# that are not, and it exists because of one booth fact: the unused kit sits on
+# the table right next to the play area, in frame, all evening. Those pieces must
+# be invisible to the pipeline — not warned about per piece, not fed to a
+# stabilizer, not filed as off-grid — or a booth's warning list is unreadable and
+# a spare block rolling into and out of view churns the wire hysteresis.
+
+
+class _FakeMarker:
+    """Minimal stand-in for a detected marker (id + centre)."""
+
+    def __init__(self, marker_id: int, x: float, y: float) -> None:
+        self.id = marker_id
+        self.center = (x, y)
+
+
+class _IdentityBoard:
+    """A board whose image frame *is* the board frame, so tests state mm."""
+
+    @staticmethod
+    def image_to_board(center):  # noqa: ANN001 - test double
+        return [(float(center[0]), float(center[1]))]
+
+
+def test_the_margin_is_half_a_printed_piece(config: BoardConfig) -> None:
+    """30 mm — half the 60 mm piece every tile and every block is cut to.
+
+    A piece whose centre is within the margin still physically overlaps the
+    board, which is the worst a flush-laid piece can look after a nudge; beyond
+    it the piece is not touching the play area at all. Derived, not magic — this
+    pins the derivation so a change to the tile size fails visibly.
+    """
+    assert BOARD_MARGIN_MM == pytest.approx(config.tile_size / 2.0)
+    rect = mat_rect(config)
+    # Just inside on every side, and just outside on every side.
+    for x, y in ((-29.0, 250.0), (749.0, 250.0), (360.0, -29.0), (360.0, 529.0)):
+        assert on_board(x, y, rect)
+    for x, y in ((-31.0, 250.0), (751.0, 250.0), (360.0, -31.0), (360.0, 531.0)):
+        assert not on_board(x, y, rect)
+
+
+def test_furniture_ids_are_the_two_blocks() -> None:
+    assert FURNITURE_IDS == {46, 47}
+
+
+def test_a_wire_block_above_the_board_is_not_a_wire(config: BoardConfig) -> None:
+    """Left of the grid AND above the UL corner: today's x rule is not enough."""
+    grid = GridConfig.from_board_config(config)
+    rect = mat_rect(config)
+    good = _FakeMarker(46, 28.0, 150.0)
+    stray = _FakeMarker(46, 28.0, -90.0)  # x passes the old rule, y does not
+    points = wire_points([good, stray], _IdentityBoard(), grid, rect)
+    assert points == [(28.0, 150.0)]
+    strays = stray_furniture([good, stray], _IdentityBoard(), rect)
+    assert strays == [(46, 28.0, -90.0)]
+
+
+def test_a_wire_block_far_left_of_the_board_is_not_a_wire(
+    config: BoardConfig,
+) -> None:
+    grid = GridConfig.from_board_config(config)
+    rect = mat_rect(config)
+    stray = _FakeMarker(46, -150.0, 200.0)
+    assert wire_points([stray], _IdentityBoard(), grid, rect) == []
+    assert stray_furniture([stray], _IdentityBoard(), rect) == [(46, -150.0, 200.0)]
+
+
+def test_a_measure_block_below_the_board_is_not_a_wire_end(
+    config: BoardConfig,
+) -> None:
+    grid = GridConfig.from_board_config(config)
+    rect = mat_rect(config)
+    good = _FakeMarker(47, 692.0, 150.0)
+    stray = _FakeMarker(47, 692.0, config.mat_height + 120.0)
+    points = measure_points([good, stray], _IdentityBoard(), grid, rect)
+    assert points == [(692.0, 150.0)]
+    assert [mid for mid, _x, _y in stray_furniture(
+        [good, stray], _IdentityBoard(), rect
+    )] == [47]
+
+
+def test_a_block_on_the_board_but_on_the_lattice_is_not_a_stray(
+    config: BoardConfig,
+) -> None:
+    """Misplaced is not the same as absent — only the bounds rule makes a stray."""
+    grid = GridConfig.from_board_config(config)
+    rect = mat_rect(config)
+    on_lattice = _FakeMarker(46, 300.0, 200.0)
+    assert wire_points([on_lattice], _IdentityBoard(), grid, rect) == []
+    assert stray_furniture([on_lattice], _IdentityBoard(), rect) == []
+
+
+def test_strays_are_reported_in_a_stable_order(config: BoardConfig) -> None:
+    """A frame's report is a function of the table, not of detector ordering."""
+    rect = mat_rect(config)
+    markers = [
+        _FakeMarker(47, 900.0, 400.0),
+        _FakeMarker(46, -120.0, 100.0),
+        _FakeMarker(46, -200.0, 100.0),
+    ]
+    expected = stray_furniture(markers, _IdentityBoard(), rect)
+    assert expected == [(46, -200.0, 100.0), (46, -120.0, 100.0), (47, 900.0, 400.0)]
+    for order in ([2, 0, 1], [1, 2, 0], [0, 2, 1]):
+        shuffled = [markers[i] for i in order]
+        assert stray_furniture(shuffled, _IdentityBoard(), rect) == expected
+
+
+def test_stray_blocks_never_reach_the_wire_hysteresis(config: BoardConfig) -> None:
+    """A block flickering off-board must not move the stabilizer at all.
+
+    ``wire_points`` is what feeds the stabilizer, so the guarantee is structural:
+    the stray is filtered before the stabilizer is told anything. Twenty frames
+    of it appearing and disappearing leave the wire set exactly where two real
+    blocks put it.
+    """
+    from qamposer_vision.wires import WireStabilizer
+
+    grid = GridConfig.from_board_config(config)
+    rect = mat_rect(config)
+    real = [_FakeMarker(46, 28.0, 150.0), _FakeMarker(46, 28.0, 290.0)]
+    stray = _FakeMarker(46, 28.0, -90.0)
+    st = WireStabilizer()
+    for _ in range(5):
+        st.update(y for _x, y in wire_points(real, _IdentityBoard(), grid, rect))
+    assert st.stable == (150.0, 290.0)
+    for i in range(20):
+        frame = real + ([stray] if i % 2 == 0 else [])
+        result = st.update(
+            y for _x, y in wire_points(frame, _IdentityBoard(), grid, rect)
+        )
+        assert not result.changed
+        assert result.wires == (150.0, 290.0)
+
+
+def test_end_to_end_a_stray_block_leaves_the_wires_alone(
+    config: BoardConfig, detector: ArucoDetector
+) -> None:
+    """A wire block above the board and one below: warned once, never a wire."""
+    wires = (150.0, 250.0, 350.0)
+    model = build_board_model(config, None, "grid", wires)
+    loose = (
+        (46, 28.0, -80.0),
+        (47, 692.0, config.mat_height + 80.0),
+    )
+    img = render_board(
+        ((10, 0, 0),),
+        config,
+        RenderOptions(
+            grid=model.grid,
+            wire_mm=wires,
+            pad_mm=140.0,
+            px_per_mm=2.5,
+            furniture_mm=loose,
+        ),
+    )
+    result = detect_circuit(img, config, detector=detector, board_layout="grid")
+    assert result.model is not None
+    assert result.model.wire_count == 3  # the strays changed nothing
+    assert result.model.measure_count == 0
+    kinds = [w.kind for w in result.warnings]
+    assert kinds.count("stray_furniture") == 1  # ONE line, not one per block
+    assert "unpaired_measure" not in kinds  # a stray never enters pairing
+    stray = next(w for w in result.warnings if w.kind == "stray_furniture")
+    assert "2 board-furniture block(s)" in stray.message
+    assert stray.marker_ids == (46, 47)
+    assert result.circuit["qubits"] == 3
+
+
+def test_end_to_end_a_tile_beside_the_board_is_dropped_silently(
+    config: BoardConfig, detector: ArucoDetector
+) -> None:
+    """150 mm right of the board: counted, never ``off_grid``, never a gate."""
+    loose = ((11, config.mat_width + 150.0, 200.0),)
+    img = render_board(
+        ((10, 0, 0),),
+        config,
+        RenderOptions(pad_mm=220.0, px_per_mm=2.0, extra_mm=loose),
+    )
+    result = detect_circuit(img, config, detector=detector)
+    kinds = [w.kind for w in result.warnings]
+    assert "off_grid" not in kinds  # the whole point of the change
+    assert kinds.count("stray_tiles") == 1
+    assert "1 gate tile(s)" in next(
+        w for w in result.warnings if w.kind == "stray_tiles"
+    ).message
+    # ... and it is nowhere near the circuit.
+    assert [(g["type"], g["position"]) for g in result.circuit["gates"]] == [("H", 0)]
+
+
+def test_end_to_end_a_tile_inside_the_board_still_warns_off_grid(
+    config: BoardConfig, detector: ArucoDetector
+) -> None:
+    """The signal we keep: on the board, between cells, genuinely misplaced."""
+    grid = GridConfig.from_board_config(config)
+    cx3, cy2 = grid.cell_center(2, 3)
+    cx4, _cy = grid.cell_center(2, 4)
+    # Squarely in the gutter between two cells, and well clear of the H tile so
+    # the two markers cannot overlap in the render.
+    between = ((11, (cx3 + cx4) / 2.0, cy2),)
+    img = render_board(
+        ((10, 0, 0),),
+        config,
+        RenderOptions(px_per_mm=3.0, extra_mm=between),
+    )
+    result = detect_circuit(img, config, detector=detector)
+    kinds = [w.kind for w in result.warnings]
+    assert kinds.count("off_grid") == 1
+    assert "stray_tiles" not in kinds
+    assert [(g["type"], g["position"]) for g in result.circuit["gates"]] == [("H", 0)]
+
+
+def test_end_to_end_booth_inventory_beside_the_board(
+    config: BoardConfig, detector: ArucoDetector
+) -> None:
+    """Five spare tiles heaped below the board: one counted line, no churn.
+
+    Before this change each one of them raised its own ``off_grid`` warning —
+    five lines of noise for a table that is behaving perfectly normally.
+    """
+    heap = tuple(
+        (11 + (i % 3), 120.0 + 70.0 * i, config.mat_height + 150.0) for i in range(5)
+    )
+    img = render_board(
+        ((10, 0, 0), (14, 0, 1), (15, 1, 1)),
+        config,
+        RenderOptions(pad_mm=220.0, px_per_mm=2.5, extra_mm=heap),
+    )
+    result = detect_circuit(img, config, detector=detector)
+    kinds = [w.kind for w in result.warnings]
+    assert "off_grid" not in kinds
+    assert kinds.count("stray_tiles") == 1
+    assert "5 gate tile(s)" in next(
+        w for w in result.warnings if w.kind == "stray_tiles"
+    ).message
+    # The circuit is exactly the Bell pair on the board, heap or no heap.
+    assert [(g["type"], g["position"]) for g in result.circuit["gates"]] == [
+        ("H", 0),
+        ("CNOT", 1),
+    ]
+    assert result.circuit["qubits"] == config.rows
