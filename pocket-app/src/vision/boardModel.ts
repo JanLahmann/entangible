@@ -21,6 +21,9 @@
  * On top of either layout, qubit-wire blocks (task #95) may replace the
  * lattice's rows: when present each block declares one wire at its own y, so
  * the row count IS the block count and tiles snap to the nearest wire.
+ * Measurement blocks (task #97) then refine — never create — those wires: a
+ * wire paired with one runs as the segment through both block centres instead
+ * of a horizontal line.
  */
 import {
   BOARD,
@@ -31,6 +34,9 @@ import {
   type BoardRect,
 } from './geometry';
 import type { GridConfig } from './grid';
+
+/** A wire's full extent: `[xLeft, yLeft, xRight, yRight]` in board mm. */
+export type WireSpan = readonly [number, number, number, number];
 
 /** The operator-selectable layouts for a non-mat rectangle. */
 export type BoardLayout = 'stretch' | 'grid';
@@ -71,6 +77,12 @@ export interface BoardModel {
   readonly cols: number;
   /** Wire-block count driving the rows, or null when the lattice does. */
   readonly wireCount: number | null;
+  /**
+   * Wires with a paired measurement block (#97), or null when no wire blocks
+   * drive the rows. A refinement counter, never a qubit count: it can only ever
+   * be at most `wireCount`, and zero is a perfectly normal board.
+   */
+  readonly measureCount: number | null;
 }
 
 /** Mat mm between the last column's right edge and the mat's right edge. */
@@ -97,14 +109,27 @@ export function deriveRows(height: number, board: BoardGeometry = BOARD): number
   return Math.max(1, Math.min(MAX_WIRES, rows));
 }
 
-/** Replace a lattice's rows with explicit wire positions (task #95). */
+/**
+ * Replace a lattice's rows with explicit wire positions (task #95).
+ *
+ * `wireSpans` (task #97) optionally tilts individual wires onto the segment
+ * through their measurement block. It is accepted only when it lines up with
+ * the wires one for one — a mismatched span list is dropped rather than
+ * misapplied, because a span silently attached to the wrong wire would move
+ * gate rows.
+ */
 function withWires(
   grid: GridConfig,
   wireYs: readonly number[] | null | undefined,
+  wireSpans?: readonly (WireSpan | null)[] | null,
 ): GridConfig {
   if (!wireYs || wireYs.length === 0) return grid;
   const wires = [...wireYs].sort((a, b) => a - b).slice(0, MAX_WIRES);
-  return { ...grid, rows: wires.length, wireYs: wires };
+  let spans =
+    wireSpans && wireSpans.length === wires.length ? [...wireSpans] : null;
+  // Nothing measured: keep the pre-#97 shape exactly.
+  if (spans && spans.every((s) => s === null)) spans = null;
+  return { ...grid, rows: wires.length, wireYs: wires, wireSpans: spans };
 }
 
 function modelOf(
@@ -121,6 +146,9 @@ function modelOf(
     rows: grid.rows,
     cols: grid.cols,
     wireCount: grid.wireYs ? grid.wireYs.length : null,
+    measureCount: grid.wireYs
+      ? (grid.wireSpans ?? []).filter((s) => s !== null).length
+      : null,
   };
 }
 
@@ -128,6 +156,7 @@ function modelOf(
 export function matBoardModel(
   wireYs?: readonly number[] | null,
   board: BoardGeometry = BOARD,
+  wireSpans?: readonly (WireSpan | null)[] | null,
 ): BoardModel {
   const grid: GridConfig = {
     rows: board.rows,
@@ -137,7 +166,7 @@ export function matBoardModel(
     gridOffsetX: board.gridOffsetX,
     gridOffsetY: board.gridOffsetY,
   };
-  return modelOf('mat', MAT_RECT, board, withWires(grid, wireYs));
+  return modelOf('mat', MAT_RECT, board, withWires(grid, wireYs, wireSpans));
 }
 
 /**
@@ -150,9 +179,10 @@ export function buildBoardModel(
   layout: string = DEFAULT_BOARD_LAYOUT,
   wireYs?: readonly number[] | null,
   board: BoardGeometry = BOARD,
+  wireSpans?: readonly (WireSpan | null)[] | null,
 ): BoardModel {
   if (rect === null || isMatRect(rect, undefined, board)) {
-    return matBoardModel(wireYs, board);
+    return matBoardModel(wireYs, board, wireSpans);
   }
 
   const sized = boardWithRect(rect, board);
@@ -169,7 +199,7 @@ export function buildBoardModel(
       pitchY: board.pitch * sy,
       cellHeight: board.cellSize * sy,
     };
-    return modelOf('stretch', rect, sized, withWires(grid, wireYs));
+    return modelOf('stretch', rect, sized, withWires(grid, wireYs, wireSpans));
   }
 
   // `grid` (default): mat pitch and cell size, more columns.
@@ -181,5 +211,5 @@ export function buildBoardModel(
     gridOffsetX: board.gridOffsetX,
     gridOffsetY: board.gridOffsetY,
   };
-  return modelOf('grid', rect, sized, withWires(grid, wireYs));
+  return modelOf('grid', rect, sized, withWires(grid, wireYs, wireSpans));
 }

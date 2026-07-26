@@ -19,7 +19,12 @@ import numpy as np
 
 from qamposer_vision.board import BoardConfig, BoardRect, with_rect
 from qamposer_vision.grid import GridConfig
-from qamposer_vision.markers import ARUCO_DICT_NAME, CORNER_IDS, QUBIT_WIRE_ID
+from qamposer_vision.markers import (
+    ARUCO_DICT_NAME,
+    CORNER_IDS,
+    MEASURE_BLOCK_ID,
+    QUBIT_WIRE_ID,
+)
 
 # ---------------------------------------------------------------------------
 # Scenarios: (marker_id, row, col) tile placements + golden fixture basename.
@@ -123,6 +128,11 @@ class RenderOptions:
     #: Board-mm y positions of qubit-wire blocks (task #95). Each is drawn as an
     #: ID-46 marker at the board's left edge, at the corner-block inset.
     wire_mm: tuple[float, ...] = ()
+    #: Board-mm y positions of measurement blocks (task #97). Each is drawn as an
+    #: ID-47 marker at the board's RIGHT edge, mirroring the wire-block inset —
+    #: so a scenario can put a pair at slightly different heights and get the
+    #: tilted wire the detector is supposed to follow.
+    measure_mm: tuple[float, ...] = ()
 
 
 def _aruco_dictionary() -> "cv2.aruco.Dictionary":
@@ -185,6 +195,15 @@ def render_board(
             y_mm - config.corner_marker_size / 2.0,
         )
         _paste_marker(canvas, dictionary, QUBIT_WIRE_ID, x0, y0, corner_size_px)
+
+    # Measurement blocks along the right edge, mirrored inset (#97).
+    measure_x = config.mat_width - config.corner_margin - config.corner_marker_size / 2.0
+    for y_mm in opt.measure_mm:
+        x0, y0 = mm_to_px(
+            measure_x - config.corner_marker_size / 2.0,
+            y_mm - config.corner_marker_size / 2.0,
+        )
+        _paste_marker(canvas, dictionary, MEASURE_BLOCK_ID, x0, y0, corner_size_px)
 
     # Gate tiles at their cell centres. A placement may carry a 4th element, the
     # clockwise 90° rotation (0-3) — used by dial tiles to select their angle.

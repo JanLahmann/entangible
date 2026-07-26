@@ -31,9 +31,14 @@ from .board_model import DEFAULT_BOARD_LAYOUT, BoardModel, build_board_model
 from .circuit_builder import BuildWarning, TilePlacement, build_circuit
 from .detector import ArucoDetector, DetectedMarker
 from .grid import GridMapper
-from .markers import CORNER_IDS, MARKER_TABLE
+from .markers import CORNER_IDS, MARKER_TABLE, MEASURE_BLOCK_ID
 from .qasm import circuit_to_qasm
-from .wires import wire_positions
+from .wires import (
+    measure_points,
+    pair_measures,
+    pair_tolerance,
+    wire_points,
+)
 
 __all__ = ["DetectionResult", "detect_circuit", "annotate_frame", "main"]
 
@@ -72,7 +77,10 @@ def detect_circuit(
     The corner markers' actual span is estimated first (task #94); a rectangle
     within the mat tolerance keeps the classic geometry verbatim, anything else
     is interpreted under ``board_layout`` (``"stretch"`` | ``"grid"``).
-    Qubit-wire blocks (task #95), when present, replace the model's rows.
+    Qubit-wire blocks (task #95), when present, replace the model's rows;
+    measurement blocks (task #97) then refine — never create — those wires,
+    tilting each paired one onto the segment through both block centres.
+    Unpaired right blocks are reported as ``unpaired_measure`` warnings.
     """
     if board_config is None:
         board_config = BoardConfig.from_toml()
@@ -96,13 +104,36 @@ def detect_circuit(
         )
 
     base = build_board_model(board_config, rect, board_layout)
-    wires = wire_positions(markers, board, base.grid)
-    model = build_board_model(board_config, rect, board_layout, tuple(wires))
+    wire_pts = wire_points(markers, board, base.grid)
+    wires = tuple(y for _x, y in wire_pts)
+    pairing = pair_measures(
+        wire_pts,
+        measure_points(markers, board, base.grid),
+        pair_tolerance(base.grid),
+    )
+    model = build_board_model(
+        board_config,
+        rect,
+        board_layout,
+        wires,
+        wire_spans=pairing.spans if wires else None,
+    )
     qubits = model.rows
     grid = GridMapper(model.grid, tolerance=grid_tolerance)
 
     placements: list[TilePlacement] = []
-    warnings: list[BuildWarning] = []
+    warnings: list[BuildWarning] = [
+        BuildWarning(
+            kind="unpaired_measure",
+            message=(
+                f"Measurement block at board ({x:.0f}, {y:.0f}) mm has no "
+                "qubit-wire block across from it; ignored (the left side sets "
+                "the wires)."
+            ),
+            marker_ids=(MEASURE_BLOCK_ID,),
+        )
+        for x, y in pairing.unpaired
+    ]
     for marker in markers:
         if marker.id in CORNER_IDS or marker.id not in MARKER_TABLE:
             continue  # corner fiducial or unknown ID -> not a gate tile

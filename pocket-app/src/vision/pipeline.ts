@@ -35,8 +35,18 @@ import {
   type BoardLayout,
   type BoardModel,
 } from './boardModel';
-import { WireStabilizer, wirePositions } from './wires';
-import { MARKER_TABLE } from './markers';
+import {
+  MeasureStabilizer,
+  WireStabilizer,
+  measurePoints,
+  pairMeasures,
+  pairTolerance,
+  wirePoints,
+  type MeasurePairing,
+  type Point,
+  type WireSpan,
+} from './wires';
+import { MARKER_TABLE, MEASURE_BLOCK_ID, QUBIT_WIRE_ID } from './markers';
 import {
   TileStabilizer,
   tileKey,
@@ -49,6 +59,15 @@ import {
   type BuildWarning,
   type TilePlacement,
 } from './circuitBuilder';
+
+/**
+ * Smallest fraction of the estimated board width a wire's measured left→right
+ * run may cover before it is called out (#97). Wire and measurement blocks sit
+ * on opposite EDGES of the board, so a run much shorter than the board means the
+ * blocks are somewhere they should not be — but where exactly along each edge is
+ * the user's business, hence a loose bound rather than a tight one.
+ */
+export const SPAN_MIN_FRACTION = 0.5;
 
 export interface MarkerObs {
   readonly id: number;
@@ -92,7 +111,8 @@ export interface FrameResult {
   /**
    * The geometry this frame was interpreted in (task #94): the mat, or the
    * rectangle the corner blocks span under the chosen layout — plus the wire
-   * blocks driving its rows (#95).
+   * blocks driving its rows (#95) and the measurement blocks refining them
+   * (#97).
    */
   readonly model: BoardModel;
   /** Per-frame detection counters for the debug overlay. */
@@ -118,6 +138,7 @@ export interface PipelineOptions {
 export class PocketPipeline {
   private readonly stabilizer = new TileStabilizer();
   private readonly wireStabilizer = new WireStabilizer();
+  private readonly measureStabilizer = new MeasureStabilizer();
   private lastCircuit: BuildResult['circuit'] | null = null;
   private structuralWarnings: BuildWarning[] = [];
   private emitted = false;
@@ -154,6 +175,7 @@ export class PocketPipeline {
   reset(): void {
     this.stabilizer.reset();
     this.wireStabilizer.reset();
+    this.measureStabilizer.reset();
     this.rect = MAT_RECT;
     this.model = matBoardModel();
     this.lastCircuit = null;
@@ -184,15 +206,30 @@ export class PocketPipeline {
     this.updateRect(blind);
     const board = fitBoard(blind, this.rect);
 
-    // 2. Qubit-wire blocks, read in the rectangle's own board frame (#95). The
-    //    pre-wire model supplies the "left of the grid" threshold; the
-    //    stabilized wire set then decides the rows.
+    // 2. Qubit-wire blocks, read in the rectangle's own board frame (#95), then
+    //    measurement blocks refining them (#97). The pre-wire model supplies the
+    //    "left of the grid" / "right of the last column" thresholds; the
+    //    stabilized wire set decides the rows, and the stabilized measurement
+    //    set only tilts wires that have one.
     const base = buildBoardModel(this.rect, this.boardLayout);
     let wireChanged = false;
+    let furnitureWarnings: BuildWarning[] = [];
     if (board) {
-      const wires = this.wireStabilizer.update(wirePositions(blind, board, base.grid));
+      const wireObs = wirePoints(blind, board, base.grid);
+      const wires = this.wireStabilizer.update(wireObs.map(([, y]) => y));
       wireChanged = wires.changed;
-      this.model = buildBoardModel(this.rect, this.boardLayout, wires.wires);
+      const measures = this.measureStabilizer.update(
+        measurePoints(blind, board, base.grid),
+      );
+      const paired = this.pairMeasureBlocks(wires.wires, wireObs, measures.points, base);
+      furnitureWarnings = paired.warnings;
+      this.model = buildBoardModel(
+        this.rect,
+        this.boardLayout,
+        wires.wires,
+        undefined,
+        paired.spans,
+      );
     } else {
       this.model = base;
     }
@@ -223,7 +260,7 @@ export class PocketPipeline {
       changed = this.rebuild(result.stable);
     }
 
-    const warnings = this.composeWarnings(offGridWarnings);
+    const warnings = this.composeWarnings([...offGridWarnings, ...furnitureWarnings]);
 
     return {
       changed,
@@ -307,6 +344,99 @@ export class PocketPipeline {
     }
 
     return { observations, markerObs, offGridWarnings };
+  }
+
+  /**
+   * The wires' LEFT endpoints — block centres where available.
+   *
+   * The wire set is stabilized as y positions alone (#95), which is all the
+   * qubit count ever needed; the segment a measurement block completes (#97)
+   * also wants the left block's x. Each stable y therefore takes the x of the
+   * wire block observed nearest to it on this frame, and falls back to the
+   * lattice's left edge for a wire whose block is momentarily hidden — a
+   * fallback that only shifts the segment's origin along its own axis, never
+   * its height. Mirrors `pipeline._wire_ends`.
+   */
+  private wireEnds(
+    wireYs: readonly number[] | null,
+    observed: readonly Point[],
+    grid: BoardModel['grid'],
+  ): Point[] {
+    return (wireYs ?? []).map((y) => {
+      if (observed.length === 0) return [grid.gridOffsetX, y] as Point;
+      let best = observed[0];
+      for (const p of observed) {
+        if (Math.abs(p[1] - y) < Math.abs(best[1] - y)) best = p;
+      }
+      return [best[0], y] as Point;
+    });
+  }
+
+  /**
+   * Match measurement blocks to wires and report what did not match (#97).
+   * Mirrors `pipeline._pair_measures` + `_span_consistency_warnings`.
+   *
+   * Measurement blocks are a refinement: with no wire blocks on the table there
+   * is nothing to refine, so every right block is simply reported as unpaired
+   * and the model is untouched.
+   */
+  private pairMeasureBlocks(
+    wireYs: readonly number[] | null,
+    wireObs: readonly Point[],
+    measures: readonly Point[],
+    base: BoardModel,
+  ): { spans: readonly (WireSpan | null)[] | null; warnings: BuildWarning[] } {
+    if (measures.length === 0) return { spans: null, warnings: [] };
+    const wires = this.wireEnds(wireYs, wireObs, base.grid);
+    const pairing = pairMeasures(wires, measures, pairTolerance(base.grid));
+    const warnings: BuildWarning[] = pairing.unpaired.map(([x, y]) => ({
+      kind: 'unpaired_measure' as const,
+      message:
+        `Measurement block at board (${x.toFixed(0)}, ${y.toFixed(0)}) mm has ` +
+        'no qubit-wire block across from it; ignored (the left side sets the ' +
+        'wires).',
+      row: null,
+      col: null,
+      marker_ids: [MEASURE_BLOCK_ID],
+    }));
+    if (pairing.paired === 0) return { spans: null, warnings };
+    warnings.push(...this.spanConsistencyWarnings(pairing, base));
+    return { spans: pairing.spans, warnings };
+  }
+
+  /**
+   * Sanity-check the measured left→right run against the estimated width.
+   *
+   * In `grid` layout the *column count* is derived from the rectangle the
+   * corner blocks span, so the furniture and the corners are two independent
+   * measurements of one board and it is worth saying when they cannot both be
+   * true. The bound is deliberately loose — where along each edge the blocks sit
+   * is up to the user — so only the impossible is flagged: a run WIDER than the
+   * whole rectangle (the estimate must be wrong), or one under
+   * `SPAN_MIN_FRACTION` of it (the blocks are bunched somewhere in the middle,
+   * not on the edges). Warning only: the corners stay authoritative, because
+   * they are what the homography is fitted to.
+   */
+  private spanConsistencyWarnings(
+    pairing: MeasurePairing,
+    base: BoardModel,
+  ): BuildWarning[] {
+    const span = pairing.meanSpan;
+    if (base.kind !== 'grid' || span === null) return [];
+    const width = base.rect.widthMm;
+    if (span >= SPAN_MIN_FRACTION * width && span <= width) return [];
+    return [
+      {
+        kind: 'measure_span_mismatch' as const,
+        message:
+          `Measurement blocks sit ${span.toFixed(0)} mm from the wire blocks, ` +
+          `but the corner blocks span only ${width.toFixed(0)} mm; the corners ` +
+          "win. Check the blocks are on the board's edges.",
+        row: null,
+        col: null,
+        marker_ids: [QUBIT_WIRE_ID, MEASURE_BLOCK_ID],
+      },
+    ];
   }
 
   private rebuild(stable: ReadonlySet<Tile>): boolean {

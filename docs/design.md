@@ -419,6 +419,24 @@ a hand crossing the left edge cannot resize the circuit. While the count holds
 steady the positions keep tracking silently. This subsumes the "adaptive qubit
 count" idea above on the *physical* side: the board really does play 1–5 qubits.
 
+**Measurement blocks (task #97).** Marker ID 47 is the mirror piece on the
+**right** edge — furniture too, and a pure *refinement*. A wire exists iff its
+LEFT block exists; the wire count is never derived from the right side. Each
+right block (anything right of the last column) pairs with the nearest left
+block by y, within half a row pitch, greedily from the closest candidate pair
+so the matching is a deterministic function of the two ordered lists. A paired
+wire is then read as the SEGMENT through both block centres instead of a
+horizontal line, and gate tiles snap by distance to *that* segment at their own
+x — so two rows of blocks that are a centimetre out of square give tilted wires
+that still follow the tiles instead of drifting off them. A right block with no
+partner is ignored and reported (`unpaired_measure`); in `grid` layout the mean
+left→right run is additionally cross-checked against the corner blocks' span
+(`measure_span_mismatch`, informational — the corners are what the homography is
+fitted to, so they win). The right-hand set carries the same asymmetric
+hysteresis as the left, so a hand crossing the right edge cannot make wires snap
+between tilted and horizontal. Zero measurement blocks is the normal case and
+changes nothing.
+
 ### Quantina — unified Qoffee-Maker/quantum-mixer successor (task #35; IMPLEMENTED 2026-07-20)
 
 **Quantina** ("quantum cantina") replaces the standalone

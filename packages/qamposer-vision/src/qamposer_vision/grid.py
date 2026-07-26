@@ -29,6 +29,13 @@ class GridConfig:
     blocks are on the table, each declares one wire at its own board-mm y and a
     tile takes the row of the NEAREST wire (within half a cell height) instead
     of a lattice row.
+
+    ``wire_spans`` (task #97) refines that further: a wire whose measurement
+    block was found runs as the straight SEGMENT through both block centres
+    rather than as a horizontal line at ``wire_ys[row]``, so a board whose two
+    rows of blocks are slightly out of square gets wires that still follow the
+    tiles. It is optional per wire and changes nothing else — the row count and
+    ordering still come from ``wire_ys`` alone.
     """
 
     rows: int
@@ -43,6 +50,10 @@ class GridConfig:
     cell_height: float | None = None
     #: Explicit wire positions (board mm, sorted top-down), or ``None``.
     wire_ys: tuple[float, ...] | None = None
+    #: Per-wire segment ``(x_left, y_left, x_right, y_right)`` from a paired
+    #: measurement block (#97), ``None`` for a wire that has none. Same length
+    #: and order as :attr:`wire_ys` when present.
+    wire_spans: tuple[tuple[float, float, float, float] | None, ...] | None = None
 
     @classmethod
     def from_board_config(cls, config: BoardConfig) -> "GridConfig":
@@ -63,11 +74,27 @@ class GridConfig:
     def y_cell(self) -> float:
         return self.cell_size if self.cell_height is None else self.cell_height
 
+    def wire_y_at(self, row: int, x_mm: float) -> float:
+        """Board-mm y of wire ``row`` at board-mm ``x_mm``.
+
+        A wire with a paired measurement block (#97) is the straight line
+        through both block centres, so its y depends on where along the board
+        you ask; one without stays horizontal at ``wire_ys[row]``, exactly as
+        before #97. Only ever called when :attr:`wire_ys` is set.
+        """
+        assert self.wire_ys is not None
+        span = None if self.wire_spans is None else self.wire_spans[row]
+        if span is not None:
+            x0, y0, x1, y1 = span
+            if x1 != x0:
+                return y0 + (y1 - y0) * (x_mm - x0) / (x1 - x0)
+        return self.wire_ys[row]
+
     def cell_center(self, row: int, col: int) -> tuple[float, float]:
         """Board-mm coordinates of the centre of cell ``(row, col)``."""
         cx = self.grid_offset_x + self.cell_size / 2.0 + self.pitch * col
         if self.wire_ys is not None:
-            return cx, self.wire_ys[row]
+            return cx, self.wire_y_at(row, cx)
         cy = self.grid_offset_y + self.y_cell / 2.0 + self.y_pitch * row
         return cx, cy
 
@@ -98,12 +125,15 @@ class GridMapper:
         # Nearest column by the lattice spacing.
         col = round((x_mm - (cfg.grid_offset_x + cfg.cell_size / 2.0)) / cfg.pitch)
         # Nearest row: an explicit wire when qubit-wire blocks declare them
-        # (#95), else the y lattice.
+        # (#95), else the y lattice. "Nearest" is measured to the wire AT THIS
+        # TILE'S x, so a wire tilted by its measurement block (#97) is followed
+        # rather than judged by where it started.
         if cfg.wire_ys is not None:
             if not cfg.wire_ys:
                 return None
             row = min(
-                range(len(cfg.wire_ys)), key=lambda i: abs(y_mm - cfg.wire_ys[i])
+                range(len(cfg.wire_ys)),
+                key=lambda i: abs(y_mm - cfg.wire_y_at(i, x_mm)),
             )
         else:
             row = round((y_mm - (cfg.grid_offset_y + cfg.y_cell / 2.0)) / cfg.y_pitch)

@@ -78,6 +78,8 @@ def serialize_detection(event: Any) -> dict:
         "rows": getattr(event, "rows", 0),
         "cols": getattr(event, "cols", 0),
         "wires": getattr(event, "wires", None),
+        "measures": getattr(event, "measures", None),
+        "unpairedMeasures": getattr(event, "unpaired_measures", 0),
     }
 
     return {

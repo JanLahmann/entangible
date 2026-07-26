@@ -75,7 +75,9 @@ Every message is a JSON object with a `type` discriminator.
     "layout": "mat",                    // "mat" | "stretch" | "grid" — model that read the frame
     "rows": 5,                          // active lattice size
     "cols": 8,
-    "wires": null                       // qubit-wire blocks driving the rows, or null
+    "wires": null,                      // qubit-wire blocks driving the rows, or null
+    "measures": null,                   // wires with a paired measurement block (refinement)
+    "unpairedMeasures": 0               // measurement blocks that matched no wire; ignored
   },
   "markers": [
     { "id": 10, "row": 0, "col": 0 },   // on-grid gate tile
@@ -88,8 +90,9 @@ Every message is a JSON object with a `type` discriminator.
 ```
 
 - Corner markers (IDs 0–3) are **not** listed in `markers`.
-- `board.rectMm` / `layout` / `rows` / `cols` / `wires` are **additive**
-  (tasks #94/#95) and absent on older hosts. Since corner *blocks* replaced the
+- `board.rectMm` / `layout` / `rows` / `cols` / `wires` / `measures` /
+  `unpairedMeasures` are **additive** (tasks #94/#95/#97) and absent on older
+  hosts. Since corner *blocks* replaced the
   printed mat the four fiducials may span any rectangle: the detector measures
   it (the printed 40 mm marker gives the absolute scale) and reports it the same
   way the mat is measured, margins included — so a mat-sized layout reports
@@ -97,8 +100,20 @@ Every message is a JSON object with a `type` discriminator.
   Anything outside a ±5 % band around the mat is read under the booth's
   `layout.boardLayout`. `wires` counts the ID-46 qubit-wire blocks along the
   left edge; when non-null it IS the emitted circuit's qubit count.
+- `measures` / `unpairedMeasures` (#97) describe the ID-47 measurement blocks on
+  the **right** edge, and are a pure refinement — they never change the qubit
+  count. `measures` counts wires whose measurement block was found and paired
+  (nearest left block by y, within half a row pitch); such a wire is read as the
+  segment through **both** block centres, so a slightly out-of-square pair of
+  block rows gives a tilted wire that still follows the tiles.
+  `unpairedMeasures` counts right blocks with no wire block across from them:
+  they are ignored, and each also raises an `unpaired_measure` warning. A
+  measured left→right run that disagrees with the corner blocks' span by more
+  than a column pitch raises `measure_span_mismatch` — informational only, the
+  corners stay authoritative.
 - `warnings[].code` values come from the circuit builder (`lone_control`,
-  `lone_target`, `cell_conflict`, `control_ambiguous`, …); `row`/`col` optional.
+  `lone_target`, `cell_conflict`, `control_ambiguous`, …) plus the board-furniture
+  kinds `unpaired_measure` and `measure_span_mismatch` (#97); `row`/`col` optional.
 - Latest `detection` also replayed on connect (may be stale; `fps: 0` signals
   a stopped pipeline).
 
@@ -318,8 +333,9 @@ Pipeline(
 - `DetectionEvent`: `fps: float`, `board_found: bool`, `corners: int`,
   `reprojection_error_mm: float | None`, `markers: list[MarkerObs]`
   (`id`, `row`, `col` | `off_grid`), `warnings: list[BuildWarning]`, plus the
-  board model (#94/#95): `rect_mm: tuple[float, float] | None`,
-  `board_layout: str`, `rows: int`, `cols: int`, `wires: int | None`.
+  board model (#94/#95/#97): `rect_mm: tuple[float, float] | None`,
+  `board_layout: str`, `rows: int`, `cols: int`, `wires: int | None`,
+  `measures: int | None`, `unpaired_measures: int`.
   Snake_case in Python; the host serializes to the camelCase JSON above.
 - `Pipeline(..., board_layout: str = "grid")` and `.set_board_layout(layout)`
   choose how a non-mat rectangle becomes a lattice; the host drives it from

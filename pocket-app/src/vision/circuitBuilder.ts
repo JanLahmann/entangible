@@ -43,7 +43,12 @@ export type WarningKind =
   | 'lone_target'
   | 'lone_swap'
   | 'control_ambiguous'
-  | 'off_grid';
+  | 'off_grid'
+  // Board furniture (#97): a measurement block that matched no wire block, and
+  // a measured left→right run that disagrees with the corner blocks' span.
+  // Both are informational — neither changes the emitted circuit.
+  | 'unpaired_measure'
+  | 'measure_span_mismatch';
 
 export interface BuildWarning {
   readonly kind: WarningKind;

@@ -61,6 +61,16 @@ export function DebugPanel({ frame, fps }: { frame: FrameResult | null; fps: num
               <td>wires</td>
               <td>{frame ? (frame.model.wireCount ?? '—') : '—'}</td>
             </tr>
+            <tr>
+              <td>measured</td>
+              <td>{frame ? (frame.model.measureCount ?? '—') : '—'}</td>
+              <td>unpaired</td>
+              <td>
+                {frame
+                  ? frame.warnings.filter((w) => w.kind === 'unpaired_measure').length
+                  : '—'}
+              </td>
+            </tr>
           </tbody>
         </table>
 

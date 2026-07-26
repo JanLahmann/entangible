@@ -50,12 +50,20 @@ from .board_model import (
 )
 from .circuit_builder import BuildWarning, TilePlacement, build_circuit
 from .detector import ArucoDetector
-from .grid import GridMapper
-from .markers import CORNER_IDS, MARKER_TABLE
+from .grid import GridConfig, GridMapper
+from .markers import CORNER_IDS, MARKER_TABLE, MEASURE_BLOCK_ID, QUBIT_WIRE_ID
 from .qasm import circuit_to_qasm
 from .sources import FrameSource
 from .stabilizer import Tile, TileStabilizer
-from .wires import WireStabilizer, wire_positions
+from .wires import (
+    MeasurePairing,
+    MeasureStabilizer,
+    WireStabilizer,
+    measure_points,
+    pair_measures,
+    pair_tolerance,
+    wire_points,
+)
 
 __all__ = ["MarkerObs", "CircuitEvent", "DetectionEvent", "Pipeline"]
 
@@ -65,6 +73,13 @@ logger = logging.getLogger("qamposer_vision.pipeline")
 _IDLE_SLEEP = 0.005
 #: EMA smoothing factor for the reported FPS.
 _FPS_ALPHA = 0.3
+
+#: Smallest fraction of the estimated board width a wire's measured left→right
+#: run may cover before it is called out (#97). Wire and measurement blocks sit
+#: on opposite EDGES of the board, so a run much shorter than the board means
+#: the blocks are somewhere they should not be — but where exactly along each
+#: edge is the user's business, hence a loose bound rather than a tight one.
+SPAN_MIN_FRACTION = 0.5
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +128,36 @@ class DetectionEvent:
     #: Qubit-wire blocks driving the rows (task #95), or ``None`` when the
     #: model's own rows are used.
     wires: int | None = None
+    #: Wires with a paired measurement block (task #97) — a refinement counter,
+    #: never a qubit count. ``None`` when no wire blocks drive the rows.
+    measures: int | None = None
+    #: Measurement blocks that matched no wire and were ignored (task #97).
+    unpaired_measures: int = 0
+
+
+def _wire_ends(
+    wire_ys: tuple[float, ...] | None,
+    observed: list[tuple[float, float]],
+    grid: GridConfig,
+) -> list[tuple[float, float]]:
+    """The wires' LEFT endpoints ``(x, y)`` — block centres where available.
+
+    The wire set is stabilized as y positions alone (#95), which is all the
+    qubit count ever needed; the segment a measurement block completes (#97)
+    also wants the left block's x. Each stable y therefore takes the x of the
+    wire block observed nearest to it on this frame, and falls back to the
+    lattice's left edge for a wire whose block is momentarily hidden — a
+    fallback that only shifts the segment's origin along its own axis, never its
+    height.
+    """
+    ends: list[tuple[float, float]] = []
+    for y in wire_ys or ():
+        if observed:
+            x, _oy = min(observed, key=lambda p: abs(p[1] - y))
+        else:
+            x = grid.grid_offset_x
+        ends.append((x, y))
+    return ends
 
 
 class Pipeline:
@@ -134,6 +179,7 @@ class Pipeline:
         self._detector = ArucoDetector()
         self._stabilizer = TileStabilizer()
         self._wire_stabilizer = WireStabilizer()
+        self._measure_stabilizer = MeasureStabilizer()
         # Sticky board rectangle (task #94): starts at the mat and only moves
         # when an estimate differs by more than the mat tolerance, so a real mat
         # stays bit-for-bit classic and a fixed table layout does not re-derive
@@ -169,6 +215,7 @@ class Pipeline:
         self._emitted = False
         self._stabilizer.reset()
         self._wire_stabilizer.reset()
+        self._measure_stabilizer.reset()
         self._rect = mat_rect(self._board_config)
         self._model = mat_board_model(self._board_config)
         self._thread = threading.Thread(
@@ -211,6 +258,7 @@ class Pipeline:
             self._source = source
         self._stabilizer.reset()
         self._wire_stabilizer.reset()
+        self._measure_stabilizer.reset()
         if old is not source:
             try:
                 old.close()
@@ -252,18 +300,30 @@ class Pipeline:
         self._update_rect(markers)
         board = fit_board(markers, self._board_config, self._rect)
 
-        # 2. Qubit-wire blocks, read in the rectangle's own board frame (#95).
-        #    The pre-wire model supplies the "left of the grid" threshold; the
-        #    stabilized wire set then decides the rows.
+        # 2. Qubit-wire blocks, read in the rectangle's own board frame (#95),
+        #    then measurement blocks refining them (#97). The pre-wire model
+        #    supplies the "left of the grid" / "right of the last column"
+        #    thresholds; the stabilized wire set decides the rows, and the
+        #    stabilized measurement set only tilts wires that have one.
         base = build_board_model(self._board_config, self._rect, self._board_layout)
         wire_changed = False
+        furniture_warnings: list[BuildWarning] = []
         if board is not None:
-            wires = self._wire_stabilizer.update(
-                wire_positions(markers, board, base.grid)
-            )
+            wire_obs = wire_points(markers, board, base.grid)
+            wires = self._wire_stabilizer.update(y for _x, y in wire_obs)
             wire_changed = wires.changed
+            measures = self._measure_stabilizer.update(
+                measure_points(markers, board, base.grid)
+            )
+            spans, furniture_warnings = self._pair_measures(
+                wires.wires, wire_obs, measures.points, base
+            )
             self._model = build_board_model(
-                self._board_config, self._rect, self._board_layout, wires.wires
+                self._board_config,
+                self._rect,
+                self._board_layout,
+                wires.wires,
+                wire_spans=spans,
             )
         else:
             self._model = base
@@ -277,7 +337,9 @@ class Pipeline:
         if result.changed or wire_changed or not self._emitted:
             self._rebuild_and_maybe_emit(result.stable, source)
 
-        detection_warnings = self._compose_warnings(off_grid_warnings)
+        detection_warnings = self._compose_warnings(
+            off_grid_warnings + furniture_warnings
+        )
         self._store_annotated(frame, markers, board, result.stable, detection_warnings)
 
         if self._on_detection is not None:
@@ -300,6 +362,10 @@ class Pipeline:
                     rows=self._model.rows,
                     cols=self._model.cols,
                     wires=self._model.wire_count,
+                    measures=self._model.measure_count,
+                    unpaired_measures=sum(
+                        1 for w in furniture_warnings if w.kind == "unpaired_measure"
+                    ),
                 )
             )
 
@@ -326,6 +392,78 @@ class Pipeline:
         ):
             return
         self._rect = rect
+
+    def _pair_measures(
+        self,
+        wire_ys: tuple[float, ...] | None,
+        wire_obs: list[tuple[float, float]],
+        measures: tuple[tuple[float, float], ...],
+        base: BoardModel,
+    ) -> tuple[
+        tuple[tuple[float, float, float, float] | None, ...] | None,
+        list[BuildWarning],
+    ]:
+        """Match measurement blocks to wires and report what did not match (#97).
+
+        Returns the per-wire spans for :func:`build_board_model` and the
+        warnings the detection message carries. Measurement blocks are a
+        refinement: with no wire blocks on the table there is nothing to refine,
+        so every right block is simply reported as unpaired and the model is
+        untouched.
+        """
+        if not measures:
+            return None, []
+        wires = _wire_ends(wire_ys, wire_obs, base.grid)
+        pairing = pair_measures(wires, list(measures), pair_tolerance(base.grid))
+        warnings = [
+            BuildWarning(
+                kind="unpaired_measure",
+                message=(
+                    f"Measurement block at board ({x:.0f}, {y:.0f}) mm has no "
+                    "qubit-wire block across from it; ignored (the left side "
+                    "sets the wires)."
+                ),
+                marker_ids=(MEASURE_BLOCK_ID,),
+            )
+            for x, y in pairing.unpaired
+        ]
+        if pairing.paired == 0:
+            return None, warnings
+        warnings += self._span_consistency_warnings(pairing, base)
+        return pairing.spans, warnings
+
+    def _span_consistency_warnings(
+        self, pairing: MeasurePairing, base: BoardModel
+    ) -> list[BuildWarning]:
+        """Sanity-check the measured left→right run against the estimated width.
+
+        In ``grid`` layout the *column count* is derived from the rectangle the
+        corner blocks span, so the furniture and the corners are two independent
+        measurements of one board and it is worth saying when they cannot both
+        be true. The bound is deliberately loose — where along each edge the
+        blocks sit is up to the user — so only the impossible is flagged: a run
+        WIDER than the whole rectangle (the estimate must be wrong), or one
+        under :data:`SPAN_MIN_FRACTION` of it (the blocks are bunched somewhere
+        in the middle, not on the edges). Warning only: the corners stay
+        authoritative, because they are what the homography is fitted to.
+        """
+        span = pairing.mean_span
+        if base.kind != "grid" or span is None:
+            return []
+        width = base.rect.width
+        if SPAN_MIN_FRACTION * width <= span <= width:
+            return []
+        return [
+            BuildWarning(
+                kind="measure_span_mismatch",
+                message=(
+                    f"Measurement blocks sit {span:.0f} mm from the wire blocks, "
+                    f"but the corner blocks span only {width:.0f} mm; the "
+                    "corners win. Check the blocks are on the board's edges."
+                ),
+                marker_ids=(QUBIT_WIRE_ID, MEASURE_BLOCK_ID),
+            )
+        ]
 
     def _update_fps(self) -> None:
         now = monotonic()

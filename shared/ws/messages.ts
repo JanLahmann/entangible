@@ -64,6 +64,17 @@ export interface BoardState {
    * rows are used. The emitted circuit's qubit count follows this.
    */
   wires?: number | null;
+  /**
+   * Wires with a paired measurement block (task #97), or null when no wire
+   * blocks drive the rows. A REFINEMENT counter, never a qubit count: it is at
+   * most `wires`, and zero is a perfectly normal board.
+   */
+  measures?: number | null;
+  /**
+   * Measurement blocks that matched no wire block and were ignored (task #97).
+   * Each one also raises an `unpaired_measure` warning.
+   */
+  unpairedMeasures?: number;
 }
 
 /** A detected gate tile (corner markers 0-3 are never listed here). */

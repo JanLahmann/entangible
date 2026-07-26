@@ -23,7 +23,9 @@ of three kinds:
 
 On top of either layout, qubit-wire blocks (task #95) may replace the lattice's
 rows: when present, each block declares one wire at its own y, so the row count
-IS the block count and tiles snap to the nearest wire.
+IS the block count and tiles snap to the nearest wire. Measurement blocks (task
+#97) then refine — never create — those wires: a wire paired with one runs as
+the segment through both block centres instead of a horizontal line.
 """
 
 from __future__ import annotations
@@ -124,14 +126,43 @@ class BoardModel:
         """Number of qubit-wire blocks driving the rows, or ``None`` (lattice)."""
         return None if self.grid.wire_ys is None else len(self.grid.wire_ys)
 
+    @property
+    def measure_count(self) -> int | None:
+        """Wires with a paired measurement block (#97), or ``None`` (no wires).
+
+        A refinement counter, never a qubit count: it can only ever be at most
+        :attr:`wire_count`, and zero is a perfectly normal board.
+        """
+        if self.grid.wire_ys is None:
+            return None
+        if self.grid.wire_spans is None:
+            return 0
+        return sum(1 for s in self.grid.wire_spans if s is not None)
+
 
 def _with_wires(
-    grid: GridConfig, wire_ys: tuple[float, ...] | None
+    grid: GridConfig,
+    wire_ys: tuple[float, ...] | None,
+    wire_spans: tuple[tuple[float, float, float, float] | None, ...] | None = None,
 ) -> GridConfig:
-    """Replace a lattice's rows with explicit wire positions (task #95)."""
+    """Replace a lattice's rows with explicit wire positions (task #95).
+
+    ``wire_spans`` (task #97) optionally tilts individual wires onto the segment
+    through their measurement block. It is accepted only when it lines up with
+    the wires one for one — a mismatched span list is dropped rather than
+    misapplied, because a span silently attached to the wrong wire would move
+    gate rows.
+    """
     if not wire_ys:
         return grid
     wires = tuple(sorted(wire_ys))[:MAX_WIRES]
+    spans = (
+        tuple(wire_spans)
+        if wire_spans is not None and len(wire_spans) == len(wires)
+        else None
+    )
+    if spans is not None and all(s is None for s in spans):
+        spans = None  # nothing measured: keep the pre-#97 shape exactly
     return GridConfig(
         rows=len(wires),
         cols=grid.cols,
@@ -142,18 +173,23 @@ def _with_wires(
         pitch_y=grid.pitch_y,
         cell_height=grid.cell_height,
         wire_ys=wires,
+        wire_spans=spans,
     )
 
 
 def mat_board_model(
-    config: BoardConfig, wire_ys: tuple[float, ...] | None = None
+    config: BoardConfig,
+    wire_ys: tuple[float, ...] | None = None,
+    wire_spans: tuple[tuple[float, float, float, float] | None, ...] | None = None,
 ) -> BoardModel:
     """The classic mat model (optionally with wire blocks overriding its rows)."""
     return BoardModel(
         kind="mat",
         rect=mat_rect(config),
         config=config,
-        grid=_with_wires(GridConfig.from_board_config(config), wire_ys),
+        grid=_with_wires(
+            GridConfig.from_board_config(config), wire_ys, wire_spans
+        ),
     )
 
 
@@ -163,6 +199,7 @@ def build_board_model(
     layout: str = DEFAULT_BOARD_LAYOUT,
     wire_ys: tuple[float, ...] | None = None,
     tolerance: float | None = None,
+    wire_spans: tuple[tuple[float, float, float, float] | None, ...] | None = None,
 ) -> BoardModel:
     """Build the model for an estimated rectangle under ``layout``.
 
@@ -174,7 +211,7 @@ def build_board_model(
 
     tol = MAT_RECT_TOLERANCE if tolerance is None else tolerance
     if rect is None or is_mat_rect(config, rect, tol):
-        return mat_board_model(config, wire_ys)
+        return mat_board_model(config, wire_ys, wire_spans)
 
     sized = with_rect(config, rect)
     if layout == "stretch":
@@ -203,4 +240,9 @@ def build_board_model(
         )
         kind = "grid"
 
-    return BoardModel(kind=kind, rect=rect, config=sized, grid=_with_wires(grid, wire_ys))
+    return BoardModel(
+        kind=kind,
+        rect=rect,
+        config=sized,
+        grid=_with_wires(grid, wire_ys, wire_spans),
+    )

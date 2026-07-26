@@ -280,7 +280,10 @@ export function GuidePage() {
                 (the default) keeps the tile pitch and adds columns; <b>Bigger cells</b>{' '}
                 stretches the same eight columns to fill it. Lay <b>qubit-wire blocks</b> down
                 the left edge and each one is a wire, so the circuit has exactly as many qubits
-                as you put down — none means the classic five.
+                as you put down — none means the classic five. <b>Measurement blocks</b> go
+                down the right edge, level with them: state prep on the left, measurement on
+                the right, just like a circuit diagram. They are optional and never add a
+                wire; they just tell the camera where each one ends.
               </p>
               <p className="pk-guide-muted pk-guide-tips">
                 Tips: pinch to zoom; the gear opens settings, including golf mode and a debug
@@ -433,7 +436,14 @@ export function GuidePage() {
                 left edge — up to five identical pieces between UL and LL — and each one
                 declares a wire at its own height: three blocks is a three-qubit circuit,
                 and gate tiles snap to the nearest wire. No wire blocks means the classic
-                five.
+                five. Facing them across the table, between UR and LR, go the{' '}
+                <b>measurement blocks</b> — the same piece mirrored, with a little gauge
+                instead of the <i>q</i>. They are pure polish: a wire exists because its
+                left block does, and a measurement block only says where that wire ends, so
+                the camera can run it as a straight line between the two and follow your
+                tiles even when the two rows of blocks are not quite square. Lay none and
+                nothing changes; a measurement block with no wire block across from it is
+                simply ignored.
               </p>
             </section>
 
@@ -638,7 +648,11 @@ export function GuidePage() {
                 rectangle the table gives them and set <b>Board</b> once from the operator
                 controls; the choice is broadcast, so every screen in the room reads the table
                 the same way. Qubit-wire blocks along the left edge set how many qubits the
-                board plays — handy for a short demo on two or three wires.
+                board plays — handy for a short demo on two or three wires — and the matching
+                measurement blocks on the right edge make the table read like a circuit
+                diagram end to end. They are optional; on a table that is a little out of
+                square they also let the camera follow each wire from its own block to its
+                own measurement, which keeps tiles on the row you meant.
               </p>
               <ul className="pk-guide-links">
                 <li>
