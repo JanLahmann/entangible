@@ -5,9 +5,10 @@
 #   https://github.com/JanLahmann/entangible/releases/latest/download/<asset>
 #
 # Assets:
-#   * entangible-3d-tiles.zip     — 3MFs + mono STLs + bed-ready plates, all
-#                                   four variants (tile, cube, and their
-#                                   double-faced siblings)
+#   * entangible-3d-tiles.zip     — 3MFs + mono STLs + bed-ready plates (MMU
+#                                   and mono beds), all four variants (tile,
+#                                   cube, and their double-faced siblings),
+#                                   plus the UL/UR/LR/LL board-corner blocks
 #   * entangible-laser-kit.zip    — red-cut / black-engrave SVGs for wood tiles
 #   * entangible-print-kit-A4.pdf — the one-file paper kit (tiles + board mat)
 #
@@ -93,8 +94,13 @@ jobs:
           for faces in single double; do
             for variant in tile cube; do
               name="$variant-$faces"
+              # Corner blocks (#90) only with the single-faced kits: a corner
+              # block has no second face, so the double runs would just emit
+              # the same four pieces again.
+              corners=""
+              [ "$faces" = single ] && corners="--corners"
               uv run --no-sync qamposer-hardware generate \
-                --faces "$faces" --variant "$variant" --gates all --mono \
+                --faces "$faces" --variant "$variant" --gates all --mono $corners \
                 --out out/hardware > "buildlogs/gen-$name.log" 2>&1 &
               pids+=($!); names+=("$name")
             done
@@ -119,8 +125,10 @@ jobs:
           for faces in single double; do
             for variant in tile cube; do
               name="$variant-$faces"
+              corners=""
+              [ "$faces" = single ] && corners="--corners"
               uv run --no-sync qamposer-hardware plates \
-                --faces "$faces" --variant "$variant" \
+                --faces "$faces" --variant "$variant" --mono $corners \
                 --out out/hardware-plates > "buildlogs/plates-$name.log" 2>&1 &
               pids+=($!); names+=("$name")
             done
@@ -136,7 +144,7 @@ jobs:
 
       # --- Laser: red-cut / black-engrave SVGs (wood tiles) -----------------
       - name: Generate laser kit
-        run: uv run qamposer-assets laser --out out/assets
+        run: uv run qamposer-assets laser --corners --out out/assets
 
       # --- Paper: A4 print kit ----------------------------------------------
       # `qamposer-assets all` exits 3 when no SVG->PDF backend is present, so a
@@ -162,10 +170,10 @@ jobs:
             mkdir -p "$dest"
             cp "$src"/*.3mf "$dest"/
             cp "$src"/*-mono-*.stl "$dest"/
-            cp "$src"/plates.md "$src"/mono.md "$dest"/
+            cp "$src"/*.md "$dest"/
             mkdir -p "kit3d/print-jobs/$variant"
             cp "out/hardware-plates/$variant"/*.3mf \
-               "out/hardware-plates/$variant"/plates.md "kit3d/print-jobs/$variant"/
+               "out/hardware-plates/$variant"/*.md "kit3d/print-jobs/$variant"/
           done
           cp hardware/README.md kit3d/README.md
           (cd kit3d && zip -q -r -X ../dist/entangible-3d-tiles.zip .)

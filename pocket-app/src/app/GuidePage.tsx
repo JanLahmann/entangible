@@ -392,7 +392,24 @@ export function GuidePage() {
                 <b>*-mono-raised.stl</b> does the opposite, standing the art proud of the face so
                 a single filament swap at the accent layer gives you a two-tone piece on any
                 printer. Each variant's <b>mono.md</b> has the recipe: which color belongs where,
-                and the exact Z height for the color change.
+                and the exact Z height for the color change. The <b>print-jobs</b> folders carry
+                mono beds too — <b>mono-recessed-batch*.3mf</b> and <b>mono-raised-batch*.3mf</b>{' '}
+                — so one filament swap covers a whole plate at once.
+              </p>
+            </section>
+
+            {/* Corner blocks */}
+            <section className="pk-guide-sec">
+              <Label>No mat? Corner blocks</Label>
+              <p>
+                Four optional blocks — <b>UL</b>, <b>UR</b>, <b>LL</b>, <b>LR</b> — replace the
+                printed board mat: each carries one of the mat's corner markers, so laid out on
+                any table they give the camera exactly the four fiducials it expects. The left
+                pair marks where the circuit starts. Orientation matters (a turned block skews
+                the whole board), so the marker sits visibly off-center toward the outside and
+                the label reads upright when the block is placed correctly. They print from the
+                same 3D zip (<b>ul</b>/<b>ur</b>/<b>ll</b>/<b>lr</b> pieces + <b>corners.md</b>{' '}
+                with placement rules) and cut from the laser kit alike.
               </p>
             </section>
 
