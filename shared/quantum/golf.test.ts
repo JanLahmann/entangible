@@ -30,6 +30,7 @@ import {
   holeScore,
   golfReveal,
   golfWipe,
+  golfJumpTo,
   loadRevealed,
   saveRevealed,
 } from './golf';
@@ -817,5 +818,87 @@ describe('wipe the board for one stroke (#100)', () => {
     expect(holed.strokes).toBe(4);
     expect(holed.score).toBe(8);
     expect(holed.state.best[2]).toBe(8);
+  });
+});
+
+describe('jump straight to a hole (#101)', () => {
+  const holeState = (n: number) => ({ ...initialGolfState(), levelIndex: n - 1 });
+  const junk = circuit([g('X', 0, { qubit: 0 })]);
+
+  it('plays any hole on demand, with no unlock gating', () => {
+    // Hole 1, untouched → straight to X5 (hole 18), the hardest thing there is.
+    const jumped = golfJumpTo(holeState(1), 18, empty);
+    expect(jumped.levelIndex).toBe(17);
+    expect(HOLES[jumped.levelIndex].code).toBe('X5');
+    expect(jumped.strokes).toBe(0);
+    // …and back down again, in one tap.
+    expect(golfJumpTo(jumped, 6, empty).levelIndex).toBe(5);
+  });
+
+  it('parks the hole it leaves, and resumes it on the way back', () => {
+    let step = golfStep(holeState(2), junk);
+    step = golfStep(step.state, circuit([g('X', 0, { qubit: 0 }), g('X', 1, { qubit: 1 })]));
+    expect(step.strokes).toBe(2);
+
+    // Away to M1 — a fresh hole, teed off at zero, not carrying E2's fumbles.
+    const away = golfJumpTo(step.state, 6, junk);
+    expect(away.strokes).toBe(0);
+    expect(away.parked[2]).toEqual({ strokes: 2, holedIn: false });
+
+    // Back to E2: the round you were having is still there.
+    const back = golfJumpTo(away, 2, junk);
+    expect(back.strokes).toBe(2);
+    expect(back.levelIndex).toBe(1);
+  });
+
+  it('costs nothing to arrive: the board becomes the new baseline (#68)', () => {
+    // Jump with tiles still on the board, then keep playing — the tiles that
+    // were already there are not charged as adds on the hole you land on.
+    // (E5, so the stray X tile is nowhere near holing the hole in.)
+    const jumped = golfJumpTo(holeState(1), 5, junk);
+    expect(jumped.strokes).toBe(0);
+    const step = golfStep(jumped, junk);
+    expect(step.strokes).toBe(0);
+    // Only a real change is a stroke.
+    expect(golfStep(step.state, empty).strokes).toBe(1);
+  });
+
+  it('arrives unlatched on a hole already holed in, so a clear cannot advance', () => {
+    const holed = golfStep(holeState(2), refCircuit(2)).state;
+    expect(holed.holedIn).toBe(true);
+    const away = golfJumpTo(holed, 6, refCircuit(2));
+    const back = golfJumpTo(away, 2, refCircuit(2));
+    expect(back.holedIn).toBe(false);
+    expect(back.levelIndex).toBe(1);
+    // The recorded score is untouched — replaying a hole cannot lose a best.
+    expect(back.best[2]).toBe(2);
+    // A board-clear here starts hole 2 over rather than walking to hole 3.
+    const cleared = golfStep(back, empty);
+    expect(cleared.advanced).toBe(false);
+    expect(cleared.state.levelIndex).toBe(1);
+  });
+
+  it('ignores a jump to the hole in play, or to a hole this course has not got', () => {
+    const state = holeState(2);
+    expect(golfJumpTo(state, 2, empty)).toBe(state);
+    expect(golfJumpTo(state, 99, empty)).toBe(state);
+  });
+
+  it('leaves nothing parked once a hole is finished and walked off', () => {
+    // Park E2 mid-round, come back, finish it, advance: the parked strokes go
+    // with the round on that hole, so a later jump tees it off clean.
+    const away = golfJumpTo(golfStep(holeState(2), junk).state, 6, junk);
+    expect(away.parked[2]?.strokes).toBe(1);
+    const back = golfJumpTo(away, 2, empty);
+    const holed = golfStep(back, refCircuit(2));
+    const advanced = golfStep(holed.state, empty);
+    expect(advanced.advanced).toBe(true);
+    expect(advanced.state.parked[2]).toBeUndefined();
+    expect(golfJumpTo(advanced.state, 2, empty).strokes).toBe(0);
+  });
+
+  it('starts a restarted course with nothing parked', () => {
+    const finished = { ...initialGolfState(), complete: true, parked: { 4: { strokes: 9, holedIn: false } } };
+    expect(golfStep(finished, empty).state.parked).toEqual({});
   });
 });

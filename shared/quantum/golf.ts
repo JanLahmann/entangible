@@ -842,6 +842,32 @@ export interface GolfState {
    * be a free lesson followed by a free eagle.
    */
   readonly revealed: Readonly<Record<number, boolean>>;
+  /**
+   * Holes left in the middle (#101), by hole number: what they were costing
+   * when the player jumped away. Play is no longer strictly 1→18 — any chip on
+   * the card is a way in — and a hole you walk off is a hole you can walk back
+   * onto, so its strokes wait for you rather than being wiped or carried onto
+   * somebody else's card.
+   */
+  readonly parked: Readonly<Record<number, HoleProgress>>;
+}
+
+/** What a hole was costing when it was left (#101). */
+export interface HoleProgress {
+  readonly strokes: number;
+  readonly holedIn: boolean;
+}
+
+/** The parked-hole record without `holeNumber` — a hole that has been walked
+ *  off for good has nothing waiting on it. */
+function withoutHole(
+  parked: Readonly<Record<number, HoleProgress>>,
+  holeNumber: number,
+): Readonly<Record<number, HoleProgress>> {
+  if (parked[holeNumber] === undefined) return parked;
+  const out = { ...parked };
+  delete out[holeNumber];
+  return out;
 }
 
 /**
@@ -866,6 +892,55 @@ export function initialGolfState(
     strokes: 0,
     gateKeys: NO_GATES,
     revealed,
+    parked: {},
+  };
+}
+
+/**
+ * Go straight to a hole (#101) — every chip on the scorecard is a way in.
+ *
+ * The course is still eighteen holes in order, and holing in still walks you to
+ * the next one; this is the other door. A player who has built GHZ-5 forty
+ * times should not have to grind the easy round to reach the phase holes, and a
+ * teacher demonstrating X3 should not have to play seventeen holes first. There
+ * is no unlock gating: the holes are a menu, not a ladder.
+ *
+ * Leaving a hole PARKS it — its strokes wait, so coming back resumes the round
+ * you were having rather than handing you a free tee-off or charging someone
+ * else's fumbles to the hole you arrived on. The latch is not parked: arriving
+ * on a hole you have already holed in leaves it unlatched, because a latched
+ * hole treats the next board-clear as "walk to the next tee", which is not what
+ * a player who just jumped here is asking for. The score is already recorded in
+ * `best`, so nothing is lost by replaying it.
+ *
+ * The baseline moves to whatever is on the board, so arriving somewhere new
+ * costs nothing and the first real edit is the first stroke (#68). Jumping to
+ * the hole already in play does nothing at all.
+ */
+export function golfJumpTo(
+  state: GolfState,
+  holeNumber: number,
+  circuit: Circuit,
+  holes: readonly Hole[] = HOLES,
+): GolfState {
+  const levelIndex = holes.findIndex((h) => h.hole === holeNumber);
+  if (levelIndex < 0) return state;
+  const from = holes[state.levelIndex];
+  if (from !== undefined && from.hole === holeNumber && !state.complete) return state;
+
+  const parked = { ...state.parked };
+  if (from !== undefined && !state.complete) {
+    parked[from.hole] = { strokes: state.strokes, holedIn: state.holedIn };
+  }
+  const resumed = parked[holeNumber] ?? { strokes: 0, holedIn: false };
+  return {
+    ...state,
+    levelIndex,
+    strokes: resumed.strokes,
+    holedIn: false,
+    complete: false,
+    gateKeys: gateCounts(circuit),
+    parked,
   };
 }
 
@@ -1008,9 +1083,10 @@ export function golfStep(
         strokes: 0,
         gateKeys: NO_GATES,
         // A restart is a NEW round, so every mid-hole reveal is unpaid again
-        // (#99). Bests are the record of what has been achieved and stay; the
-        // prices are about the round being played.
+        // (#99) and no hole is half-played (#101). Bests are the record of what
+        // has been achieved and stay; the rest is about the round in progress.
         revealed: {},
+        parked: {},
       };
       return {
         state,
@@ -1057,7 +1133,14 @@ export function golfStep(
       // Finished the last hole → the course is complete.
       if (prev.levelIndex >= holes.length - 1) {
         return {
-          state: { ...prev, holedIn: false, complete: true, strokes: 0, gateKeys: NO_GATES },
+          state: {
+            ...prev,
+            holedIn: false,
+            complete: true,
+            strokes: 0,
+            gateKeys: NO_GATES,
+            parked: withoutHole(prev.parked, hole.hole),
+          },
           hole,
           fidelity: 0,
           strokes: 0,
@@ -1075,7 +1158,16 @@ export function golfStep(
       const nextHole = holes[levelIndex];
       const nextEv = evaluate(circuit, nextHole);
       return {
-        state: { ...prev, levelIndex, holedIn: false, strokes: 0, gateKeys: NO_GATES },
+        // Walking off a FINISHED hole clears whatever it had parked (#101):
+        // the round on that hole is over, so a later jump back tees it off.
+        state: {
+          ...prev,
+          levelIndex,
+          holedIn: false,
+          strokes: 0,
+          gateKeys: NO_GATES,
+          parked: withoutHole(prev.parked, hole.hole),
+        },
         hole: nextHole,
         fidelity: nextEv.fidelity,
         strokes: 0,

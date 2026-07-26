@@ -574,6 +574,46 @@ describe('Scorecard (shared)', () => {
     }
   });
 
+  it('makes every chip a way onto its hole (#101)', () => {
+    for (const p of ['bo', 'pk'] as const) {
+      const jumps: number[] = [];
+      const state = { ...initialGolfState(), levelIndex: 1, strokes: 3 };
+      const { container } = render(
+        <Scorecard
+          state={state}
+          circuit={bell}
+          classPrefix={p}
+          onJump={(h) => jumps.push(h)}
+        />,
+      );
+      const chips = Array.from(container.querySelectorAll(`.${p}-golf-chip`));
+      expect(chips.length).toBe(18);
+      // Buttons, so a keyboard reaches them and a screen reader says what they
+      // are — the strip is a menu now, not a progress bar.
+      expect(chips.every((c) => c.tagName === 'BUTTON')).toBe(true);
+      expect(chips[0].getAttribute('aria-label')).toBe('Play hole 1, E1');
+      // The current-hole highlight is unchanged, and now also announced.
+      expect(chips[1].className).toContain('is-current');
+      expect(chips[1].getAttribute('aria-current')).toBe('true');
+      expect(chips[0].getAttribute('aria-current')).toBeNull();
+
+      fireEvent.click(chips[17] as HTMLButtonElement);
+      expect(jumps).toEqual([18]);
+      cleanup();
+    }
+  });
+
+  it('keeps read-only chips where jumping is not offered (#101)', () => {
+    // The kiosk is unattended: its course runs in order and nobody is there to
+    // choose. Same class names, same strip, no controls.
+    const { container } = render(
+      <Scorecard state={initialGolfState()} circuit={bell} classPrefix="bo" />,
+    );
+    const chips = Array.from(container.querySelectorAll('.bo-golf-chip'));
+    expect(chips.length).toBe(18);
+    expect(chips.every((c) => c.tagName === 'DIV')).toBe(true);
+  });
+
   it('offers the wipe only where there is a board to wipe (#100)', () => {
     for (const p of ['bo', 'pk'] as const) {
       const playing = { ...initialGolfState(), levelIndex: 1, strokes: 3 };

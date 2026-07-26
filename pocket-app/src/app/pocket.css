@@ -1989,6 +1989,28 @@ body,
   border: 1px solid var(--border);
   font-size: 0.62rem;
   color: var(--muted);
+  /* The chip is a <button> wherever jumping is offered (#101); these reset the
+     UA's button chrome so it looks identical to the read-only chip it replaced.
+     `width: 100%` keeps `flex: 1` honest on a button, which does not shrink. */
+  width: 100%;
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Fingers, not mice: a chip is a hole selector on a phone, so give it a real
+   target instead of a 20px sliver of text (#101). */
+@media (pointer: coarse) {
+  .pk-golf-chip {
+    min-height: 44px;
+    justify-content: center;
+  }
+}
+
+.pk-golf-chip:focus-visible {
+  outline: 2px solid var(--entangle);
+  outline-offset: 1px;
 }
 
 .pk-golf-chip.is-current {

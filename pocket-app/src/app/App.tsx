@@ -79,6 +79,7 @@ import {
   saveRevealed,
   golfReveal,
   golfWipe,
+  golfJumpTo,
   persistsBest,
   clubGateTypes,
   holeHighlight,
@@ -1143,6 +1144,17 @@ export function App() {
       }
     : undefined;
 
+  // Tap a chip, play that hole (#101). The board is left exactly as it is and
+  // becomes the new hole's baseline, so arriving costs nothing (#68) — and the
+  // hole being left keeps its strokes, waiting for a player who comes back.
+  const jumpToHole = (holeNumber: number) => {
+    const cur = golfStateRef.current;
+    const next = golfJumpTo(cur, holeNumber, circuit, courseHoles(cur));
+    if (next === cur) return;
+    golfStateRef.current = next;
+    setGolfState(next);
+  };
+
   const sidebar = isGolf ? (
     <>
       {showCamera && cameraPanel}
@@ -1201,6 +1213,7 @@ export function App() {
         onNextLevel={advanceHole}
         onReveal={takeReveal}
         onWipe={wipeBoard}
+        onJump={jumpToHole}
       />
       {hasPanel('results') && (
         <ResultsHistogram key="results" circuit={circuit} displayQubits={displayed.qubits} />

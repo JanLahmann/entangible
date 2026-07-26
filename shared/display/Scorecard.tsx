@@ -288,6 +288,7 @@ export function Scorecard({
   onNextLevel,
   onReveal,
   onWipe,
+  onJump,
 }: {
   state: GolfState;
   circuit: Circuit;
@@ -321,6 +322,13 @@ export function Scorecard({
    * so the camera and booth surfaces pass nothing and render no button.
    */
   onWipe?: () => void;
+  /**
+   * Go straight to a hole (#101) — the chip strip becomes a menu rather than a
+   * progress bar. Optional: a surface that passes nothing keeps the read-only
+   * chips it always had (the kiosk is unattended, and its course is a demo
+   * running in order).
+   */
+  onJump?: (holeNumber: number) => void;
 }) {
   const p = classPrefix;
   // Which hole's solution is currently revealed (#71). Keyed by hole NUMBER
@@ -379,7 +387,7 @@ export function Scorecard({
               'clear the board to play again'
             )}
           </div>
-          <ChipStrip p={p} holes={holes} currentHole={-1} best={state.best} />
+          <ChipStrip p={p} holes={holes} currentHole={-1} best={state.best} onJump={onJump} />
         </div>
       </div>
     );
@@ -485,7 +493,13 @@ export function Scorecard({
           </div>
         )}
         {revealed && <Solutions p={p} state={state} hole={hole} optimal={optimal} />}
-        <ChipStrip p={p} holes={holes} currentHole={hole.hole} best={state.best} />
+        <ChipStrip
+          p={p}
+          holes={holes}
+          currentHole={hole.hole}
+          best={state.best}
+          onJump={onJump}
+        />
       </div>
     </div>
   );
@@ -633,11 +647,14 @@ function ChipStrip({
   holes,
   currentHole,
   best,
+  onJump,
 }: {
   p: string;
   holes: readonly Hole[];
   currentHole: number;
   best: Readonly<Record<number, number>>;
+  /** When set, every chip is a way onto that hole (#101). */
+  onJump?: (holeNumber: number) => void;
 }) {
   return (
     <div className={`${p}-golf-course`} aria-label="all holes">
@@ -650,28 +667,45 @@ function ChipStrip({
               const done = strokes !== undefined;
               const kind = done ? scoreKind(strokes, h.par) : null;
               const vsPar = done ? formatVsPar(strokes - h.par) : null;
-              return (
-                <div
-                  key={h.hole}
-                  className={[
-                    `${p}-golf-chip`,
-                    h.hole === currentHole ? 'is-current' : '',
-                    done ? 'is-done' : '',
-                    kind ? `${p}-golf-chip--${kind}` : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')}
-                  title={
-                    done
-                      ? `${h.code} · ${h.name} · par ${h.par} · best ${strokes} (${vsPar})`
-                      : `${h.code} · ${h.name} · par ${h.par}`
-                  }
-                >
+              const current = h.hole === currentHole;
+              const className = [
+                `${p}-golf-chip`,
+                current ? 'is-current' : '',
+                done ? 'is-done' : '',
+                kind ? `${p}-golf-chip--${kind}` : '',
+              ]
+                .filter(Boolean)
+                .join(' ');
+              const title = done
+                ? `${h.code} · ${h.name} · par ${h.par} · best ${strokes} (${vsPar})`
+                : `${h.code} · ${h.name} · par ${h.par}`;
+              const body = (
+                <>
                   <span>{h.code}</span>
                   <span className={`${p}-golf-chip-score`}>
                     <span className={`${p}-golf-chip-best`}>{done ? strokes : '·'}</span>
                     {done && <span className={`${p}-golf-chip-vspar`}>{vsPar}</span>}
                   </span>
+                </>
+              );
+              // A chip is a BUTTON wherever jumping is offered (#101), so it is
+              // reachable by keyboard and announced as the control it is; the
+              // read-only surfaces keep the plain element they always had.
+              return onJump ? (
+                <button
+                  key={h.hole}
+                  type="button"
+                  className={className}
+                  title={`${title} — tap to play`}
+                  aria-current={current ? 'true' : undefined}
+                  aria-label={`Play hole ${h.hole}, ${h.code}`}
+                  onClick={() => onJump(h.hole)}
+                >
+                  {body}
+                </button>
+              ) : (
+                <div key={h.hole} className={className} title={title}>
+                  {body}
                 </div>
               );
             })}

@@ -15,6 +15,7 @@ export function Scorecard({
   onNextLevel,
   onReveal,
   onWipe,
+  onJump,
 }: {
   state: GolfState;
   circuit: Circuit;
@@ -24,6 +25,8 @@ export function Scorecard({
   onReveal?: (holeNumber: number) => void;
   /** Build-on-screen only: wipes the board for one flat stroke (#100). */
   onWipe?: () => void;
+  /** Tap any chip to play that hole (#101). */
+  onJump?: (holeNumber: number) => void;
 }) {
   return (
     <SharedScorecard
@@ -35,6 +38,7 @@ export function Scorecard({
       onNextLevel={onNextLevel}
       onReveal={onReveal}
       onWipe={onWipe}
+      onJump={onJump}
     />
   );
 }
