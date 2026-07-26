@@ -176,7 +176,12 @@ def test_pointer_and_caption_present(tiles, mid):
     caption sits in the bottom band. Both are accent-coloured on the white field."""
     p = tiles[mid]
     z = TILE_H - FACE_DEPTH / 2.0
-    ptr = _probe(p.accent, 30.0, 55.5, 5.0, 4.0, z)
+    # Probe tightly around the pointer (y 54.4-56.6): the r=0 edge label sits
+    # just below it, and how close it comes depends on the host font — macOS
+    # resolves `Helvetica`, a Linux CI runner substitutes DejaVu/Liberation,
+    # whose taller glyph box pushes the label up into a 4 mm-tall probe. 2.8 mm
+    # still brackets the whole triangle with clearance either side.
+    ptr = _probe(p.accent, 30.0, 55.5, 5.0, 2.8, z)
     assert ptr is not None, "pointer missing"
     pb = ptr.bounding_box()
     # apex is a single point at the top, base is the wide edge below it
