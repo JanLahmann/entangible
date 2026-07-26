@@ -56,7 +56,13 @@ import { TouchInspector } from './TouchInspector';
 import { toggleFrozen } from './freeze';
 import { GuidePage } from './GuidePage';
 import { useRoute } from './hashNav';
-import { settingsStore, useSettings, type Mode, type PanelId } from './settings';
+import {
+  settingsStore,
+  useSettings,
+  type BoardLayout,
+  type Mode,
+  type PanelId,
+} from './settings';
 import { QuantinaPanel, useQuantinaPack } from './QuantinaPanel';
 import { RunnerGame } from './RunnerGame';
 import { displayCircuit, highestUsedRow } from '@shared/display/displayWires';
@@ -420,6 +426,8 @@ export function App() {
   // standalone. When connected it overrides the local `settings.panels`.
   const [boothPanels, setBoothPanels] = useState<string[] | null>(null);
   const [boothNoise, setBoothNoise] = useState<NoisePreset | null>(null);
+  // Booth-driven board layout (#94); null while standalone.
+  const [boothBoardLayout, setBoothBoardLayout] = useState<BoardLayout | null>(null);
   // Booth-driven Quantina pack id + the latest booth serve (QN2). Both null
   // while standalone; when connected they drive the synced menu + reveal.
   const [boothMenu, setBoothMenu] = useState<string | null>(null);
@@ -499,6 +507,7 @@ export function App() {
         setBoothWires(update.boothWires ?? null);
         setBoothPanels(update.boothPanels ?? null);
         setBoothNoise(update.boothNoise ?? null);
+        setBoothBoardLayout(update.boothBoardLayout ?? null);
         setBoothMenu(update.boothMenu ?? null);
         if (update.boothServed) setBoothServed(update.boothServed);
       }
@@ -629,6 +638,9 @@ export function App() {
     cameraRoleSourceRef.current?.offerFrame(canvas);
   }, []);
 
+  // Board layout (#94): a connected booth's broadcast owns it — so every screen
+  // in the room reads the same table the same way — else the local setting.
+  const effectiveBoardLayout: BoardLayout = boothBoardLayout ?? settings.boardLayout;
   const camera = useCamera({
     onResult,
     lowPower: settings.lowpower,
@@ -638,6 +650,7 @@ export function App() {
     onFrame: cameraRole ? onFrame : undefined,
     // Only the camera role streams, so only it can lock to a mat ROI.
     matCrop: cameraRole ? matLock : null,
+    boardLayout: effectiveBoardLayout,
   });
   fpsRef.current = camera.fps;
 

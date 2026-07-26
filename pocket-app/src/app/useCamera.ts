@@ -11,6 +11,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PocketPipeline, type FrameResult } from '../vision/pipeline';
+import { DEFAULT_BOARD_LAYOUT, type BoardLayout } from '../vision/boardModel';
 import { buildVideoConstraints, shouldFallbackToAuto } from './cameraDevices';
 import { applyVideoFreeze, shouldProcess, videoFreezeAction } from './freeze';
 import {
@@ -86,6 +87,12 @@ interface Options {
    * while locked; `null`/`undefined` streams the full/zoomed frame as before.
    */
   matCrop?: Rect | null;
+  /**
+   * How a non-mat corner-block rectangle becomes a lattice (task #94). Applied
+   * to the running pipeline, so flipping the setting takes effect on the next
+   * frame without restarting the camera. A mat-sized board is unaffected.
+   */
+  boardLayout?: BoardLayout;
 }
 
 const TARGET_PROCESS_MS = 45; // aim ~20 detections/s; skip frames to hold it
@@ -99,6 +106,7 @@ export function useCamera({
   onCameraFallback,
   onFrame,
   matCrop = null,
+  boardLayout = DEFAULT_BOARD_LAYOUT,
 }: Options): CameraState {
   const onFrameRef = useRef(onFrame);
   onFrameRef.current = onFrame;
@@ -123,7 +131,7 @@ export function useCamera({
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const pipelineRef = useRef<PocketPipeline>(new PocketPipeline());
+  const pipelineRef = useRef<PocketPipeline>(new PocketPipeline({ boardLayout }));
   const rafRef = useRef<number | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const skipRef = useRef(1);
@@ -349,6 +357,13 @@ export function useCamera({
       );
     }
   }, [loop, requestWakeLock, zoom, applyZoom]);
+
+  // Board layout (task #94): apply the current choice to the live pipeline, so
+  // the settings drawer (or a booth broadcast) retunes detection on the next
+  // frame instead of on the next camera start.
+  useEffect(() => {
+    pipelineRef.current.setBoardLayout(boardLayout);
+  }, [boardLayout]);
 
   // Pause processing when the tab is hidden; resume (and re-acquire wake lock)
   // when it returns.

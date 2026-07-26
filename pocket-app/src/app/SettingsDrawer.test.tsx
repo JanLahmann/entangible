@@ -18,7 +18,7 @@ function openDrawer() {
 
 afterEach(() => {
   boothLink.disconnect();
-  settingsStore.update({ mode: 'composer', courseCode: null });
+  settingsStore.update({ mode: 'composer', courseCode: null, boardLayout: 'grid' });
   cleanup();
 });
 
@@ -75,5 +75,26 @@ describe('SettingsDrawer golf course code (#78)', () => {
     settingsStore.update({ mode: 'composer' });
     openDrawer();
     expect(screen.queryByLabelText('Golf course code')).toBeNull();
+  });
+});
+
+describe('SettingsDrawer BOARD section (#94)', () => {
+  it('defaults to more columns and switches to bigger cells', () => {
+    openDrawer();
+    const more = screen.getByRole('button', { name: 'More columns' });
+    const bigger = screen.getByRole('button', { name: 'Bigger cells' });
+    expect(more.getAttribute('aria-pressed')).toBe('true');
+    expect(bigger.getAttribute('aria-pressed')).toBe('false');
+
+    fireEvent.click(bigger);
+    expect(settingsStore.get().boardLayout).toBe('stretch');
+  });
+
+  it('is locked while connected — the booth owns the board layout', () => {
+    boothLink.connect('wss://booth.local:8443');
+    openDrawer();
+    for (const name of ['More columns', 'Bigger cells']) {
+      expect((screen.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(true);
+    }
   });
 });

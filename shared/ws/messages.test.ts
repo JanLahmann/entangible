@@ -16,6 +16,7 @@ import {
   type SelectMode,
   type SelectLayout,
   type SelectNoise,
+  type SelectBoardLayout,
   type SelectMenu,
   type Serve,
   type ServedMessage,
@@ -98,7 +99,15 @@ const circuitSample = {
 const detectionSample = {
   type: 'detection',
   fps: 0,
-  board: { found: false, corners: 0, reprojectionErrorMm: null },
+  board: {
+    found: false,
+    corners: 0,
+    reprojectionErrorMm: null,
+    rectMm: { widthMm: 0, heightMm: 0 },
+    layout: 'mat',
+    rows: 0,
+    cols: 0,
+  },
   markers: [{ id: 0, row: 0, col: 0, offGrid: true }],
   warnings: [{ code: '', message: '', row: 0, col: 0 }],
 } satisfies DetectionMessage;
@@ -136,6 +145,7 @@ const layoutSample = {
   wires: 'compact',
   noise: 'off',
   menu: null,
+  boardLayout: 'grid',
 } satisfies LayoutMessage;
 
 const servedSample = {
@@ -163,6 +173,11 @@ const selectNoiseSample = {
   preset: 'heron',
 } satisfies SelectNoise;
 
+const selectBoardLayoutSample = {
+  type: 'select_board_layout',
+  layout: 'grid',
+} satisfies SelectBoardLayout;
+
 const selectMenuSample = {
   type: 'select_menu',
   pack: 'cocktails',
@@ -185,6 +200,7 @@ const SAMPLES: Record<string, unknown> = {
   select_mode: selectModeSample,
   select_layout: selectLayoutSample,
   select_noise: selectNoiseSample,
+  select_board_layout: selectBoardLayoutSample,
   select_menu: selectMenuSample,
   serve: serveSample,
   served: servedSample,

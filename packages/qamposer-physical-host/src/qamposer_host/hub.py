@@ -64,14 +64,25 @@ def serialize_detection(event: Any) -> dict:
             entry["col"] = w.col
         warnings.append(entry)
 
+    # Board model (#94) — additive, and tolerant of a pipeline build that
+    # predates it (getattr defaults keep the classic shape).
+    rect = getattr(event, "rect_mm", None)
+    board: dict[str, Any] = {
+        "found": event.board_found,
+        "corners": event.corners,
+        "reprojectionErrorMm": event.reprojection_error_mm,
+        "rectMm": (
+            None if rect is None else {"widthMm": rect[0], "heightMm": rect[1]}
+        ),
+        "layout": getattr(event, "board_layout", "mat"),
+        "rows": getattr(event, "rows", 0),
+        "cols": getattr(event, "cols", 0),
+    }
+
     return {
         "type": "detection",
         "fps": event.fps,
-        "board": {
-            "found": event.board_found,
-            "corners": event.corners,
-            "reprojectionErrorMm": event.reprojection_error_mm,
-        },
+        "board": board,
         "markers": markers,
         "warnings": warnings,
     }

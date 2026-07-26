@@ -19,7 +19,17 @@ __all__ = ["GridConfig", "GridMapper"]
 
 @dataclass(frozen=True, slots=True)
 class GridConfig:
-    """Lattice geometry needed to place a board-mm point into a cell."""
+    """Lattice geometry needed to place a board-mm point into a cell.
+
+    ``pitch``/``cell_size`` are the x-axis spacing and cell width; ``pitch_y``
+    and ``cell_height`` default to them (the square mat lattice) and differ only
+    under the ``stretch`` layout, which scales x and y independently (#94).
+
+    ``wire_ys`` (task #95) replaces the y lattice entirely: when qubit-wire
+    blocks are on the table, each declares one wire at its own board-mm y and a
+    tile takes the row of the NEAREST wire (within half a cell height) instead
+    of a lattice row.
+    """
 
     rows: int
     cols: int
@@ -27,6 +37,12 @@ class GridConfig:
     cell_size: float
     grid_offset_x: float
     grid_offset_y: float
+    #: y pitch; ``None`` = ``pitch`` (isotropic mat lattice).
+    pitch_y: float | None = None
+    #: cell height; ``None`` = ``cell_size``.
+    cell_height: float | None = None
+    #: Explicit wire positions (board mm, sorted top-down), or ``None``.
+    wire_ys: tuple[float, ...] | None = None
 
     @classmethod
     def from_board_config(cls, config: BoardConfig) -> "GridConfig":
@@ -39,10 +55,20 @@ class GridConfig:
             grid_offset_y=config.grid_offset_y,
         )
 
+    @property
+    def y_pitch(self) -> float:
+        return self.pitch if self.pitch_y is None else self.pitch_y
+
+    @property
+    def y_cell(self) -> float:
+        return self.cell_size if self.cell_height is None else self.cell_height
+
     def cell_center(self, row: int, col: int) -> tuple[float, float]:
         """Board-mm coordinates of the centre of cell ``(row, col)``."""
         cx = self.grid_offset_x + self.cell_size / 2.0 + self.pitch * col
-        cy = self.grid_offset_y + self.cell_size / 2.0 + self.pitch * row
+        if self.wire_ys is not None:
+            return cx, self.wire_ys[row]
+        cy = self.grid_offset_y + self.y_cell / 2.0 + self.y_pitch * row
         return cx, cy
 
 
@@ -67,14 +93,24 @@ class GridMapper:
         """
         cfg = self.config
         half_window = (cfg.cell_size / 2.0) * self.tolerance
+        half_window_y = (cfg.y_cell / 2.0) * self.tolerance
 
-        # Nearest column/row index by the lattice spacing.
+        # Nearest column by the lattice spacing.
         col = round((x_mm - (cfg.grid_offset_x + cfg.cell_size / 2.0)) / cfg.pitch)
-        row = round((y_mm - (cfg.grid_offset_y + cfg.cell_size / 2.0)) / cfg.pitch)
+        # Nearest row: an explicit wire when qubit-wire blocks declare them
+        # (#95), else the y lattice.
+        if cfg.wire_ys is not None:
+            if not cfg.wire_ys:
+                return None
+            row = min(
+                range(len(cfg.wire_ys)), key=lambda i: abs(y_mm - cfg.wire_ys[i])
+            )
+        else:
+            row = round((y_mm - (cfg.grid_offset_y + cfg.y_cell / 2.0)) / cfg.y_pitch)
         if not (0 <= col < cfg.cols and 0 <= row < cfg.rows):
             return None
 
         cx, cy = cfg.cell_center(row, col)
-        if abs(x_mm - cx) <= half_window and abs(y_mm - cy) <= half_window:
+        if abs(x_mm - cx) <= half_window and abs(y_mm - cy) <= half_window_y:
             return int(row), int(col)
         return None

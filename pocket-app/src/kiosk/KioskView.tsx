@@ -47,7 +47,7 @@ import { cryptoRng } from '@shared/menu/sample';
 import { menuOutcomes, orderLines, serveFrom } from '../app/quantina';
 import { useResolvedPack } from '../app/packSource';
 import { noiseSeries } from '../app/ResultsHistogram';
-import { parseUrlOverrides } from '../app/settings';
+import { parseUrlOverrides, type BoardLayout } from '../app/settings';
 import {
   evaluateMoment,
   initialMomentState,
@@ -149,6 +149,7 @@ export function KioskView() {
         wires?: Wires;
         noise?: NoisePreset;
         menu?: string | null;
+        boardLayout?: BoardLayout;
       };
     }
   ).layout;
@@ -167,6 +168,16 @@ export function KioskView() {
       : undefined,
   );
   const noisePreset: NoisePreset = layout?.noise ?? urlNoise ?? 'off';
+  // Board layout (#94) follows the same precedence. A kiosk never runs the
+  // vision pipeline (the host detects), so this is carried, not applied — it
+  // rides along so the kiosk's debug/board read-out and any future local
+  // detection agree with the rest of the room.
+  const [urlBoardLayout] = useState<BoardLayout | undefined>(() =>
+    typeof window !== 'undefined'
+      ? parseUrlOverrides(window.location.search).boardLayout
+      : undefined,
+  );
+  const boardLayout: BoardLayout = layout?.boardLayout ?? urlBoardLayout ?? 'grid';
 
   // Kiosk mode implies the Display role: it requires a connected booth source.
   // Show a clear connect-pending screen until the socket has opened at least
@@ -523,7 +534,7 @@ export function KioskView() {
   if (!everConnected) return <ConnectPending state={connectionState} />;
 
   return (
-    <div className="bo" onPointerDown={onRootPointerDown}>
+    <div className="bo" data-board-layout={boardLayout} onPointerDown={onRootPointerDown}>
       <header className="bo-topbar">
         <div className="bo-brand">
           <span className="en">En</span>tangible

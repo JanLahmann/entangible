@@ -47,6 +47,7 @@ def annotate_frame(
     markers: Iterable["DetectedMarker"] = (),
     board: BoardResult | None = None,
     board_config: BoardConfig | None = None,
+    grid: GridConfig | None = None,
     occupied_cells: Iterable[tuple[int, int]] = (),
     warnings: Sequence[Any] = (),
     fps: float | None = None,
@@ -58,6 +59,10 @@ def annotate_frame(
         markers: detected markers to outline (corners + gate tiles).
         board: fitted board pose, or ``None`` when no board was found.
         board_config: physical geometry; loaded from ``assets.toml`` when omitted.
+            Pass the ACTIVE model's config (task #94) so the drawn board quad
+            matches the rectangle the corner blocks actually span.
+        grid: the active cell lattice; derived from ``board_config`` when
+            omitted (the classic mat lattice).
         occupied_cells: ``(row, col)`` cells to highlight as occupied.
         warnings: objects with a ``.message`` (and optional ``.kind``) attribute,
             rendered as a top-left stack.
@@ -72,7 +77,12 @@ def annotate_frame(
 
     if board is not None:
         _draw_board_quad(canvas, board, board_config)
-        _draw_occupied_cells(canvas, board, board_config, occupied_cells)
+        _draw_occupied_cells(
+            canvas,
+            board,
+            grid or GridConfig.from_board_config(board_config),
+            occupied_cells,
+        )
 
     for marker in markers:
         _draw_marker(canvas, marker)
@@ -105,11 +115,11 @@ def _draw_board_quad(
 def _draw_occupied_cells(
     canvas: np.ndarray,
     board: BoardResult,
-    config: BoardConfig,
+    grid: GridConfig,
     occupied_cells: Iterable[tuple[int, int]],
 ) -> None:
-    grid = GridConfig.from_board_config(config)
-    half = config.cell_size / 2.0
+    half = grid.cell_size / 2.0
+    half_y = grid.y_cell / 2.0
     overlay = canvas.copy()
     drew = False
     for row, col in occupied_cells:
@@ -118,10 +128,10 @@ def _draw_occupied_cells(
         cx, cy = grid.cell_center(row, col)
         corners_mm = np.array(
             [
-                [cx - half, cy - half],
-                [cx + half, cy - half],
-                [cx + half, cy + half],
-                [cx - half, cy + half],
+                [cx - half, cy - half_y],
+                [cx + half, cy - half_y],
+                [cx + half, cy + half_y],
+                [cx - half, cy + half_y],
             ]
         )
         corners_px = board.board_to_image(corners_mm).astype(np.int32)

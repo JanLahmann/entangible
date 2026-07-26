@@ -33,10 +33,24 @@ from typing import Any, Callable
 import numpy as np
 
 from .annotate import annotate_frame
-from .board import BoardConfig, BoardResult, fit_board
+from .board import (
+    MAT_RECT_TOLERANCE,
+    BoardConfig,
+    BoardRect,
+    BoardResult,
+    estimate_board_rect,
+    fit_board,
+    mat_rect,
+)
+from .board_model import (
+    DEFAULT_BOARD_LAYOUT,
+    BoardModel,
+    build_board_model,
+    mat_board_model,
+)
 from .circuit_builder import BuildWarning, TilePlacement, build_circuit
 from .detector import ArucoDetector
-from .grid import GridConfig, GridMapper
+from .grid import GridMapper
 from .markers import CORNER_IDS, MARKER_TABLE
 from .qasm import circuit_to_qasm
 from .sources import FrameSource
@@ -87,6 +101,14 @@ class DetectionEvent:
     reprojection_error_mm: float | None
     markers: list[MarkerObs] = field(default_factory=list)
     warnings: list[BuildWarning] = field(default_factory=list)
+    #: Estimated board rectangle ``(width_mm, height_mm)`` — the corner blocks'
+    #: actual span (task #94). ``None`` while no board is found.
+    rect_mm: tuple[float, float] | None = None
+    #: Which model interpreted the frame: ``"mat"``/``"stretch"``/``"grid"``.
+    board_layout: str = "mat"
+    #: Active lattice size.
+    rows: int = 0
+    cols: int = 0
 
 
 class Pipeline:
@@ -98,14 +120,21 @@ class Pipeline:
         board_config: BoardConfig | None = None,
         on_circuit: Callable[[CircuitEvent], None] | None = None,
         on_detection: Callable[[DetectionEvent], None] | None = None,
+        board_layout: str = DEFAULT_BOARD_LAYOUT,
     ) -> None:
         self._board_config = board_config or BoardConfig.from_toml()
         self._on_circuit = on_circuit
         self._on_detection = on_detection
+        self._board_layout = board_layout
 
         self._detector = ArucoDetector()
-        self._grid = GridMapper(GridConfig.from_board_config(self._board_config))
         self._stabilizer = TileStabilizer()
+        # Sticky board rectangle (task #94): starts at the mat and only moves
+        # when an estimate differs by more than the mat tolerance, so a real mat
+        # stays bit-for-bit classic and a fixed table layout does not re-derive
+        # its column count on every frame's measurement noise.
+        self._rect: BoardRect = mat_rect(self._board_config)
+        self._model: BoardModel = mat_board_model(self._board_config)
 
         self._lock = threading.Lock()          # guards _source and _annotated
         self._source: FrameSource = source
@@ -134,6 +163,8 @@ class Pipeline:
         self._structural_warnings = []
         self._emitted = False
         self._stabilizer.reset()
+        self._rect = mat_rect(self._board_config)
+        self._model = mat_board_model(self._board_config)
         self._thread = threading.Thread(
             target=self._run, name="qamposer-pipeline", daemon=True
         )
@@ -154,6 +185,18 @@ class Pipeline:
             source.close()
         except Exception:  # pragma: no cover - close is best-effort
             logger.exception("error closing frame source on stop")
+
+    def set_board_layout(self, layout: str) -> None:
+        """Choose how a non-mat rectangle becomes a lattice (task #94).
+
+        ``"stretch"`` scales the 5x8 board into the measured rectangle;
+        ``"grid"`` (default) keeps the mat's pitch and derives the column count
+        from the width. A no-op when unchanged; otherwise the model is rebuilt
+        on the next frame. The classic mat is unaffected either way.
+        """
+        if layout == self._board_layout:
+            return
+        self._board_layout = layout
 
     def swap_source(self, source: FrameSource) -> None:
         """Hot-swap the frame source; closes the old one and resets hysteresis."""
@@ -196,10 +239,21 @@ class Pipeline:
         self._update_fps()
 
         markers = self._detector.detect(frame)
-        board = fit_board(markers, self._board_config)
         corners = sum(1 for m in markers if m.id in CORNER_IDS)
 
-        observations, marker_obs, off_grid_warnings = self._map_markers(markers, board)
+        # 1. What rectangle do the corner blocks actually span? (task #94)
+        self._update_rect(markers)
+        board = fit_board(markers, self._board_config, self._rect)
+
+        # 2. Interpret it under the chosen layout.
+        self._model = build_board_model(
+            self._board_config, self._rect, self._board_layout
+        )
+
+        grid = GridMapper(self._model.grid)
+        observations, marker_obs, off_grid_warnings = self._map_markers(
+            markers, board, grid
+        )
 
         result = self._stabilizer.update(observations)
         if result.changed or not self._emitted:
@@ -219,10 +273,40 @@ class Pipeline:
                     ),
                     markers=marker_obs,
                     warnings=detection_warnings,
+                    rect_mm=(
+                        None
+                        if board is None
+                        else (self._model.rect.width, self._model.rect.height)
+                    ),
+                    board_layout=self._model.kind,
+                    rows=self._model.rows,
+                    cols=self._model.cols,
                 )
             )
 
     # -- helpers -----------------------------------------------------------
+
+    def _update_rect(self, markers: list[Any]) -> None:
+        """Move the sticky board rectangle if the frame says it really changed.
+
+        Estimates are noisy at the tenth-of-a-millimetre level, and the derived
+        column count is a floor(), so adopting every estimate would let a board
+        near a column boundary flip size frame to frame. The current rectangle
+        is therefore kept until an estimate differs from it by more than
+        :data:`~.board.MAT_RECT_TOLERANCE` on either axis — which also keeps a
+        real mat pinned to exactly the mat geometry.
+        """
+        estimate = estimate_board_rect(markers, self._board_config)
+        if estimate is None:
+            return
+        rect = estimate.rect
+        tol = MAT_RECT_TOLERANCE
+        if (
+            abs(rect.width - self._rect.width) <= tol * self._rect.width
+            and abs(rect.height - self._rect.height) <= tol * self._rect.height
+        ):
+            return
+        self._rect = rect
 
     def _update_fps(self) -> None:
         now = monotonic()
@@ -236,8 +320,13 @@ class Pipeline:
         self._last_frame_time = now
 
     def _map_markers(
-        self, markers: list[Any], board: BoardResult | None
+        self,
+        markers: list[Any],
+        board: BoardResult | None,
+        grid: GridMapper | None = None,
     ) -> tuple[set[Tile], list[MarkerObs], list[BuildWarning]]:
+        if grid is None:
+            grid = GridMapper(self._model.grid)
         observations: set[Tile] = set()
         marker_obs: list[MarkerObs] = []
         off_grid_warnings: list[BuildWarning] = []
@@ -249,7 +338,7 @@ class Pipeline:
                 marker_obs.append(MarkerObs(id=marker.id, off_grid=True))
                 continue
             board_xy = board.image_to_board(marker.center)[0]
-            cell = self._grid.assign(float(board_xy[0]), float(board_xy[1]))
+            cell = grid.assign(float(board_xy[0]), float(board_xy[1]))
             if cell is None:
                 marker_obs.append(MarkerObs(id=marker.id, off_grid=True))
                 off_grid_warnings.append(
@@ -282,7 +371,9 @@ class Pipeline:
             TilePlacement(marker_id=mid, row=row, col=col, rotation=rot)
             for (mid, row, col, rot) in stable
         ]
-        build = build_circuit(placements, self._board_config.rows)
+        # Qubit count follows the active model: the mat's five rows, or the
+        # rows derived from the board height.
+        build = build_circuit(placements, self._model.rows)
         self._structural_warnings = build.warnings
 
         if not self._emitted or build.circuit != self._last_circuit:
@@ -319,7 +410,8 @@ class Pipeline:
             frame,
             markers=markers,
             board=board,
-            board_config=self._board_config,
+            board_config=self._model.config,
+            grid=self._model.grid,
             occupied_cells=occupied,
             warnings=warnings,
             fps=self._fps,

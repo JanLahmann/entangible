@@ -31,6 +31,17 @@ export type InputMode = 'camera' | 'manual';
  */
 import type { NoisePreset } from '@quantum/noise';
 export type { NoisePreset };
+/**
+ * How a corner-block board that is NOT the printed mat becomes a lattice
+ * (docs/design.md, task #94). 'stretch' scales the 5x8 board into the measured
+ * rectangle (same cells, bigger); 'grid' (default) keeps the mat's 70 mm pitch
+ * and derives the COLUMN count from the measured width, so a wider table means
+ * more columns. A mat-sized board ignores this entirely. The canonical union
+ * lives in `../vision/boardModel`; re-exported here so settings consumers keep
+ * importing it from `./settings`.
+ */
+import type { BoardLayout } from '../vision/boardModel';
+export type { BoardLayout };
 export type Side = 'left' | 'right';
 export type PanelId = 'camera' | 'results' | 'state' | 'qasm';
 /**
@@ -101,6 +112,13 @@ export interface Settings {
    * remote pack (`?menupack=<url>`) is NOT stored here — App owns that.
    */
   readonly menu: string;
+  /**
+   * Board layout for corner-block boards that are not mat-sized (task #94).
+   * 'grid' (default) buys columns from a wider table; 'stretch' grows the
+   * cells instead. Persisted; URL-overridable via `?board=stretch|grid`. A
+   * connected booth's broadcast value overrides it while connected.
+   */
+  readonly boardLayout: BoardLayout;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -119,6 +137,7 @@ export const DEFAULT_SETTINGS: Settings = {
   courseCode: null,
   noise: 'off',
   menu: 'coffee',
+  boardLayout: 'grid',
 };
 
 /** Valid Quantina pack id: lowercase, digits, and hyphens (custom packs exist later). */
@@ -233,6 +252,9 @@ export function parseUrlOverrides(search: string): Partial<Settings> {
     out.noise = noise;
   }
 
+  const board = params.get('board');
+  if (board === 'stretch' || board === 'grid') out.boardLayout = board;
+
   // Manual booth host override (the drawer's Booth field seeded from a link).
   const booth = params.get('booth');
   if (booth !== null) {
@@ -282,7 +304,9 @@ export function sanitize(raw: unknown): Settings {
     typeof r.courseCode === 'string' && COURSE_CODE_RE.test(r.courseCode)
       ? r.courseCode.toLowerCase()
       : null;
+  const boardLayout: BoardLayout = r.boardLayout === 'stretch' ? 'stretch' : 'grid';
   return {
+    boardLayout,
     courseCode,
     mode,
     input,

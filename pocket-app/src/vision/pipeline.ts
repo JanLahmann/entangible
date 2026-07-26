@@ -13,10 +13,28 @@ import {
   type RgbaImage,
   type GrayImage,
 } from './detect';
-import { fitBoard, boardFrameRotation, type BoardResult } from './board';
+import {
+  fitBoard,
+  boardFrameRotation,
+  estimateBoardRect,
+  type BoardResult,
+} from './board';
 import { guidedRedetect } from './guided';
 import { GridMapper } from './grid';
-import { BOARD, CORNER_IDS } from './geometry';
+import {
+  BOARD,
+  CORNER_IDS,
+  MAT_RECT,
+  MAT_RECT_TOLERANCE,
+  type BoardRect,
+} from './geometry';
+import {
+  DEFAULT_BOARD_LAYOUT,
+  buildBoardModel,
+  matBoardModel,
+  type BoardLayout,
+  type BoardModel,
+} from './boardModel';
 import { MARKER_TABLE } from './markers';
 import {
   TileStabilizer,
@@ -70,6 +88,11 @@ export interface FrameResult {
   /** Raw detector output, for the debug overlay (marker outlines, board quad). */
   readonly detected: DetectedMarker[];
   readonly board: BoardResult | null;
+  /**
+   * The geometry this frame was interpreted in (task #94): the mat, or the
+   * rectangle the corner blocks span under the chosen layout.
+   */
+  readonly model: BoardModel;
   /** Per-frame detection counters for the debug overlay. */
   readonly stats: FrameStats;
   /** Resolved detector params (read-only), for the debug panel. */
@@ -81,22 +104,38 @@ export interface PipelineOptions {
   guided?: boolean;
   /** Per-frame detector tuning (subpixel refine, robust sampling, thresholds). */
   detect?: DetectOptions;
+  /**
+   * How a non-mat corner-block rectangle becomes a lattice (task #94):
+   * 'stretch' scales the 5×8 board into it, 'grid' (default) keeps the mat's
+   * pitch and derives the column count from the width. The classic mat is
+   * unaffected either way.
+   */
+  boardLayout?: BoardLayout;
 }
 
 export class PocketPipeline {
-  private readonly grid = new GridMapper(BOARD);
   private readonly stabilizer = new TileStabilizer();
   private lastCircuit: BuildResult['circuit'] | null = null;
   private structuralWarnings: BuildWarning[] = [];
   private emitted = false;
   private readonly guided: boolean;
   private readonly detectOptions: DetectOptions;
+  private boardLayout: BoardLayout;
+  /**
+   * Sticky board rectangle (task #94): starts at the mat and only moves when an
+   * estimate differs by more than the mat tolerance, so a real mat stays
+   * bit-for-bit classic and a fixed table layout does not re-derive its column
+   * count on every frame's measurement noise.
+   */
+  private rect: BoardRect = MAT_RECT;
+  private model: BoardModel = matBoardModel();
   /** Resolved parameter snapshot (matches detect.ts defaults), for the debug panel. */
   readonly params: ResolvedParams;
 
   constructor(options: PipelineOptions = {}) {
     this.guided = options.guided ?? true;
     this.detectOptions = options.detect ?? {};
+    this.boardLayout = options.boardLayout ?? DEFAULT_BOARD_LAYOUT;
     const d = this.detectOptions;
     this.params = {
       guided: this.guided,
@@ -111,9 +150,20 @@ export class PocketPipeline {
 
   reset(): void {
     this.stabilizer.reset();
+    this.rect = MAT_RECT;
+    this.model = matBoardModel();
     this.lastCircuit = null;
     this.structuralWarnings = [];
     this.emitted = false;
+  }
+
+  /**
+   * Choose how a non-mat rectangle becomes a lattice (task #94). Takes effect
+   * on the next frame; a no-op when unchanged, and the classic mat is
+   * unaffected either way.
+   */
+  setBoardLayout(layout: BoardLayout): void {
+    this.boardLayout = layout;
   }
 
   processFrame(image: RgbaImage | GrayImage): FrameResult {
@@ -125,7 +175,14 @@ export class PocketPipeline {
 
     const detectStats: DetectStats = { candidates: 0 };
     const blind = detectMarkers(gray, this.detectOptions, detectStats);
-    const board = fitBoard(blind);
+
+    // 1. What rectangle do the corner blocks actually span? (task #94)
+    this.updateRect(blind);
+    const board = fitBoard(blind, this.rect);
+
+    // 2. Interpret it under the chosen layout.
+    this.model = buildBoardModel(this.rect, this.boardLayout);
+    const grid = new GridMapper(this.model.grid);
 
     // Grid-guided redetection: recover markers the blind front end missed in
     // cells whose expected quad we can now project through the locked board.
@@ -133,14 +190,18 @@ export class PocketPipeline {
     let guidedRescues = 0;
     if (board && this.guided) {
       const stats = { rescued: 0 };
-      const rescued = guidedRedetect(gray, board, blind, this.grid, stats);
+      const rescued = guidedRedetect(gray, board, blind, grid, this.model, stats);
       guidedRescues = stats.rescued;
       if (rescued.length > 0) detected = [...blind, ...rescued];
     }
 
     const corners = detected.filter((m) => String(m.id) in CORNER_IDS).length;
 
-    const { observations, markerObs, offGridWarnings } = this.mapMarkers(detected, board);
+    const { observations, markerObs, offGridWarnings } = this.mapMarkers(
+      detected,
+      board,
+      grid,
+    );
 
     const result = this.stabilizer.update(observations);
     let changed = false;
@@ -160,6 +221,7 @@ export class PocketPipeline {
       markers: markerObs,
       detected,
       board,
+      model: this.model,
       stats: {
         candidates: detectStats.candidates,
         blindHits: blind.length,
@@ -169,9 +231,34 @@ export class PocketPipeline {
     };
   }
 
+  /**
+   * Move the sticky board rectangle if the frame says it really changed.
+   *
+   * Estimates are noisy at the tenth-of-a-millimetre level, and the derived
+   * column count is a floor(), so adopting every estimate would let a board
+   * near a column boundary flip size frame to frame. The current rectangle is
+   * therefore kept until an estimate differs from it by more than
+   * `MAT_RECT_TOLERANCE` on either axis — which also keeps a real mat pinned to
+   * exactly the mat geometry.
+   */
+  private updateRect(markers: DetectedMarker[]): void {
+    const estimate = estimateBoardRect(markers);
+    if (estimate === null) return;
+    const { rect } = estimate;
+    const tol = MAT_RECT_TOLERANCE;
+    if (
+      Math.abs(rect.widthMm - this.rect.widthMm) <= tol * this.rect.widthMm &&
+      Math.abs(rect.heightMm - this.rect.heightMm) <= tol * this.rect.heightMm
+    ) {
+      return;
+    }
+    this.rect = rect;
+  }
+
   private mapMarkers(
     markers: DetectedMarker[],
     board: BoardResult | null,
+    grid: GridMapper,
   ): { observations: Tile[]; markerObs: MarkerObs[]; offGridWarnings: BuildWarning[] } {
     const observations: Tile[] = [];
     const markerObs: MarkerObs[] = [];
@@ -184,7 +271,7 @@ export class PocketPipeline {
         continue;
       }
       const [bx, by] = board.imageToBoard(marker.center);
-      const cell = this.grid.assign(bx, by);
+      const cell = grid.assign(bx, by);
       if (cell === null) {
         markerObs.push({ id: marker.id, row: null, col: null, offGrid: true });
         // Mirrors pipeline.py's `off_grid` warning.
@@ -213,7 +300,9 @@ export class PocketPipeline {
       const [markerId, row, col, rotation] = parseTile(t);
       return { markerId, row, col, rotation };
     });
-    const build = buildCircuit(placements, BOARD.rows);
+    // Qubit count follows the active model: the mat's five rows, or the rows
+    // derived from the board height.
+    const build = buildCircuit(placements, this.model.rows);
     this.structuralWarnings = build.warnings;
 
     if (!this.emitted || !circuitsEqual(build.circuit, this.lastCircuit)) {

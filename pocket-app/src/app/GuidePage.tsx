@@ -273,6 +273,13 @@ export function GuidePage() {
                 </li>
                 <li>Build a Bell pair for a surprise.</li>
               </ol>
+              <p>
+                No printed mat? Four <b>corner blocks</b> mark the board instead, and they may
+                span <b>any rectangle</b> — the camera measures it from the blocks themselves.
+                Settings → <b>Board</b> decides what a bigger table buys: <b>More columns</b>{' '}
+                (the default) keeps the tile pitch and adds columns; <b>Bigger cells</b>{' '}
+                stretches the same eight columns to fill it.
+              </p>
               <p className="pk-guide-muted pk-guide-tips">
                 Tips: pinch to zoom; the gear opens settings, including golf mode and a debug
                 view; matte print beats glossy; screens work as boards. On a Mac, your iPhone can
@@ -410,6 +417,17 @@ export function GuidePage() {
                 the label reads upright when the block is placed correctly. They print from the
                 same 3D zip (<b>ul</b>/<b>ur</b>/<b>ll</b>/<b>lr</b> pieces + <b>corners.md</b>{' '}
                 with placement rules) and cut from the laser kit alike.
+              </p>
+              <p>
+                The four blocks may span <b>any rectangle</b> — they do not have to sit at
+                the printed mat's spacing. The camera measures the rectangle from the blocks
+                themselves (the 40 mm marker gives it the scale), so a bigger table simply
+                means a bigger board. What a bigger board buys you is the{' '}
+                <b>Board</b> setting: <b>More columns</b> (the default) keeps the tile pitch
+                and hands you extra columns to build longer circuits; <b>Bigger cells</b>{' '}
+                stretches the same eight columns across the whole table, which is easier to
+                aim at from across a room. A mat-sized layout ignores the switch and behaves
+                exactly as the printed mat always has.
               </p>
             </section>
 
@@ -608,6 +626,12 @@ export function GuidePage() {
                 At a booth, scan the <b>visitor QR</b> on the big screen to follow along on your
                 own phone — you'll see the circuit being built on the table, live, and can take
                 it home with the Transfer button.
+              </p>
+              <p>
+                Booth tables are rarely mat-sized, so staff lay the corner blocks to whatever
+                rectangle the table gives them and set <b>Board</b> once from the operator
+                controls; the choice is broadcast, so every screen in the room reads the table
+                the same way.
               </p>
               <ul className="pk-guide-links">
                 <li>

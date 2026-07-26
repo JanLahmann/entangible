@@ -11,6 +11,7 @@ the client -> server messages:
   ``{type:'hello_ack', role:'viewer'|'operator'}`` on that socket so the client
   learns its standing.
 * ``select_camera`` / ``select_mode`` / ``select_layout`` / ``select_noise`` /
+  ``select_board_layout`` /
   ``select_menu`` / ``serve`` — control messages, honored **only** for operator
   connections. From a viewer they are silently ignored (logged at debug level,
   no error sent back). A valid ``serve`` broadcasts a ``served`` message.
@@ -72,7 +73,7 @@ async def _handle_message(websocket: WebSocket, raw: str) -> None:
         await _handle_hello(websocket, msg)
     elif mtype in (
         "select_camera", "select_mode", "select_layout", "select_noise",
-        "select_menu", "serve",
+        "select_board_layout", "select_menu", "serve",
     ):
         # Control messages are operator-only. A viewer's attempt is silently
         # ignored (per design): no error is returned, just a debug log.
@@ -85,6 +86,8 @@ async def _handle_message(websocket: WebSocket, raw: str) -> None:
             await _handle_select_mode(websocket, msg)
         elif mtype == "select_noise":
             await _handle_select_noise(websocket, msg)
+        elif mtype == "select_board_layout":
+            await _handle_select_board_layout(websocket, msg)
         elif mtype == "select_menu":
             await _handle_select_menu(websocket, msg)
         elif mtype == "serve":
@@ -160,6 +163,23 @@ async def _handle_select_noise(websocket: WebSocket, msg: dict) -> None:
         return
     store = websocket.app.state.layout_store
     store.select_noise(preset)
+    await websocket.app.state.hub.publish_layout(store.message())
+
+
+async def _handle_select_board_layout(websocket: WebSocket, msg: dict) -> None:
+    """Set the booth-wide board layout (#94) and retune the live pipeline."""
+    layout = msg.get("layout")
+    if not isinstance(layout, str):
+        logger.info("ignoring select_board_layout without a string layout: %r", msg)
+        return
+    store = websocket.app.state.layout_store
+    store.select_board_layout(layout)
+    # The vision pipeline reads the layout per frame, so applying it here makes
+    # the switch take effect without a restart. Absent on a display-only host.
+    pipeline = getattr(websocket.app.state, "pipeline", None)
+    setter = getattr(pipeline, "set_board_layout", None)
+    if setter is not None:
+        setter(store.state.board_layout)
     await websocket.app.state.hub.publish_layout(store.message())
 
 

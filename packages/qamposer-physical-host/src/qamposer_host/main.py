@@ -135,6 +135,9 @@ def _try_start_pipeline(app: FastAPI) -> None:
             source=source,
             on_circuit=hub.publish_from_thread,
             on_detection=hub.publish_from_thread,
+            # Board layout (#94) is booth-wide state; start from the persisted
+            # choice so a restart keeps reading the table the same way.
+            board_layout=app.state.layout_store.state.board_layout,
         )
         pipeline.start()
         app.state.pipeline = pipeline

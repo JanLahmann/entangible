@@ -10,6 +10,7 @@ import {
   PANEL_IDS,
   settingsStore,
   useSettings,
+  type BoardLayout,
   type InputMode,
   type Mode,
   type NoisePreset,
@@ -102,10 +103,13 @@ function Segmented<T extends string>({
   value,
   options,
   onChange,
+  disabled = false,
 }: {
   value: T;
   options: ReadonlyArray<{ value: T; label: string }>;
   onChange: (v: T) => void;
+  /** Locked out — used when a connected booth owns the setting. */
+  disabled?: boolean;
 }) {
   return (
     <div className="pk-seg" role="group">
@@ -115,6 +119,7 @@ function Segmented<T extends string>({
           type="button"
           className={`pk-seg-btn ${value === o.value ? 'is-on' : ''}`}
           aria-pressed={value === o.value}
+          disabled={disabled}
           onClick={() => onChange(o.value)}
         >
           {o.label}
@@ -446,6 +451,25 @@ export function SettingsControl({
                   ]}
                   onChange={(wires) => settingsStore.update({ wires })}
                 />
+              </section>
+
+              <section className="pk-drawer-sec">
+                <div className="pk-label">Board</div>
+                <Segmented<BoardLayout>
+                  value={settings.boardLayout}
+                  options={[
+                    { value: 'grid', label: 'More columns' },
+                    { value: 'stretch', label: 'Bigger cells' },
+                  ]}
+                  disabled={connected}
+                  onChange={(boardLayout) => settingsStore.update({ boardLayout })}
+                />
+                <p className="pk-drawer-hint">
+                  Corner blocks may span any rectangle. On a table bigger than the printed
+                  mat, "More columns" keeps the tile pitch and gives you extra columns;
+                  "Bigger cells" stretches the 8-column board to fit. A mat-sized board
+                  ignores this. {connected ? 'Controlled by booth.' : null}
+                </p>
               </section>
 
               <section className="pk-drawer-sec">

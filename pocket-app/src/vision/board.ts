@@ -14,8 +14,14 @@ import {
   BOARD,
   CORNER_IDS,
   CORNER_ROLES,
+  MAT_RECT,
   MIN_CORNERS_FOR_BOARD,
+  boardWithRect,
+  centerSpan,
   cornerMarkerSquare,
+  rectFromCenterSpan,
+  type BoardGeometry,
+  type BoardRect,
   type Point,
 } from './geometry';
 import { quadrantRotation } from './markers';
@@ -30,9 +36,26 @@ export interface BoardResult {
   readonly reprojectionError: number;
   /** Corner marker IDs found and used (subset of {0,1,2,3}), canonical order. */
   readonly cornerIds: number[];
+  /** The board rectangle this pose was fitted against (task #94). */
+  readonly rect: BoardRect;
   imageToBoard(px: Point): [number, number];
   boardToImage(mm: Point): [number, number];
 }
+
+/** Outcome of {@link estimateBoardRect} for one frame. */
+export interface RectEstimate {
+  readonly rect: BoardRect;
+  /** RMS reprojection error (mm) of the corner correspondences under `rect`. */
+  readonly rms: number;
+  /** Corner marker IDs used, canonical (TL, TR, BR, BL) order. */
+  readonly cornerIds: number[];
+}
+
+/**
+ * Refinement passes in {@link estimateBoardRect}. With four corners the first
+ * pass is already exact; the rest only average out detector noise.
+ */
+export const RECT_ESTIMATE_ITERATIONS = 3;
 
 // ---------------------------------------------------------------------------
 // Small linear algebra
@@ -195,7 +218,153 @@ export function findHomography(
 // Board fitting
 // ---------------------------------------------------------------------------
 
-export function fitBoard(markers: DetectedMarker[]): BoardResult | null {
+/**
+ * Image-px / board-mm point pairs for every detected corner marker, taken
+ * against `board`'s extents.
+ */
+function cornerCorrespondences(
+  markers: DetectedMarker[],
+  board: BoardGeometry,
+): { srcPx: Array<[number, number]>; dstMm: Array<[number, number]>; found: number[] } {
+  const srcPx: Array<[number, number]> = [];
+  const dstMm: Array<[number, number]> = [];
+  const found: number[] = [];
+  for (const marker of markers) {
+    if (!(String(marker.id) in CORNER_IDS)) continue;
+    found.push(marker.id);
+    const square = cornerMarkerSquare(marker.id, board);
+    for (let k = 0; k < 4; k++) {
+      srcPx.push([marker.corners[k][0], marker.corners[k][1]]);
+      dstMm.push([square[k][0], square[k][1]]);
+    }
+  }
+  return { srcPx, dstMm, found };
+}
+
+/**
+ * Mean horizontal / vertical edge length of mapped marker quads (mm). `mapped`
+ * holds four consecutive points per marker; each edge is classified by whether
+ * it runs more horizontally or more vertically **in the fitted board frame**,
+ * so a corner block placed a quarter turn off still measures correctly.
+ */
+function markerExtents(mapped: Array<[number, number]>): [number, number] | null {
+  const horizontal: number[] = [];
+  const vertical: number[] = [];
+  for (let base = 0; base + 3 < mapped.length; base += 4) {
+    for (let k = 0; k < 4; k++) {
+      const a = mapped[base + k];
+      const b = mapped[base + ((k + 1) % 4)];
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const length = Math.hypot(dx, dy);
+      if (Math.abs(dx) >= Math.abs(dy)) horizontal.push(length);
+      else vertical.push(length);
+    }
+  }
+  if (horizontal.length === 0 || vertical.length === 0) return null;
+  const mean = (xs: number[]): number => xs.reduce((s, x) => s + x, 0) / xs.length;
+  return [mean(horizontal), mean(vertical)];
+}
+
+function rmsError(
+  h: Mat3,
+  srcPx: Array<[number, number]>,
+  dstMm: Array<[number, number]>,
+): number {
+  let sumSq = 0;
+  for (let i = 0; i < srcPx.length; i++) {
+    const [u, v] = applyHomography(h, srcPx[i][0], srcPx[i][1]);
+    const dx = u - dstMm[i][0];
+    const dy = v - dstMm[i][1];
+    sumSq += dx * dx + dy * dy;
+  }
+  return Math.sqrt(sumSq / srcPx.length);
+}
+
+/**
+ * Estimate the rectangle the detected corner markers actually span (task #94).
+ * EXACT port of `board.estimate_board_rect`.
+ *
+ * The corner markers give the rectangle's *shape*; their printed
+ * `cornerMarkerSize` (40 mm) gives the absolute *scale*. A short fixed-point
+ * iteration separates the two:
+ *
+ * 1. fit a homography image-px → a **model** board of the current estimate
+ *    (initially the mat), using every available corner point;
+ * 2. map the detected marker quads through it and measure their mean
+ *    horizontal / vertical edge length `(ex, ey)`;
+ * 3. the model is too small on an axis exactly when the marker measures too
+ *    large on it, so scale the centre spacing by `size/ex` and `size/ey`.
+ *
+ * With all four corners visible the composite world → model map is the
+ * anisotropic scaling `diag(spanX/spanXTrue, spanY/spanYTrue)` (a homography is
+ * determined by four correspondences, and that scaling already satisfies them),
+ * so step 3 lands on the true spacing in ONE pass. With three corners the same
+ * iteration converges from the 12 available points.
+ *
+ * Returns null with fewer than `MIN_CORNERS_FOR_BOARD` corners or on a
+ * degenerate fit.
+ */
+export function estimateBoardRect(
+  markers: DetectedMarker[],
+  iterations = RECT_ESTIMATE_ITERATIONS,
+  board: BoardGeometry = BOARD,
+): RectEstimate | null {
+  const { srcPx, found } = cornerCorrespondences(markers, board);
+  if (found.length < MIN_CORNERS_FOR_BOARD) return null;
+
+  let [spanX, spanY] = centerSpan(MAT_RECT, board);
+  const size = board.cornerMarkerSize;
+
+  for (let i = 0; i < Math.max(1, iterations); i++) {
+    const model = boardWithRect(rectFromCenterSpan(spanX, spanY, board), board);
+    const { dstMm } = cornerCorrespondences(markers, model);
+    let h: Mat3;
+    try {
+      h = findHomography(srcPx, dstMm);
+    } catch {
+      return null;
+    }
+    const mapped = srcPx.map(([x, y]) => applyHomography(h, x, y));
+    const extents = markerExtents(mapped);
+    if (extents === null) return null;
+    const [ex, ey] = extents;
+    if (!(ex > 1e-6) || !(ey > 1e-6)) return null;
+    spanX *= size / ex;
+    spanY *= size / ey;
+    if (!(spanX > 0) || !(spanY > 0)) return null;
+  }
+
+  const rect = rectFromCenterSpan(spanX, spanY, board);
+  const { dstMm } = cornerCorrespondences(markers, boardWithRect(rect, board));
+  let h: Mat3;
+  try {
+    h = findHomography(srcPx, dstMm);
+  } catch {
+    return null;
+  }
+
+  const roleOrder = new Map(CORNER_ROLES.map((role, idx) => [role, idx]));
+  const cornerIds = [...found].sort(
+    (a, b) => roleOrder.get(CORNER_IDS[String(a)])! - roleOrder.get(CORNER_IDS[String(b)])!,
+  );
+  return { rect, rms: rmsError(h, srcPx, dstMm), cornerIds };
+}
+
+/**
+ * Fit an image-px → board-mm homography from the detected corner markers.
+ *
+ * `rect` (task #94) overrides the mat extents the corner squares are taken
+ * from — pass {@link estimateBoardRect}'s output to fit against corner blocks
+ * spanning some other rectangle. Omitted (or the mat's own extents) reproduces
+ * the classic fit exactly.
+ */
+export function fitBoard(
+  markers: DetectedMarker[],
+  rect: BoardRect = MAT_RECT,
+  boardGeometry: BoardGeometry = BOARD,
+): BoardResult | null {
+  const geometry = boardWithRect(rect, boardGeometry);
   const srcPx: Array<[number, number]> = [];
   const dstMm: Array<[number, number]> = [];
   const found: number[] = [];
@@ -203,7 +372,7 @@ export function fitBoard(markers: DetectedMarker[]): BoardResult | null {
   for (const marker of markers) {
     if (!(String(marker.id) in CORNER_IDS)) continue;
     found.push(marker.id);
-    const square = cornerMarkerSquare(marker.id);
+    const square = cornerMarkerSquare(marker.id, geometry);
     for (let k = 0; k < 4; k++) {
       const px = marker.corners[k];
       const mm: Point = square[k];
@@ -242,6 +411,7 @@ export function fitBoard(markers: DetectedMarker[]): BoardResult | null {
     homography,
     reprojectionError: rms,
     cornerIds: ordered,
+    rect,
     imageToBoard: (px: Point) => applyHomography(homography, px[0], px[1]),
     boardToImage: (mm: Point) => applyHomography(inv, mm[0], mm[1]),
   };

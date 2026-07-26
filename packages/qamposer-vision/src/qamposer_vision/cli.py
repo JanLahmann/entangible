@@ -26,10 +26,11 @@ import cv2
 import numpy as np
 
 from .annotate import annotate_frame
-from .board import BoardConfig, BoardResult, fit_board
+from .board import BoardConfig, BoardResult, estimate_board_rect, fit_board
+from .board_model import DEFAULT_BOARD_LAYOUT, BoardModel, build_board_model
 from .circuit_builder import BuildWarning, TilePlacement, build_circuit
 from .detector import ArucoDetector, DetectedMarker
-from .grid import GridConfig, GridMapper
+from .grid import GridMapper
 from .markers import CORNER_IDS, MARKER_TABLE
 from .qasm import circuit_to_qasm
 
@@ -46,6 +47,9 @@ class DetectionResult:
     board: BoardResult | None
     markers: list[DetectedMarker]
     placements: list[TilePlacement] = field(default_factory=list)
+    #: The geometry the frame was interpreted in (task #94). ``None`` when no
+    #: board was found.
+    model: BoardModel | None = None
 
     @property
     def has_board(self) -> bool:
@@ -57,11 +61,16 @@ def detect_circuit(
     board_config: BoardConfig | None = None,
     grid_tolerance: float = 1.0,
     detector: ArucoDetector | None = None,
+    board_layout: str = DEFAULT_BOARD_LAYOUT,
 ) -> DetectionResult:
     """Run ArUco -> board -> grid -> circuit on one BGR/gray image.
 
     When no board is found (``< 3`` corners) the returned
     :class:`DetectionResult` has ``board is None`` and an empty circuit.
+
+    The corner markers' actual span is estimated first (task #94); a rectangle
+    within the mat tolerance keeps the classic geometry verbatim, anything else
+    is interpreted under ``board_layout`` (``"stretch"`` | ``"grid"``).
     """
     if board_config is None:
         board_config = BoardConfig.from_toml()
@@ -69,7 +78,9 @@ def detect_circuit(
         detector = ArucoDetector()
 
     markers = detector.detect(image)
-    board = fit_board(markers, board_config)
+    estimate = estimate_board_rect(markers, board_config)
+    rect = None if estimate is None else estimate.rect
+    board = fit_board(markers, board_config, rect)
 
     qubits = board_config.rows
     if board is None:
@@ -82,7 +93,9 @@ def detect_circuit(
             markers=markers,
         )
 
-    grid = GridMapper(GridConfig.from_board_config(board_config), tolerance=grid_tolerance)
+    model = build_board_model(board_config, rect, board_layout)
+    qubits = model.rows
+    grid = GridMapper(model.grid, tolerance=grid_tolerance)
 
     placements: list[TilePlacement] = []
     warnings: list[BuildWarning] = []
@@ -124,6 +137,7 @@ def detect_circuit(
         board=board,
         markers=markers,
         placements=placements,
+        model=model,
     )
 
 

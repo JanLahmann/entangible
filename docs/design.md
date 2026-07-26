@@ -364,6 +364,47 @@ deviation from the plan above: the validation fixtures use `qiskit.quantum_info`
 applying the exact documented channel schedule, which carries less alignment
 risk than matching Aer's implicit channel ordering.
 
+### Variable corner placement (task #94; implemented 2026-07-26)
+
+Corner blocks (#90) replaced the printed mat, but detection still assumed the
+mat's exact geometry — the homography was fitted from 16 correspondences at
+fixed board-mm positions, so any other corner spacing produced inconsistent
+correspondences and a high reprojection error. Two changes remove that
+assumption; both live in `board.py`/`board_model.py` and their byte-mirrors in
+`pocket-app/src/vision/`.
+
+**Measuring the board.** `estimate_board_rect` recovers the rectangle the corner
+markers actually span. The markers give the *shape*; their printed 40 mm size
+gives the absolute *scale*. A short fixed-point iteration separates the two: fit
+image-px → a model board of the current guess (initially the mat), map the
+detected marker quads through it, measure their mean horizontal/vertical edge
+length, and scale the centre spacing by `40/e` per axis. With four corners the
+composite world → model map is exactly the anisotropic scaling (a homography is
+determined by four correspondences, and that scaling satisfies them), so the
+first pass is exact; the extra passes only average out detector noise, and the
+same loop converges from the 12 points three corners give. The pipeline holds
+the rectangle **sticky**: it starts at the mat and only moves when an estimate
+differs by more than ±5 %, which both keeps a real mat pinned to exactly the mat
+geometry (classic output, bit-for-bit) and stops a board near a column boundary
+from re-deriving its size every frame.
+
+**Reading the board.** A rectangle within ±5 % of the mat is the mat. Anything
+else is interpreted under one operator-chosen layout:
+
+- **`grid`** (default — Jan's pick): keep the mat's 70 mm pitch and 62 mm cells,
+  so a printed tile always covers exactly one cell, and derive the COLUMN count
+  from the measured width. A wider table simply means more columns. Capped at 20
+  — `@qamposer/react`'s `CircuitEditor` has no hard limit (it always renders
+  `MIN_POSITIONS = 20` and grows with the circuit), so the cap is ours, chosen as
+  the widest board guaranteed to be fully visible without the editor growing.
+- **`stretch`**: keep the 5 × 8 lattice and scale it into the rectangle, x and y
+  independently, so the cells grow with the table.
+
+The setting is `settings.boardLayout` (`?board=stretch|grid`), broadcast
+booth-wide as `layout.boardLayout` / `select_board_layout` on the noise-preset
+pattern — a connected booth owns it so every screen in the room reads the table
+the same way.
+
 ### Quantina — unified Qoffee-Maker/quantum-mixer successor (task #35; IMPLEMENTED 2026-07-20)
 
 **Quantina** ("quantum cantina") replaces the standalone

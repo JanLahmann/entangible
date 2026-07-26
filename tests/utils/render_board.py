@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
-from qamposer_vision.board import BoardConfig
+from qamposer_vision.board import BoardConfig, BoardRect, with_rect
 from qamposer_vision.grid import GridConfig
 from qamposer_vision.markers import ARUCO_DICT_NAME, CORNER_IDS
 
@@ -114,6 +114,12 @@ class RenderOptions:
     #: extra tiles placed at explicit board-mm centres (marker_id, x_mm, y_mm),
     #: e.g. to drop a tile deliberately off-grid.
     extra_mm: tuple[tuple[int, float, float], ...] = ()
+    #: Board rectangle ``(width_mm, height_mm)`` the corner markers span (task
+    #: #94). ``None`` = the printed mat's own extents.
+    rect: tuple[float, float] | None = None
+    #: Lattice the ``placements`` cells are taken from. ``None`` = the mat's.
+    #: Pass the active :class:`BoardModel`'s grid when rendering a non-mat board.
+    grid: GridConfig | None = None
 
 
 def _aruco_dictionary() -> "cv2.aruco.Dictionary":
@@ -149,6 +155,11 @@ def render_board(
     pad = int(round(opt.pad_mm * ppm))
     dictionary = _aruco_dictionary()
 
+    # The corner markers span `opt.rect` (default: the printed mat). Resizing the
+    # config is all it takes — corner_marker_square reads the mat extents.
+    if opt.rect is not None:
+        config = with_rect(config, BoardRect(opt.rect[0], opt.rect[1]))
+
     width = int(round(config.mat_width * ppm)) + 2 * pad
     height = int(round(config.mat_height * ppm)) + 2 * pad
     canvas = np.full((height, width, 3), 255, dtype=np.uint8)
@@ -165,7 +176,7 @@ def render_board(
 
     # Gate tiles at their cell centres. A placement may carry a 4th element, the
     # clockwise 90° rotation (0-3) — used by dial tiles to select their angle.
-    grid = GridConfig.from_board_config(config)
+    grid = opt.grid or GridConfig.from_board_config(config)
     tile_size_px = int(round(config.tile_marker_size * ppm))
     for placement in placements:
         marker_id, row, col = placement[0], placement[1], placement[2]

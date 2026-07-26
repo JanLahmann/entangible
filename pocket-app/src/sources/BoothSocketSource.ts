@@ -77,6 +77,9 @@ export function snapshotToUpdate(
     boothWires: layout?.wires,
     boothPanels: layout ? layout.panels : undefined,
     boothNoise: layout?.noise,
+    // #94: the booth's board-layout choice, so a connected phone's own detection
+    // (and its settings drawer) follows the booth instead of its local setting.
+    boothBoardLayout: layout?.boardLayout,
     // QN2: surface the active pack id (present ⟺ a layout arrived) and the
     // latest served broadcast so a viewer phone reveals the booth's order.
     boothMenu: layout ? layout.menu : undefined,

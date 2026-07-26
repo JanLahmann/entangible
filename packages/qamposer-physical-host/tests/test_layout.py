@@ -28,6 +28,7 @@ def test_defaults_are_composer_preset():
     assert state.wires == "compact"
     assert state.noise == "off"
     assert state.menu is None
+    assert state.board_layout == "grid"
     assert store.message() == {
         "type": "layout",
         "mode": "composer",
@@ -36,6 +37,7 @@ def test_defaults_are_composer_preset():
         "wires": "compact",
         "noise": "off",
         "menu": None,
+        "boardLayout": "grid",
     }
 
 
@@ -222,6 +224,7 @@ def test_api_layout_default_shape(tmp_path):
             "wires": "compact",
             "noise": "off",
             "menu": None,
+            "boardLayout": "grid",
         }
 
 
@@ -487,3 +490,26 @@ def test_ws_select_menu_ignored_for_viewers(tmp_path):
             assert layout["type"] == "layout"
             assert layout["menu"] == "cocktails"
         assert client.get("/api/layout").json()["menu"] == "cocktails"
+
+
+# --- board layout (#94) -----------------------------------------------------
+
+
+def test_select_board_layout_switches_and_ignores_unknown():
+    store = LayoutStore(None)
+    assert store.state.board_layout == "grid"
+    store.select_board_layout("stretch")
+    assert store.state.board_layout == "stretch"
+    assert store.message()["boardLayout"] == "stretch"
+    # An unknown value never moves the state.
+    store.select_board_layout("origami")
+    assert store.state.board_layout == "stretch"
+
+
+def test_board_layout_round_trips_through_layout_toml(tmp_path):
+    path = tmp_path / "layout.toml"
+    LayoutStore(path).select_board_layout("stretch")
+    assert LayoutStore(path).state.board_layout == "stretch"
+    # A file written before #94 simply defaults.
+    path.write_text('mode = "composer"\n', encoding="utf-8")
+    assert LayoutStore(path).state.board_layout == "grid"

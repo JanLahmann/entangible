@@ -19,6 +19,7 @@
 import type { Circuit } from '@qamposer/react';
 import type { Wires } from '@shared/display/wires';
 import type { NoisePreset } from '@quantum/noise';
+import type { BoardLayout } from '../vision/boardModel';
 import type { ServedMessage } from '@shared/ws/messages';
 import type { WarningInput } from '@shared/display/warnings';
 
@@ -55,6 +56,11 @@ export interface StateUpdate {
   readonly boothPanels?: string[] | null;
   /** Host-driven noise preset; when present it overrides the local setting. */
   readonly boothNoise?: NoisePreset;
+  /**
+   * Host-driven board layout for non-mat corner-block boards (task #94); when
+   * present it overrides the local setting. Absent on older hosts.
+   */
+  readonly boothBoardLayout?: BoardLayout;
   /**
    * Host-driven Quantina menu-pack id (booth only, QN2): the active
    * `layout.menu`, or `null` when none is chosen (clients fall back to

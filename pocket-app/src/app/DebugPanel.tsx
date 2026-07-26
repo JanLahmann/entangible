@@ -41,6 +41,26 @@ export function DebugPanel({ frame, fps }: { frame: FrameResult | null; fps: num
                 {frame?.reprojectionErrorMm != null ? frame.reprojectionErrorMm.toFixed(2) : '—'}
               </td>
             </tr>
+            {/* Board model (#94/#95): the rectangle the corner blocks actually
+                span, which model read it, and the lattice that came out. */}
+            <tr>
+              <td>board mm</td>
+              <td>
+                {frame
+                  ? `${Math.round(frame.model.rect.widthMm)}×${Math.round(
+                      frame.model.rect.heightMm,
+                    )}`
+                  : '—'}
+              </td>
+              <td>layout</td>
+              <td>{frame?.model.kind ?? '—'}</td>
+            </tr>
+            <tr>
+              <td>grid</td>
+              <td>{frame ? `${frame.model.rows}×${frame.model.cols}` : '—'}</td>
+              <td>wires</td>
+              <td>{frame ? (frame.model.wireCount ?? '—') : '—'}</td>
+            </tr>
           </tbody>
         </table>
 

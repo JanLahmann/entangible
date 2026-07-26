@@ -23,7 +23,7 @@ surfaces stay fully open (no token, zero friction).
 | Surface                                              | Gate                          |
 |------------------------------------------------------|-------------------------------|
 | `/ws/state` reads (circuit/detection/status/layout)  | **open** — any client         |
-| `/ws/state` `select_camera` / `select_mode` / `select_layout` / `select_noise` / `select_menu` / `serve` | operator `hello` (below) |
+| `/ws/state` `select_camera` / `select_mode` / `select_layout` / `select_noise` / `select_board_layout` / `select_menu` / `serve` | operator `hello` (below) |
 | `/ws/frames` (phone frame intake)                    | `?key=<token>` (else close `4403`) |
 | `GET /debug/stream`, `GET /debug/snapshot.jpg` (MJPEG preview) | `?key=` or `X-Operator-Key` header (else `403`) |
 | `GET /api/qr`                                        | `?key=` or `X-Operator-Key` header (else `403`) |
@@ -70,7 +70,11 @@ Every message is a JSON object with a `type` discriminator.
   "board": {
     "found": true,
     "corners": 4,                       // corner markers currently visible (0-4)
-    "reprojectionErrorMm": 0.05         // null when board not found
+    "reprojectionErrorMm": 0.05,        // null when board not found
+    "rectMm": { "widthMm": 720, "heightMm": 500 },  // measured corner span; null when no board
+    "layout": "mat",                    // "mat" | "stretch" | "grid" — model that read the frame
+    "rows": 5,                          // active lattice size
+    "cols": 8
   },
   "markers": [
     { "id": 10, "row": 0, "col": 0 },   // on-grid gate tile
@@ -83,6 +87,14 @@ Every message is a JSON object with a `type` discriminator.
 ```
 
 - Corner markers (IDs 0–3) are **not** listed in `markers`.
+- `board.rectMm` / `layout` / `rows` / `cols` are **additive** (task #94) and
+  absent on older hosts. Since corner *blocks* replaced the
+  printed mat the four fiducials may span any rectangle: the detector measures
+  it (the printed 40 mm marker gives the absolute scale) and reports it the same
+  way the mat is measured, margins included — so a mat-sized layout reports
+  `720 × 500` and `layout: "mat"`, which is the classic geometry, bit-for-bit.
+  Anything outside a ±5 % band around the mat is read under the booth's
+  `layout.boardLayout`.
 - `warnings[].code` values come from the circuit builder (`lone_control`,
   `lone_target`, `cell_conflict`, `control_ambiguous`, …); `row`/`col` optional.
 - Latest `detection` also replayed on connect (may be stale; `fps: 0` signals
@@ -154,8 +166,8 @@ not send the `select_*` control messages.
   carrying the resulting standing.
 - `select_camera` swaps the pipeline's frame source at runtime; the server
   answers with a fresh `status`. **Operator-only** — a viewer's `select_camera`
-  / `select_mode` / `select_layout` / `select_noise` / `select_menu` / `serve`
-  is silently ignored (no error, no `status`).
+  / `select_mode` / `select_layout` / `select_noise` / `select_board_layout` /
+  `select_menu` / `serve` is silently ignored (no error, no `status`).
 - Unknown/malformed client messages are logged and ignored — never fatal.
 
 ### `layout` — panel/mode state (additive, booth-v2)
@@ -168,7 +180,8 @@ not send the `select_*` control messages.
   "panels": ["results", "state", "qasm"], // visible panels, in order (registry names)
   "wires": "compact",                    // "compact" | "all" — displayed wire count
   "noise": "off",                        // "off"|"falcon"|"eagle"|"heron"|"nighthawk" — booth noise preset
-  "menu": null                           // active Quantina menu-pack id, or null (string | null)
+  "menu": null,                          // active Quantina menu-pack id, or null (string | null)
+  "boardLayout": "grid"                  // "stretch"|"grid" — booth-wide board layout (#94)
 }
 ```
 
@@ -205,6 +218,19 @@ composer-style stage (see docs/runner.md).
 // noise-model preset. Operator-only (silently ignored from viewers, like the
 // other select_*); an unknown value is ignored. Updates layout.noise, persists
 // to layout.toml, and triggers a layout broadcast (also in late-joiner replay).
+```
+
+```jsonc
+{ "type": "select_board_layout", "layout": "grid" }
+// layout: "stretch"|"grid" — how a corner-block board that is NOT the printed
+// mat becomes a lattice (#94). "grid" (default) keeps the mat's 70 mm pitch and
+// derives the COLUMN count from the measured width; "stretch" scales the 5×8
+// board into the rectangle so the cells grow. A mat-sized board ignores it.
+// Operator-only (silently ignored from viewers); an unknown value is ignored.
+// Updates layout.boardLayout, persists to layout.toml, and triggers a layout
+// broadcast (also in late-joiner replay). Clients that detect locally honor the
+// broadcast over their own `?board=` / drawer setting; display-only clients
+// ignore it.
 ```
 
 ```jsonc
@@ -289,8 +315,13 @@ Pipeline(
   (`seq` is assigned by the host, not the pipeline.)
 - `DetectionEvent`: `fps: float`, `board_found: bool`, `corners: int`,
   `reprojection_error_mm: float | None`, `markers: list[MarkerObs]`
-  (`id`, `row`, `col` | `off_grid`), `warnings: list[BuildWarning]`.
+  (`id`, `row`, `col` | `off_grid`), `warnings: list[BuildWarning]`, plus the
+  board model (#94): `rect_mm: tuple[float, float] | None`,
+  `board_layout: str`, `rows: int`, `cols: int`.
   Snake_case in Python; the host serializes to the camelCase JSON above.
+- `Pipeline(..., board_layout: str = "grid")` and `.set_board_layout(layout)`
+  choose how a non-mat rectangle becomes a lattice; the host drives it from
+  `layout.boardLayout`.
 
 ## Versioning
 

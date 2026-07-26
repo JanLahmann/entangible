@@ -21,7 +21,8 @@ import {
   type GrayImage,
 } from './detect';
 import type { BoardResult } from './board';
-import { BOARD, CORNER_IDS, TILE, type Point } from './geometry';
+import { CORNER_IDS, TILE, type Point } from './geometry';
+import { matBoardModel, type BoardModel } from './boardModel';
 import { MARKER_TABLE } from './markers';
 import type { GridMapper } from './grid';
 
@@ -49,6 +50,7 @@ export function guidedRedetect(
   board: BoardResult,
   blind: DetectedMarker[],
   grid: GridMapper,
+  model: BoardModel = matBoardModel(),
   stats?: GuidedStats,
 ): DetectedMarker[] {
   // Cells already claimed by a blind tile detection — never re-attempt them.
@@ -64,8 +66,10 @@ export function guidedRedetect(
   const margin = 8; // px slack allowed outside the frame for a partly-cropped tile
   const rescued: DetectedMarker[] = [];
 
-  for (let row = 0; row < BOARD.rows; row++) {
-    for (let col = 0; col < BOARD.cols; col++) {
+  // The ACTIVE lattice, not the mat's: a wider board has more columns and wire
+  // blocks may have replaced the rows (#94/#95).
+  for (let row = 0; row < model.rows; row++) {
+    for (let col = 0; col < model.cols; col++) {
       if (occupied.has(`${row},${col}`)) continue;
 
       const [cx, cy] = grid.cellCenter(row, col);

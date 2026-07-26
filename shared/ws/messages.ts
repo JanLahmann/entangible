@@ -29,13 +29,35 @@ export interface CircuitMessage {
   source: CircuitSource;
 }
 
-/** Board fiducial state within a `detection` message. */
+/**
+ * Board fiducial state within a `detection` message.
+ *
+ * Everything below `reprojectionErrorMm` is additive (task #94) and absent on
+ * older hosts: since corner *blocks* replaced the printed mat, the four
+ * fiducials may span any rectangle, so the detector reports the rectangle it
+ * measured, which model interpreted the frame and the resulting lattice size.
+ */
 export interface BoardState {
   found: boolean;
   /** Corner markers currently visible (0-4). */
   corners: number;
   /** null when the board is not found. */
   reprojectionErrorMm: number | null;
+  /**
+   * The rectangle the corner markers span, in board mm — measured the same way
+   * the mat is (margins included), so a mat-sized layout reports 720x500.
+   * null when the board is not found; absent on older hosts.
+   */
+  rectMm?: { widthMm: number; heightMm: number } | null;
+  /**
+   * Which model interpreted the frame: `mat` (the rectangle is the printed
+   * mat's, within tolerance — classic geometry, unchanged output), or the
+   * active `BoardLayout` for anything else.
+   */
+  layout?: BoardModelKind;
+  /** Active lattice size. */
+  rows?: number;
+  cols?: number;
 }
 
 /** A detected gate tile (corner markers 0-3 are never listed here). */
@@ -118,6 +140,21 @@ import type { NoisePreset } from '@quantum/noise';
 export type { NoisePreset };
 
 /**
+ * How a corner-block board that is NOT the printed mat becomes a lattice
+ * (task #94). `stretch` scales the 5x8 board into the measured rectangle
+ * (same cells, bigger); `grid` (the default) keeps the mat's 70 mm pitch and
+ * derives the COLUMN count from the measured width, so a wider table means
+ * more columns. A mat-sized board ignores it entirely.
+ *
+ * The canonical union lives in the pocket vision package
+ * (`vision/boardModel`); it is restated here rather than imported so the
+ * protocol module keeps its no-runtime-dependency shape (the `NoisePreset`
+ * pattern), and `BoardModelKind` adds the `mat` value only the detector reports.
+ */
+export type BoardLayout = 'stretch' | 'grid';
+export type BoardModelKind = 'mat' | BoardLayout;
+
+/**
  * `layout` — panel/mode state (additive, booth-v2).
  *
  * `panels` are registry names in display order (`results`, `state`, `qasm`,
@@ -141,6 +178,12 @@ export interface LayoutMessage {
    * when `null` or when the id resolves to no bundled/loaded pack.
    */
   menu: string | null;
+  /**
+   * Booth-wide board layout for non-mat corner-block boards (additive, #94).
+   * Default `grid`. Clients that detect locally honor the broadcast value over
+   * their own setting; clients that only display ignore it.
+   */
+  boardLayout: BoardLayout;
 }
 
 /**
@@ -250,6 +293,16 @@ export interface SelectNoise {
 }
 
 /**
+ * `select_board_layout` — set the booth-wide board layout (additive, #94).
+ * Operator-only; a viewer's attempt is silently ignored (as with the other
+ * `select_*`). An unknown value is ignored server-side.
+ */
+export interface SelectBoardLayout {
+  type: 'select_board_layout';
+  layout: BoardLayout;
+}
+
+/**
  * `select_menu` — activate a Quantina menu pack (additive, QN2). Operator-only
  * (silently ignored from viewers). The host validates the id's FORMAT only
  * (lowercase `[a-z0-9-]`) — it cannot know which packs a client bundles —
@@ -281,6 +334,7 @@ export type ClientMessage =
   | SelectMode
   | SelectLayout
   | SelectNoise
+  | SelectBoardLayout
   | SelectMenu
   | Serve;
 
@@ -305,6 +359,7 @@ export const CLIENT_MESSAGE_TYPES = [
   'select_mode',
   'select_layout',
   'select_noise',
+  'select_board_layout',
   'select_menu',
   'serve',
 ] as const;

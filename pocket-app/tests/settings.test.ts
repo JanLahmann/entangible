@@ -89,7 +89,16 @@ describe('sanitize', () => {
       courseCode: null,
       noise: 'off',
       menu: 'coffee',
+      boardLayout: 'grid',
     });
+  });
+
+  it('coerces the board layout (#94)', () => {
+    expect(sanitize({ boardLayout: 'stretch' }).boardLayout).toBe('stretch');
+    expect(sanitize({ boardLayout: 'grid' }).boardLayout).toBe('grid');
+    // Anything else is the default — the switch only has two positions.
+    expect(sanitize({ boardLayout: 'origami' }).boardLayout).toBe('grid');
+    expect(sanitize({}).boardLayout).toBe('grid');
   });
 
   it('keeps a stored golf course code only if it still looks like one (#78)', () => {
@@ -202,6 +211,31 @@ describe('wires setting', () => {
     expect(JSON.parse(storage._map.get(STORAGE_KEY)!).wires).toBe('all');
     // A fresh store reading the same storage keeps the persisted choice.
     expect(createSettingsStore({ storage }).get().wires).toBe('all');
+  });
+});
+
+describe('board layout setting (#94)', () => {
+  it('parses ?board= and ignores junk', () => {
+    expect(parseUrlOverrides('?board=stretch')).toEqual({ boardLayout: 'stretch' });
+    expect(parseUrlOverrides('?board=grid')).toEqual({ boardLayout: 'grid' });
+    expect(parseUrlOverrides('?board=bogus')).toEqual({});
+    expect(parseUrlOverrides('?mode=golf')).not.toHaveProperty('boardLayout');
+    // `?booth=` is a different setting and must not be confused with it.
+    expect(parseUrlOverrides('?booth=host:8443')).not.toHaveProperty('boardLayout');
+  });
+
+  it('defaults to grid — Jan\'s pick: more columns beats bigger cells', () => {
+    expect(DEFAULT_SETTINGS.boardLayout).toBe('grid');
+  });
+
+  it('lets a URL override win until the user picks in the drawer', () => {
+    const storage = fakeStorage();
+    const store = createSettingsStore({ storage, search: '?board=stretch' });
+    expect(store.get().boardLayout).toBe('stretch');
+    store.update({ boardLayout: 'grid' });
+    expect(store.get().boardLayout).toBe('grid');
+    // Persisted, and the override is dropped for that key.
+    expect(JSON.parse(storage._map.get(STORAGE_KEY)!).boardLayout).toBe('grid');
   });
 });
 

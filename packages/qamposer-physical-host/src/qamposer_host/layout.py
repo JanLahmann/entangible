@@ -38,6 +38,14 @@ VALID_WIRES = ("compact", "all")
 #: in lockstep with `NoisePreset` in shared/quantum/noise.ts + shared/ws/messages.ts.
 VALID_NOISE = ("off", "falcon", "eagle", "heron", "nighthawk")
 
+#: Board layouts for a corner-block board that is NOT the printed mat (#94).
+#: ``grid`` (default) keeps the mat's pitch and derives the COLUMN count from
+#: the measured width; ``stretch`` scales the 5x8 board into the rectangle.
+#: Kept in lockstep with `BoardLayout` in shared/ws/messages.ts and
+#: `qamposer_vision.board_model.BOARD_LAYOUTS`.
+VALID_BOARD_LAYOUTS = ("stretch", "grid")
+DEFAULT_BOARD_LAYOUT = "grid"
+
 #: Quantina menu-pack id format. The host validates FORMAT only — it cannot know
 #: which packs a client bundles (see docs/protocol.md), so it accepts any
 #: lowercase [a-z0-9-] id of 1..64 chars and leaves pack existence to the client.
@@ -86,6 +94,10 @@ class LayoutState:
     panels: list[str] = field(default_factory=lambda: default_panels(DEFAULT_MODE))
     wires: str = DEFAULT_WIRES
     noise: str = DEFAULT_NOISE
+    #: Board layout for non-mat corner-block boards (#94). Broadcast so every
+    #: screen in the room reads the same table the same way; display-only
+    #: clients ignore it.
+    board_layout: str = DEFAULT_BOARD_LAYOUT
     #: Active Quantina menu-pack id (``None`` = pack not chosen yet). Passes
     #: through as JSON ``null`` on the wire.
     menu: str | None = None
@@ -100,6 +112,7 @@ class LayoutState:
             "wires": self.wires,
             "noise": self.noise,
             "menu": self.menu,
+            "boardLayout": self.board_layout,
         }
 
     def to_dict(self) -> dict:
@@ -110,6 +123,7 @@ class LayoutState:
             "wires": self.wires,
             "noise": self.noise,
             "menu": self.menu,
+            "boardLayout": self.board_layout,
         }
 
 
@@ -125,6 +139,7 @@ def _dump_toml(state: LayoutState) -> str:
         f"panels = [{panels}]\n"
         f"wires = {_toml_str(state.wires)}\n"
         f"noise = {_toml_str(state.noise)}\n"
+        f"board_layout = {_toml_str(state.board_layout)}\n"
     )
     # Only emit ``menu`` when a pack is active — TOML has no ``null``, so absence
     # is how ``None`` round-trips.
@@ -139,6 +154,7 @@ def _state_from_toml(data: dict) -> LayoutState:
     panels = data.get("panels")
     wires = data.get("wires")
     noise = data.get("noise")
+    board_layout = data.get("board_layout")
     menu = data.get("menu")
     state = LayoutState()
     if isinstance(mode, str):
@@ -151,6 +167,8 @@ def _state_from_toml(data: dict) -> LayoutState:
         state.wires = wires
     if isinstance(noise, str) and noise in VALID_NOISE:
         state.noise = noise
+    if isinstance(board_layout, str) and board_layout in VALID_BOARD_LAYOUTS:
+        state.board_layout = board_layout
     if isinstance(menu, str) and VALID_MENU_RE.match(menu):
         state.menu = menu
     return state
@@ -237,6 +255,20 @@ class LayoutStore:
             return self._state
         if preset != self._state.noise:
             self._state.noise = preset
+            self._save()
+        return self._state
+
+    def select_board_layout(self, layout: str) -> LayoutState:
+        """Set the booth-wide board layout (persist on change).
+
+        An unknown value is ignored (state unchanged) — the wire protocol only
+        defines ``stretch | grid``.
+        """
+        if layout not in VALID_BOARD_LAYOUTS:
+            logger.info("ignoring select_board_layout with unknown layout: %r", layout)
+            return self._state
+        if layout != self._state.board_layout:
+            self._state.board_layout = layout
             self._save()
         return self._state
 

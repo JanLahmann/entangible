@@ -38,14 +38,91 @@ export const MIN_CORNERS_FOR_BOARD = 3;
 export type Point = readonly [number, number];
 
 /**
+ * The outer rectangle the four corner markers span, in board mm (task #94).
+ * Measured exactly as the mat is — including the `cornerMargin` inset on both
+ * sides — so corner blocks at mat spacing report `(matWidth, matHeight)` and
+ * the board-mm origin stays the board's top-left corner.
+ */
+export interface BoardRect {
+  readonly widthMm: number;
+  readonly heightMm: number;
+}
+
+/**
+ * Relative tolerance within which an estimated rectangle counts as "the mat"
+ * (mirrors `MAT_RECT_TOLERANCE` in board.py). Inside it the classic geometry is
+ * used verbatim, so a real mat — and corner blocks at mat spacing — detect
+ * exactly as they did before variable placement existed. It doubles as the
+ * hysteresis band of the pipeline's sticky rectangle.
+ */
+export const MAT_RECT_TOLERANCE = 0.05;
+
+/** The printed mat's rectangle: the classic geometry and the initial guess. */
+export const MAT_RECT: BoardRect = {
+  widthMm: BOARD.matWidth,
+  heightMm: BOARD.matHeight,
+};
+
+/** Distance from a board edge to a corner marker's *centre*, in mm. */
+export function cornerInset(board: BoardGeometry = BOARD): number {
+  return board.cornerMargin + board.cornerMarkerSize / 2;
+}
+
+/** Centre-to-centre spacing of opposite corner markers for `rect` (mm). */
+export function centerSpan(
+  rect: BoardRect,
+  board: BoardGeometry = BOARD,
+): [number, number] {
+  const inset = 2 * cornerInset(board);
+  return [rect.widthMm - inset, rect.heightMm - inset];
+}
+
+/** Inverse of {@link centerSpan}. */
+export function rectFromCenterSpan(
+  spanX: number,
+  spanY: number,
+  board: BoardGeometry = BOARD,
+): BoardRect {
+  const inset = 2 * cornerInset(board);
+  return { widthMm: spanX + inset, heightMm: spanY + inset };
+}
+
+/**
+ * A copy of the board geometry whose mat extents are `rect`. Everything
+ * downstream reads the mat extents, so resizing them is all it takes to
+ * describe a board of corner blocks spanning a different rectangle.
+ */
+export function boardWithRect(rect: BoardRect, board: BoardGeometry = BOARD): BoardGeometry {
+  return { ...board, matWidth: rect.widthMm, matHeight: rect.heightMm };
+}
+
+/** Is `rect` the printed mat, within `tolerance` (relative, per axis)? */
+export function isMatRect(
+  rect: BoardRect,
+  tolerance = MAT_RECT_TOLERANCE,
+  board: BoardGeometry = BOARD,
+): boolean {
+  return (
+    Math.abs(rect.widthMm - board.matWidth) <= tolerance * board.matWidth &&
+    Math.abs(rect.heightMm - board.matHeight) <= tolerance * board.matHeight
+  );
+}
+
+/**
  * Board-mm coordinates of a corner marker's four corners, in ArUco canonical
  * order (TL, TR, BR, BL of the marker as printed) — mirrors
  * `BoardConfig.corner_marker_square`.
+ *
+ * `board` defaults to the printed mat; pass {@link boardWithRect} to read the
+ * squares of corner blocks spanning some other rectangle (task #94).
  */
-export function cornerMarkerSquare(markerId: number): [Point, Point, Point, Point] {
+export function cornerMarkerSquare(
+  markerId: number,
+  board: BoardGeometry = BOARD,
+): [Point, Point, Point, Point] {
   const role = CORNER_IDS[String(markerId)];
-  const size = BOARD.cornerMarkerSize;
-  const margin = BOARD.cornerMargin;
+  const size = board.cornerMarkerSize;
+  const margin = board.cornerMargin;
   let x0: number;
   let y0: number;
   switch (role) {
@@ -54,16 +131,16 @@ export function cornerMarkerSquare(markerId: number): [Point, Point, Point, Poin
       y0 = margin;
       break;
     case 'TR':
-      x0 = BOARD.matWidth - margin - size;
+      x0 = board.matWidth - margin - size;
       y0 = margin;
       break;
     case 'BR':
-      x0 = BOARD.matWidth - margin - size;
-      y0 = BOARD.matHeight - margin - size;
+      x0 = board.matWidth - margin - size;
+      y0 = board.matHeight - margin - size;
       break;
     case 'BL':
       x0 = margin;
-      y0 = BOARD.matHeight - margin - size;
+      y0 = board.matHeight - margin - size;
       break;
     default:
       throw new Error(`Unknown corner role for marker ${markerId}`);
