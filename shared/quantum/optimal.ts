@@ -247,6 +247,61 @@ export function* optimalSearch(
 }
 
 /**
+ * Everything a club set can build on `k` wires within `maxDepth` gates, as
+ * canonical state key → fewest gates that reach it (#77).
+ *
+ * The mirror image of `optimalSearch`: instead of asking "how short is THIS
+ * target", it enumerates the whole bounded orbit once, so a caller can then ask
+ * the question of thousands of candidate targets for the price of a map lookup.
+ * That is what makes "does this hole actually need its round's newest club?"
+ * affordable inside the random generator's draw loop, where the alternative —
+ * one search per candidate — costs more than the draw itself.
+ *
+ * `complete` is the part that matters for soundness. A budget-capped BFS proves
+ * reachability (the key is there) but never proves UNreachability, so absence
+ * from `depthOf` may only be read as "not reachable within maxDepth" when the
+ * enumeration closed out on its own.
+ */
+export interface ReachMap {
+  /** Canonical state key → the fewest gates of this club set that build it. */
+  readonly depthOf: ReadonlyMap<string, number>;
+  /** True when the orbit was enumerated to exhaustion inside the budget, so an
+   *  absent key really is unreachable within `maxDepth`. */
+  readonly complete: boolean;
+}
+
+export function reachableWithin(
+  clubs: readonly GateType[],
+  k: number,
+  maxDepth: number,
+  opts: Pick<OptimalOptions, 'stateBudget'> = {},
+): ReachMap {
+  const budget = opts.stateBudget ?? DEFAULT_STATE_BUDGET;
+  const moves = movesFor(clubs, k);
+  const start = zeroState();
+  const depthOf = new Map<string, number>([[canonicalKey(start), 0]]);
+  let frontier: StateVector[] = [start];
+  for (let depth = 1; depth <= maxDepth; depth++) {
+    const next: StateVector[] = [];
+    for (const from of frontier) {
+      for (const move of moves) {
+        const state = applyGatesTo(from, [move]);
+        const key = canonicalKey(state);
+        if (depthOf.has(key)) continue;
+        depthOf.set(key, depth);
+        if (depthOf.size > budget) return { depthOf, complete: false };
+        next.push(state);
+      }
+    }
+    // The orbit closed: deeper circuits cannot reach anything new, so the map
+    // is final however much `maxDepth` was left.
+    if (next.length === 0) return { depthOf, complete: true };
+    frontier = next;
+  }
+  return { depthOf, complete: true };
+}
+
+/**
  * Search to completion, synchronously. The shortest gate sequence that holes in
  * within `maxDepth`, or `null` if none exists there or the budget ran out. Use
  * `optimalSearch` directly when those two nulls must be told apart.

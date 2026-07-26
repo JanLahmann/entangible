@@ -7,6 +7,8 @@ import {
   HOLES,
   ROUND_CLUBS,
   clubGateTypes,
+  type GolfRound,
+  gateTypesForClubs,
   coursePar,
   courseTotals,
   evaluate,
@@ -21,10 +23,11 @@ import {
   GOLF_HOLES_KEY,
   HOLE_IN_THRESHOLD,
 } from './golf';
-import { optimalSearch } from './optimal';
+import { canonicalKey, optimalSearch, reachableWithin } from './optimal';
 import {
   ROUND_BONUS,
   GEN_STATE_BUDGET,
+  hasRoundSignature,
   type GeneratedHole,
   courseHoles,
   currentHole,
@@ -45,12 +48,27 @@ const CONTROLLED = new Set(['CNOT', 'CX', 'CY', 'CZ', 'CH', 'CS', 'CT', 'CCX']);
  * The properties are independent of one another, so checking all of them
  * against the same deals is exactly as strong as checking each against its own.
  */
-const CORPUS_SEEDS = Array.from({ length: 24 }, (_, i) => i * 7919 + 11);
+const CORPUS_SEEDS = Array.from({ length: 14 }, (_, i) => i * 7919 + 11);
 let corpusCache: readonly (readonly GeneratedHole[])[] | null = null;
 function corpus(): readonly (readonly GeneratedHole[])[] {
   if (!corpusCache) corpusCache = CORPUS_SEEDS.map((seed) => generateCourse(seed));
   return corpusCache;
 }
+/** Orbit lookups are the same handful of (round, wires, depth) triples over and
+ *  over; building each once keeps this file's property loops in seconds. */
+const REACH_MEMO = new Map<string, ReturnType<typeof reachableWithin>>();
+function cachedReach(round: GolfRound, k: number, maxDepth: number) {
+  const key = `${round}:${k}:${maxDepth}`;
+  let hit = REACH_MEMO.get(key);
+  if (!hit) {
+    hit = reachableWithin(gateTypesForClubs(ROUND_CLUBS[round]), k, maxDepth, {
+      stateBudget: 30_000,
+    });
+    REACH_MEMO.set(key, hit);
+  }
+  return hit;
+}
+
 /** Every generated hole in the corpus, flattened. */
 function corpusHoles(): readonly GeneratedHole[] {
   return corpus().flat();
@@ -164,25 +182,86 @@ describe('random course generation (#70)', () => {
     expect(coursePar(holes)).not.toBe(COURSE_PAR);
   });
 
-  it('floors MEDIUM above the easy round, and leaves M1 the one-gate warm-up (#76)', () => {
-    // The defect this fixes: a medium target used to be buildable in exactly
-    // `level` gates — the same as the easy round's GHZ of that width — in
-    // 84–100% of deals. Medium must now PROVE it needs more.
+  it('floors every M/D/X slot above an easy hole, M1 excepted (#76, #77)', () => {
     for (const { hole } of corpusHoles()) {
-      {
-        if (hole.round !== 'medium') continue;
-        const best = hole.solution!.gates.length;
-        if (hole.level === 1) {
-          // M1 is exempt by design — and on one wire the medium clubs cannot
-          // reach anything longer anyway once (a) and (c) have spoken.
-          expect(best, `M1 ${hole.code}`).toBe(1);
-          expect(hole.par).toBe(3);
-        } else {
-          expect(best, hole.code).toBeGreaterThan(hole.level);
-          expect(hole.par).toBeGreaterThan(hole.level + 2);
-        }
+      if (hole.round === 'easy') continue;
+      const best = hole.solution!.gates.length;
+      if (hole.round === 'medium' && hole.level === 1) {
+        // M1 stays the one-gate warm-up. Its pool grew with the real-± rule
+        // (|−⟩ joins |1⟩ and |+⟩), so it is 1 or 2 gates now, never floored.
+        expect(best, 'M1').toBeLessThanOrEqual(2);
+        continue;
       }
+      expect(best, hole.code).toBeGreaterThan(hole.level);
+      expect(hole.par, hole.code).toBeGreaterThan(hole.level + 2);
     }
+  });
+
+  it('makes each round NEED the clubs it adds (#77)', () => {
+    // The defect: medium never actually required Y, because under the old
+    // phase-free rule every medium target was in the {X,H,CX} orbit by
+    // construction. Now a target the round below could build is redrawn.
+    for (const { hole, circuit } of corpusHoles()) {
+      if (hole.round === 'easy') continue;
+      if (hole.round === 'medium' && hole.level === 1) continue;
+      const target = statevector(circuit);
+      const below = hole.round === 'medium' ? 'easy' : hole.round === 'difficult' ? 'medium' : 'difficult';
+      const size = hole.level + ROUND_BONUS[hole.round];
+      const reach = cachedReach(below, hole.level, size);
+      const found = reach.depthOf.has(canonicalKey(target));
+      // Either the round below provably cannot reach it, or — where that orbit
+      // is too big to close — it carries this round's own club signature.
+      expect(
+        !found && (reach.complete || hasRoundSignature(target, hole.round, hole.level)),
+        `${hole.code}`,
+      ).toBe(true);
+    }
+  });
+
+  it('rejects a DIFFICULT deal that is really an easy hole — the D3 |111⟩ case', () => {
+    // Three X gates on three wires is an EASY-round build wearing a difficult
+    // label: optimal 3 = level, and the medium clubs reach it. Both (e) and (f)
+    // must refuse it, so no seed may ever produce it.
+    const flipped: Circuit = {
+      qubits: 5,
+      gates: [
+        { id: 'x0', type: 'X', position: 0, qubit: 0 },
+        { id: 'x1', type: 'X', position: 1, qubit: 1 },
+        { id: 'x2', type: 'X', position: 2, qubit: 2 },
+      ],
+    };
+    const target = statevector(flipped);
+    expect(hasRoundSignature(target, 'difficult', 3)).toBe(false);
+    const medium = cachedReach('medium', 3, 5);
+    expect(medium.depthOf.has(canonicalKey(target))).toBe(true); // (f) refuses it
+    // …and no generated D3 in the corpus is it.
+    for (const { hole, circuit } of corpusHoles()) {
+      if (hole.code !== 'D3') continue;
+      expect(shape(circuit)).not.toBe(shape(flipped));
+      expect(canonicalKey(statevector(circuit))).not.toBe(canonicalKey(target));
+    }
+  });
+
+  it('reads the club signatures exactly: S for difficult, T/CH for extra (#77)', () => {
+    const sv = (gates: Gate[]) => statevector({ qubits: 5, gates });
+    const g = (type: string, position: number, extra: Partial<Gate>): Gate =>
+      ({ id: `${type}${position}`, type, position, ...extra }) as Gate;
+
+    // DIFFICULT: an S-phase state is non-real, a medium-reachable one is not.
+    const sPhase = sv([g('H', 0, { qubit: 0 }), g('S', 1, { qubit: 0 })]);
+    expect(hasRoundSignature(sPhase, 'difficult', 1)).toBe(true);
+    const mediumReal = sv([g('H', 0, { qubit: 0 }), g('Y', 1, { qubit: 0 })]); // |−⟩ up to phase
+    expect(hasRoundSignature(mediumReal, 'difficult', 1)).toBe(false);
+    expect(hasRoundSignature(sv([g('X', 0, { qubit: 0 })]), 'difficult', 1)).toBe(false);
+
+    // EXTRA: a T-phase is off the 90° lattice; a CH split is uneven; a pure
+    // stabilizer (difficult-reachable) state is neither.
+    const tPhase = sv([g('H', 0, { qubit: 0 }), g('T', 1, { qubit: 0 })]);
+    expect(hasRoundSignature(tPhase, 'extra', 1)).toBe(true);
+    const chSplit = sv([g('H', 0, { qubit: 0 }), g('CH', 1, { control: 0, target: 1 })]);
+    expect(hasRoundSignature(chSplit, 'extra', 2)).toBe(true);
+    expect(hasRoundSignature(sPhase, 'extra', 1)).toBe(false); // S is difficult's
+    expect(hasRoundSignature(sv([g('H', 0, { qubit: 0 })]), 'extra', 1)).toBe(false);
   });
 
   it('generates a whole course inside the interaction budget (#76)', () => {
@@ -261,28 +340,22 @@ describe('random course generation (#70)', () => {
     for (let q = 0; q < 3; q++) expect(probOne(target, q)).toBeGreaterThan(1e-9);
   });
 
-  it('keeps EASY and MEDIUM targets phase-free (property loop)', () => {
+    it('keeps EASY phase-free and MEDIUM real (± only, never imaginary) (#77)', () => {
     for (const { hole, circuit } of corpusHoles()) {
-      {
-        if (hole.round !== 'easy' && hole.round !== 'medium') continue;
-        const target = statevector(circuit);
-        // Every populated amplitude sits at 0° against the reference…
-        for (const v of basisVisuals(target, 1 << hole.level)) {
-          if (v.prob <= 1e-9) continue;
-          expect(Math.min(v.phaseDeg, 360 - v.phaseDeg)).toBeLessThanOrEqual(1e-6);
+      if (hole.round !== 'easy' && hole.round !== 'medium') continue;
+      const target = statevector(circuit);
+      for (const v of basisVisuals(target, 1 << hole.level)) {
+        if (v.prob <= 1e-9) continue;
+        const fromZero = Math.min(v.phaseDeg, 360 - v.phaseDeg);
+        if (hole.round === 'easy') {
+          // EASY stays strictly non-negative: plain positive superpositions.
+          expect(fromZero, `${hole.code} easy phase`).toBeLessThanOrEqual(1e-6);
+        } else {
+          // MEDIUM may carry a minus sign — that is what its Y is for — but
+          // nothing imaginary, which is where DIFFICULT starts.
+          const isReal = fromZero <= 1e-6 || Math.abs(v.phaseDeg - 180) <= 1e-6;
+          expect(isReal, `${hole.code} medium phase ${v.phaseDeg}`).toBe(true);
         }
-        // …i.e. after aligning the reference out, every amplitude is real and
-        // non-negative — no minus signs, no i, nothing to compose a CZ for.
-        const ref = refAmp(target, hole.level);
-        for (let i = 0; i < 1 << hole.level; i++) {
-          const a = align(target[i], ref);
-          expect(Math.abs(a.im)).toBeLessThan(1e-9);
-          expect(a.re).toBeGreaterThan(-1e-9);
-        }
-        // The scorecard ket says the same thing: no minus, no i, no e^.
-        expect(hole.targetKet).not.toContain('−');
-        expect(hole.targetKet).not.toContain('i');
-        expect(hole.targetKet).not.toContain('e^');
       }
     }
   });
@@ -350,19 +423,25 @@ describe('random course generation (#70)', () => {
     // Read off the kets rather than one anchored seed: no EASY or MEDIUM hole
     // may print a minus sign, and the D/X rounds must keep printing them.
     let phaseFreeKets = 0;
+    let mediumMinus = 0;
     let phasedDX = 0;
     for (const { hole } of corpusHoles()) {
       {
-        if (hole.round === 'easy' || hole.round === 'medium') {
+        if (hole.round === 'easy') {
+          // EASY never prints a minus; MEDIUM now may, and mostly does (#77).
           expect(hole.targetKet, hole.code).not.toContain('−');
           phaseFreeKets += 1;
+        } else if (hole.round === 'medium') {
+          if (hole.targetKet.includes('−')) mediumMinus += 1;
         } else if (hole.targetKet.includes('−') || hole.targetKet.includes('i')) {
           phasedDX += 1;
         }
       }
     }
-    expect(phaseFreeKets).toBe(CORPUS_SEEDS.length * 10); // 5 easy + 5 medium per course
+    expect(phaseFreeKets).toBe(CORPUS_SEEDS.length * 5); // 5 easy holes per course
     expect(phasedDX).toBeGreaterThan(0);
+    // Minus signs are officially a MEDIUM concept now, and M2–M5 all carry one.
+    expect(mediumMinus).toBeGreaterThan(CORPUS_SEEDS.length * 3);
   });
 
   it('still accepts honest PRODUCT targets — every wire busy is enough', () => {

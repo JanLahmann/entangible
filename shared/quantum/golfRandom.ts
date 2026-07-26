@@ -56,16 +56,22 @@
  * the easy round. So E and M targets must read as plain positive superpositions;
  * D and X stay unconstrained, because phase IS their lesson.
  *
- * (e) is the DIFFICULTY floor (#76), and it applies to MEDIUM levels 2–5 only.
- * The same 832-deal survey found that a medium target is buildable in exactly
- * `level` gates in 84–100% of deals — the identical gate count to the EASY
- * round's GHZ of the same width. Medium was not harder than easy; it was easy
- * wearing a different ket, scored more leniently. So a medium draw must now
- * PROVE it needs more than `level` gates or be redrawn. M1 is exempt by design
- * (the one-gate warm-up, and on one wire the medium clubs cannot reach anything
- * longer once (a) and (c) have spoken); DIFFICULT and EXTRA are exempt because
- * their optimal lengths genuinely spread (45–67% and 33–48% at the floor), which
- * is the variance golf is supposed to have.
+ * (e) is the DIFFICULTY floor (#76), and it applies to every M/D/X slot but M1.
+ * A 832-deal survey found that a medium target is buildable in exactly `level`
+ * gates in 84–100% of deals — the identical gate count to the EASY round's GHZ
+ * of the same width. Medium was not harder than easy; it was easy wearing a
+ * different ket, scored more leniently. D and X were looser but not clean
+ * either (45–67% and 33–48% at the same floor). So every deal must now PROVE it
+ * costs more than `level` gates, or be redrawn. M1 alone is exempt: it is the
+ * one-gate warm-up by design, and on one wire nothing could bite anyway.
+ *
+ * (f) is the CLUB-NECESSITY rule (#77): the clubs a round ADDS have to be the
+ * reason its target is worth building. Jan noticed medium never actually needed
+ * Y, and the cause was structural — the {X, H, CX} orbit of |0…0⟩ is exactly the
+ * non-negative real states, so while (c) demanded phase-FREE targets, every
+ * medium target was reachable without Y by definition. Relaxing (c) to real-±
+ * makes a Y-only target possible; (f) makes it compulsory, and generalises the
+ * same demand to D (needs S) and X (needs T or CH).
  *
  * (d) is the readability floor: you are asked to BUILD this state, so you have to
  * be able to see all of it. The ket line caps at `KET_TERMS` terms and elides the
@@ -108,7 +114,7 @@ import { ketTerms } from '@shared/display/KetDisplay';
 import { mulberry32, cryptoRng, type Rng } from '@shared/menu/sample';
 import { basisVisuals } from './qsphere';
 import { statevector, DIM, NUM_QUBITS, type StateVector } from './statevector';
-import { optimalSearch } from './optimal';
+import { canonicalKey, optimalSearch, reachableWithin, type ReachMap } from './optimal';
 import {
   HOLES,
   ROUND_CLUBS,
@@ -128,7 +134,7 @@ export const ROUND_BONUS: Readonly<Record<GolfRound, number>> = {
 };
 
 /** Seed stride between slots; retries stay well inside it (see MAX_ATTEMPTS). */
-const SLOT_STRIDE = 10_000;
+const SLOT_STRIDE = 100_000;
 /**
  * Seed offsets tried before the deterministic fallback, sized for the tightest
  * slots. Keeping five wires alive on a 7-gate draw is genuinely demanding, and
@@ -139,15 +145,19 @@ const SLOT_STRIDE = 10_000;
  * a draw wide enough to fill 17+ basis states rarely also keeps every wire
  * alive.
  *
- * The MEDIUM floor (e) multiplies into that: only 6–16% of draws that clear
- * (a)–(d) also need more than `level` gates, so M2–M5 compound down to
- * 0.4%–2.6% and need thousands of offsets, not hundreds. Measured mean attempts
- * per accepted hole: M2 39, M3 24, M4 106, M5 253 — worst-case slot M5 falls
- * through to the fallback with probability (1 − 0.0040)^4000 ≈ 1e-7, the same
- * safety margin the pre-#76 budget carried. `SLOT_STRIDE` grows with it so the
- * budget still fits inside one slot's seed range and slots cannot collide.
+ * The floor (e) and the club-necessity rule (f) multiply into that, and they
+ * bite hard: measured mean attempts per accepted hole are M2 256, M3 278,
+ * M4 607, M5 1084, D4 150, D5 538, X5 168 — acceptance 0.09%–0.6% on the tight
+ * slots. At 32k offsets even the worst (M5, 0.092%) falls through to the
+ * fallback with probability (1 − 0.00092)^32000 ≈ 2e-13, and no slot came within
+ * an order of magnitude of the cap in measurement (worst observed: M5 at 4259).
+ * `SLOT_STRIDE` grows with it so the budget still fits inside one slot's seed
+ * range and slots cannot collide.
+ *
+ * The draws are cheap enough for that to be fine: (e) and (f) are map lookups,
+ * not searches, so a rejected candidate costs a statevector and two hashes.
  */
-const MAX_ATTEMPTS = 4000;
+const MAX_ATTEMPTS = 32_000;
 /**
  * States a generation-time optimal search may visit before giving up (#76).
  * Deliberately far below `@quantum/optimal`'s own default: this runs inside the
@@ -158,14 +168,50 @@ const MAX_ATTEMPTS = 4000;
  * generator-length fallback exists for.
  */
 export const GEN_STATE_BUDGET = 20_000;
+/**
+ * States a club-orbit enumeration may visit (#77). Larger than the par search's
+ * budget because these are built ONCE per (round, wires, depth) and cached for
+ * the session, and because one of them genuinely needs the room: the EXTRA clubs
+ * on five wires close out at ~176k states, which is what makes the floor exact
+ * for X5 instead of a guess. The orbits that do NOT close inside this (the
+ * five-wire stabilizer sets, reached from below by D5 and X5) fall through to
+ * the club signatures, which cost nothing.
+ */
+const FLOOR_ORBIT_BUDGET = 250_000;
+/**
+ * Budget for the orbit constraint (f) looks the target up in — the round BELOW,
+ * at the deal's own depth. Deliberately far smaller than the floor's: the orbits
+ * that matter here either close early (EASY's affine-subspace states, and the
+ * narrow MEDIUM/DIFFICULT sets behind D1–D3 and X1/X3) or cannot be closed at
+ * any budget worth spending (the five-wire stabilizer sets behind D5 and X5,
+ * millions of states). Chasing the second kind bought nothing and cost seconds,
+ * so the fallback to the club signature happens early and cheaply.
+ */
+const NECESSITY_ORBIT_BUDGET = 30_000;
 /** How close |amplitude(|0…0⟩)|² may come to 1 before the target counts as trivial. */
 const TRIVIAL_EPS = 1e-9;
 /** Below this probability an amplitude is not evidence that a qubit is alive. */
 const LIVE_EPS = 1e-9;
 /** How far a reference-relative phase may stray from 0° and still read as none. */
 const PHASE_TOL_DEG = 1e-6;
-/** Rounds whose targets must be phase-free (see constraint (c) in the header). */
-const PHASE_FREE_ROUNDS: ReadonlySet<GolfRound> = new Set<GolfRound>(['easy', 'medium']);
+/**
+ * How much phase a round's targets may carry (constraint (c)).
+ *
+ *  - `nonNegative` — every populated amplitude at 0°: plain positive
+ *    superpositions, the EASY round's whole vocabulary.
+ *  - `real` — 0° or 180°: minus signs allowed, nothing imaginary. MEDIUM (#77).
+ *    A minus sign is precisely what the medium round's Y is FOR, and under the
+ *    old non-negative rule it could never appear, which is why Y was decorative
+ *    (see the header's (f)).
+ *  - `any` — DIFFICULT and EXTRA, where phase is the lesson.
+ */
+type PhaseRule = 'nonNegative' | 'real' | 'any';
+const ROUND_PHASE: Readonly<Record<GolfRound, PhaseRule>> = {
+  easy: 'nonNegative',
+  medium: 'real',
+  difficult: 'any',
+  extra: 'any',
+};
 /** Terms shown in a generated hole's scorecard ket (the rest elide to "+ ⋯").
  *  Doubles as the cap on a target's populated basis states (constraint (d)), so
  *  a generated ket is always printed in full and never actually elides. */
@@ -238,17 +284,21 @@ function everyQubitLives(target: StateVector, k: number): boolean {
 }
 
 /**
- * Constraint (c): the target carries no relative phase — every populated
- * amplitude sits at 0° once aligned to the reference amplitude. Phases are read
- * with `basisVisuals`, the SAME machinery the Q-sphere colours nodes by and the
- * bra-ket line typesets from, so "phase-free" here means exactly "nothing on
- * screen shows a phase". Degrees live in [0, 360), so a hair below zero wraps to
- * just under 360 and both ends must be accepted.
+ * Constraint (c): the target's phases stay inside its round's vocabulary.
+ * Phases are read with `basisVisuals`, the SAME machinery the Q-sphere colours
+ * nodes by and the bra-ket line typesets from, so a rule here means exactly
+ * what a player sees. Degrees live in [0, 360), so a hair below zero wraps to
+ * just under 360 and both ends of each allowed angle must be accepted.
  */
-function isPhaseFree(target: StateVector, k: number): boolean {
+function satisfiesPhase(target: StateVector, k: number, rule: PhaseRule): boolean {
+  if (rule === 'any') return true;
   for (const v of basisVisuals(target, 1 << k)) {
     if (v.prob <= LIVE_EPS) continue;
-    if (Math.min(v.phaseDeg, 360 - v.phaseDeg) > PHASE_TOL_DEG) return false;
+    const fromZero = Math.min(v.phaseDeg, 360 - v.phaseDeg);
+    if (fromZero <= PHASE_TOL_DEG) continue;
+    // `real` also admits a flat 180° — a minus sign, and nothing else.
+    if (rule === 'real' && Math.abs(v.phaseDeg - 180) <= PHASE_TOL_DEG) continue;
+    return false;
   }
   return true;
 }
@@ -321,14 +371,34 @@ const SLOTS: readonly Slot[] = HOLES.map((h) => ({
   code: h.code,
 }));
 
-/** Constraint (e): a hole must be harder to BUILD than an easy hole of the same
- *  width (#76). Medium only, from level 2 up — M1 is the one-gate warm-up by
- *  design, and on one wire the medium clubs {X,H,Y} can only reach |1⟩ and |+⟩
- *  once (a) and (c) have had their say, so no floor is even possible there.
- *  DIFFICULT and EXTRA are left alone: their optimal lengths spread 1–6 and 5–8
- *  across deals, which is legitimate variance, not a mislabelled round. */
-function hasFloor(round: GolfRound, k: number): boolean {
-  return round === 'medium' && k >= 2;
+/**
+ * Which round a slot must out-build (#77). A deal has to be strictly cheaper
+ * with its own round's clubs than with the round below's, so the clubs the round
+ * introduces are the REASON the target is worth building. `null` exempts a slot.
+ */
+const ROUND_BELOW: Readonly<Record<GolfRound, GolfRound | null>> = {
+  easy: null,
+  medium: 'easy',
+  difficult: 'medium',
+  extra: 'difficult',
+};
+
+/**
+ * Constraints (e) and (f) apply to every slot of M/D/X — except M1 (#76, #77).
+ *
+ * M1 stays the one-gate warm-up, and no rule could bite there anyway: on one
+ * wire the medium clubs are {X, H, Y}, Y is XZ up to a global phase, and every
+ * state {X, H, Y} reaches in n gates {X, H} reaches in n too. Nothing about a
+ * one-qubit medium target can be made to need Y, or to cost more than an easy
+ * hole of the same width.
+ *
+ * Everything else is floored and club-checked, D1 and X1 included — that is what
+ * stops a D3 dealing |111⟩ (three gates on three wires, an EASY hole wearing a
+ * difficult label) or a D1 dealing |1⟩.
+ */
+function isRuled(round: GolfRound, k: number): boolean {
+  if (round === 'easy') return false;
+  return !(round === 'medium' && k === 1);
 }
 
 /** What a generation-time optimal search learned about a candidate target. */
@@ -364,6 +434,145 @@ function findOptimalFor(
   return { optimal: null, gates: null };
 }
 
+/**
+ * The bounded orbit of a round's clubs on `k` wires, built once and kept.
+ *
+ * Constraints (e) and (f) ask the same two questions of every candidate draw —
+ * "could this be built in k gates?" and "could the round BELOW have built it?" —
+ * so the answers are precomputed for the whole club set instead of re-searched
+ * per candidate. That is what lets both sit inside a draw loop that runs
+ * hundreds of times: each becomes a map lookup.
+ *
+ * The cache is module-level and survives across courses, so the one genuinely
+ * big orbit (the EXTRA clubs at depth 5, ~176k states) is paid for once per
+ * session rather than once per "Random 18".
+ */
+const REACH_CACHE = new Map<string, ReachMap>();
+const REACH_CACHE_LIMIT = 24;
+
+function reachOf(round: GolfRound, k: number, maxDepth: number, budget: number): ReachMap {
+  const key = `${round}:${k}:${maxDepth}`;
+  const hit = REACH_CACHE.get(key);
+  if (hit) return hit;
+  const map = reachableWithin(gateTypesForClubs(ROUND_CLUBS[round]), k, maxDepth, {
+    stateBudget: budget,
+  });
+  if (REACH_CACHE.size >= REACH_CACHE_LIMIT) REACH_CACHE.clear();
+  REACH_CACHE.set(key, map);
+  return map;
+}
+
+/**
+ * Constraint (e), as a lookup: is this target buildable in `k` gates or fewer
+ * with the round's OWN clubs — i.e. is it no harder than an easy hole of the
+ * same width (#76)? Bounded by depth `k`, which is the only question the floor
+ * asks; the far deeper search that produces `par` happens once, after a deal is
+ * accepted, and never inside the loop.
+ *
+ * An orbit too big to enumerate leaves the question open, and an open question
+ * ACCEPTS — generation must never stall on something it cannot prove.
+ */
+function isTooEasy(target: StateVector, round: GolfRound, k: number): boolean {
+  const reach = reachOf(round, k, k, FLOOR_ORBIT_BUDGET);
+  return reach.depthOf.has(canonicalKey(target));
+}
+
+/**
+ * The DIFFICULT club signature: some populated amplitude sits off the real line.
+ *
+ * Not an approximation — an exact statement about what S buys. The medium clubs
+ * {X, H, CX, Y} reach only states whose amplitudes are real up to a global phase
+ * (Y is XZ up to a phase, and neither X, H, CX nor Z can put an i anywhere the
+ * others cannot take out). S is the only club DIFFICULT adds that makes a
+ * genuinely imaginary relative phase. So "carries a non-real phase" is precisely
+ * "medium could not have built this", read the same way the Q-sphere reads it.
+ */
+function hasNonRealPhase(target: StateVector, k: number): boolean {
+  for (const v of basisVisuals(target, 1 << k)) {
+    if (v.prob <= LIVE_EPS) continue;
+    const fromZero = Math.min(v.phaseDeg, 360 - v.phaseDeg);
+    if (fromZero > PHASE_TOL_DEG && Math.abs(v.phaseDeg - 180) > PHASE_TOL_DEG) return true;
+  }
+  return false;
+}
+
+/**
+ * The EXTRA club signature: a phase off the 90° lattice, or populated amplitudes
+ * of unequal magnitude.
+ *
+ * Again exact, not approximate. The difficult clubs {X, H, CX, Y, Z, S} generate
+ * the stabilizer group, and a stabilizer state built from |0…0⟩ is a uniform
+ * superposition over an affine subspace with phases in {0°, 90°, 180°, 270°}.
+ * EXTRA adds exactly two things that escape it: T, whose eighth-turn lands
+ * between the lattice points, and CH, which splits amplitude unevenly. Either
+ * signature is proof that no amount of difficult-round play reaches this target.
+ */
+function hasExtraSignature(target: StateVector, k: number): boolean {
+  let magnitude: number | null = null;
+  for (const v of basisVisuals(target, 1 << k)) {
+    if (v.prob <= LIVE_EPS) continue;
+    // Off the 90° lattice → a T-phase (or something T-like) is in play.
+    const offLattice = Math.min(
+      ...[0, 90, 180, 270, 360].map((a) => Math.abs(v.phaseDeg - a)),
+    );
+    if (offLattice > PHASE_TOL_DEG) return true;
+    // Unequal populated magnitudes → a controlled-H split is in play.
+    if (magnitude === null) magnitude = v.prob;
+    else if (Math.abs(v.prob - magnitude) > LIVE_EPS * 1e3) return true;
+  }
+  return false;
+}
+
+/** The structural club signature a round's own clubs are the only source of.
+ *  Exported for its unit tests — nothing outside generation reads it. */
+export function hasRoundSignature(target: StateVector, round: GolfRound, k: number): boolean {
+  if (round === 'difficult') return hasNonRealPhase(target, k);
+  if (round === 'extra') return hasExtraSignature(target, k);
+  return false; // MEDIUM's signature (a minus sign) is not sufficient on its own
+}
+
+/**
+ * Constraint (f): the clubs this round ADDS have to matter (#77).
+ *
+ * Jan noticed medium never actually needed Y, and the reason was structural: the
+ * {X, H, CX} orbit of |0…0⟩ is exactly the non-negative real states (uniform
+ * superpositions over affine subspaces), so while (c) demanded phase-FREE
+ * targets, every medium target was reachable without Y by definition. Relaxing
+ * (c) to real-± is what makes a Y-only target possible; (f) is what makes it
+ * compulsory. The same argument generalises: a difficult hole must need Z/S
+ * beyond medium's real ±, an extra hole must need T/CH beyond the stabilizer
+ * states Z/S can reach.
+ *
+ * Read strictly one way round. Finding the target in the lower round's orbit at
+ * depth ≤ `optimal` PROVES the new clubs bought nothing, and the draw is
+ * rejected. Not finding it only proves something when the orbit was enumerated
+ * to exhaustion; an orbit too big for the budget (the five-wire stabilizer set
+ * is millions of states) leaves the question open, and an open question ACCEPTS.
+ * Generation must never stall on something it cannot prove — the asymmetry with
+ * (e) is deliberate, and (e) cannot hit it anyway because its own search is
+ * bounded by depth k, which is always cheap.
+ */
+function needsOwnClubs(
+  target: StateVector,
+  round: GolfRound,
+  k: number,
+  maxDepth: number,
+): boolean {
+  const below = ROUND_BELOW[round];
+  if (below === null) return true;
+  const reach = reachOf(below, k, maxDepth, NECESSITY_ORBIT_BUDGET);
+  // Found in the lower round's orbit → the new clubs bought nothing. This is
+  // the exact answer, and it is what M2–M5, D1–D3 and X1/X3 are decided by.
+  if (reach.depthOf.has(canonicalKey(target))) return false;
+  // Absent from a CLOSED orbit is equally exact: the target is unreachable
+  // below, so the round's own clubs are what make it possible.
+  if (reach.complete) return true;
+  // Absent from an orbit too big to close (the five-wire stabilizer sets, D5 and
+  // X5) proves nothing by itself — so fall back to the club SIGNATURE, which is
+  // an exact statement of its own about what this round's clubs uniquely make.
+  return hasRoundSignature(target, round, k);
+}
+
 /** A generated hole together with the circuit that defines it (the "answer"). */
 export interface GeneratedHole {
   readonly hole: Hole;
@@ -382,36 +591,38 @@ export function generateHole(slot: Slot, seed: number): GeneratedHole {
   const types = gateTypesForClubs(clubs);
   const k = slot.level;
   const size = k + ROUND_BONUS[slot.round];
-  const phaseFree = PHASE_FREE_ROUNDS.has(slot.round);
+  const phaseRule = ROUND_PHASE[slot.round];
 
-  const floored = hasFloor(slot.round, k);
+  const ruled = isRuled(slot.round, k);
 
   let gates: Gate[] | null = null;
-  let found: OptimalFind = { optimal: null, gates: null };
   let attempts = MAX_ATTEMPTS;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const candidate = drawGates(mulberry32(seed + attempt), types, k, size);
     const target = statevector({ qubits: NUM_QUBITS, gates: candidate });
     if (!isNonTrivial(target)) continue;
     if (!everyQubitLives(target, k)) continue;
-    if (phaseFree && !isPhaseFree(target, k)) continue;
+    if (!satisfiesPhase(target, k, phaseRule)) continue;
     if (!fitsTheKetLine(target, k)) continue;
-    // (e) — asked LAST, because it is the only expensive constraint: the search
-    // runs on the ~2–30% of draws that already cleared (a)–(d), never on all of
-    // them. It doubles as the source of this hole's par (#76).
-    const optimal = findOptimalFor(target, types, k, size);
-    // A floored slot must be able to PROVE it is above the floor; a search that
-    // ran out of budget proves nothing, so the draw is retried rather than
-    // waved through. Measured: medium never actually exhausts this budget.
-    if (floored && (optimal.optimal === null || optimal.optimal <= k)) continue;
+    if (ruled) {
+      // (e) — no harder than an easy hole of this width? Then it is not a
+      // medium/difficult/extra hole, whatever its ket looks like.
+      if (isTooEasy(target, slot.round, k)) continue;
+      // (f) — the clubs this round adds have to be the reason the target is
+      // worth building at all.
+      if (!needsOwnClubs(target, slot.round, k, size)) continue;
+    }
     gates = candidate;
-    found = optimal;
     attempts = attempt + 1;
     break;
   }
   const circuit: Circuit = { qubits: NUM_QUBITS, gates: gates ?? fallbackGates(types, k, size) };
   const target = statevector(circuit);
   const ket = ketText(target, k);
+  // The one expensive search of the whole pipeline, run ONCE on the deal that
+  // was accepted — never inside the loop, where a wide EXTRA slot would pay for
+  // it on every candidate that got as far as being measured.
+  const found = findOptimalFor(target, types, k, size);
   // Par on the classic course's own rule (#69): the MINIMUM plus two, so one
   // extra gate is a birdie and a small fumble still makes par. When the search
   // could not resolve — the wide EXTRA slot, occasionally — fall back to the
