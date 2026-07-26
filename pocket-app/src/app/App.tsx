@@ -78,6 +78,7 @@ import {
   loadRevealed,
   saveRevealed,
   golfReveal,
+  golfWipe,
   persistsBest,
   clubGateTypes,
   holeHighlight,
@@ -1127,6 +1128,21 @@ export function App() {
     if (persistsBest(next)) saveRevealed(storage, next.revealed);
   };
 
+  // Wipe the board for one flat stroke (#100), build-on-screen only. The ENGINE
+  // charges it and empties the diff baseline first, so the board-clear that
+  // follows is free — a per-gate teardown would have cost one stroke per tile
+  // (#73), which is exactly the price this action exists to replace.
+  const wipeBoard = manual
+    ? () => {
+        const cur = golfStateRef.current;
+        const next = golfWipe(cur, circuit);
+        if (next === cur) return;
+        golfStateRef.current = next;
+        setGolfState(next);
+        manualSourceRef.current.clear();
+      }
+    : undefined;
+
   const sidebar = isGolf ? (
     <>
       {showCamera && cameraPanel}
@@ -1184,6 +1200,7 @@ export function App() {
         circuit={circuit}
         onNextLevel={advanceHole}
         onReveal={takeReveal}
+        onWipe={wipeBoard}
       />
       {hasPanel('results') && (
         <ResultsHistogram key="results" circuit={circuit} displayQubits={displayed.qubits} />

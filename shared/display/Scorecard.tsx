@@ -287,6 +287,7 @@ export function Scorecard({
   challenge,
   onNextLevel,
   onReveal,
+  onWipe,
 }: {
   state: GolfState;
   circuit: Circuit;
@@ -314,6 +315,12 @@ export function Scorecard({
    * without this handler the offer reads exactly as it did before #99.
    */
   onReveal?: (holeNumber: number) => void;
+  /**
+   * Wipes the on-screen board for one flat stroke (#100). Build-on-screen only:
+   * on the table the sweep IS lifting the tiles, and each one is a stroke (#73),
+   * so the camera and booth surfaces pass nothing and render no button.
+   */
+  onWipe?: () => void;
 }) {
   const p = classPrefix;
   // Which hole's solution is currently revealed (#71). Keyed by hole NUMBER
@@ -424,6 +431,16 @@ export function Scorecard({
             </div>
           )}
         </div>
+        {/* Start this hole over for one stroke instead of one per tile (#100).
+            Only while there is something to wipe, and only before the ball is
+            in — after that, clearing the board is how you leave the hole. */}
+        {onWipe && !holedIn && circuit.gates.length > 0 && (
+          <div className={`${p}-golf-wipe-row`}>
+            <button type="button" className={`${p}-golf-wipe`} onClick={onWipe}>
+              Wipe board (+1 stroke)
+            </button>
+          </div>
+        )}
         {holedIn && (
           <div className={`${p}-golf-holed`}>
             {scoreName(bestStrokes ?? state.strokes, hole.par)} —{' '}

@@ -14,6 +14,7 @@ export function Scorecard({
   circuit,
   onNextLevel,
   onReveal,
+  onWipe,
 }: {
   state: GolfState;
   circuit: Circuit;
@@ -21,6 +22,8 @@ export function Scorecard({
   onNextLevel?: () => void;
   /** Takes the mid-hole reveal's double-par price (#99) through the engine. */
   onReveal?: (holeNumber: number) => void;
+  /** Build-on-screen only: wipes the board for one flat stroke (#100). */
+  onWipe?: () => void;
 }) {
   return (
     <SharedScorecard
@@ -31,6 +34,7 @@ export function Scorecard({
       challenge={({ code, link }) => <CourseChallenge code={code} link={link} />}
       onNextLevel={onNextLevel}
       onReveal={onReveal}
+      onWipe={onWipe}
     />
   );
 }

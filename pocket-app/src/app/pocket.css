@@ -1826,6 +1826,40 @@ body,
   filter: brightness(1.15);
 }
 
+/* "Wipe board" (#100) — the bulk discount on starting a hole over. Shaped like
+   the solution toggle rather than the Next-hole button: it is a tool, not the
+   way forward, and it must never be the brightest thing on the card. */
+.pk-golf-wipe-row {
+  margin-top: 0.45rem;
+}
+
+.pk-golf-wipe {
+  display: inline-block;
+  padding: 0.24rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  /* Comfortable on a phone: a mis-tap here costs a stroke. */
+  min-height: 30px;
+}
+
+.pk-golf-wipe:active {
+  color: var(--text);
+  border-color: var(--entangle);
+}
+
+@media (pointer: coarse) {
+  .pk-golf-wipe {
+    min-height: 44px;
+    padding-inline: 0.9rem;
+  }
+}
+
 /* "Show solution" (#71) — a quiet, secondary sibling of the Next-hole button:
    the ball is already in, so the reveal must never compete with advancing. */
 .pk-golf-solution-btn {

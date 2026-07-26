@@ -881,6 +881,31 @@ export function initialGolfState(
  * whose price is already paid changes nothing, so the card may call this on
  * every open of the drawer without counting anything twice.
  */
+/**
+ * Sweep the whole board for ONE stroke (#100) — the bulk discount on starting
+ * a hole over.
+ *
+ * Since #73 an empty board mid-hole is not a fresh tee-off: the tiles you
+ * lifted were strokes, and wiping five gates by hand costs five. That rule is
+ * right for the table, where lifting tiles one at a time IS what happened, but
+ * on screen it made "start this hole again" cost more the worse it had gone —
+ * the player who most needs a clean sheet pays the most for it. So the on-screen
+ * board gets one explicit action that costs exactly one stroke however much is
+ * on it, and per-gate deletes keep costing one each.
+ *
+ * Mechanically this is a stroke plus an EMPTY baseline: the board-clear that
+ * follows diffs against nothing and can therefore charge nothing, whether it
+ * arrives as one editor event or (never, today) as tiles leaving one by one.
+ * The hole-in latch and every mid-hole rule are untouched — a wiped hole plays
+ * on from where it stands, strokes and all — and a hole already holed in is not
+ * wiped at all: the score is written and clearing the board is how you leave.
+ */
+export function golfWipe(state: GolfState, circuit: Circuit): GolfState {
+  if (state.complete || state.holedIn) return state;
+  if (circuit.gates.length === 0) return state;
+  return { ...state, strokes: state.strokes + 1, gateKeys: NO_GATES };
+}
+
 export function golfReveal(state: GolfState, holeNumber: number): GolfState {
   if (state.holedIn || state.complete) return state;
   if (state.revealed[holeNumber]) return state;

@@ -574,6 +574,89 @@ describe('Scorecard (shared)', () => {
     }
   });
 
+  it('offers the wipe only where there is a board to wipe (#100)', () => {
+    for (const p of ['bo', 'pk'] as const) {
+      const playing = { ...initialGolfState(), levelIndex: 1, strokes: 3 };
+      let wipes = 0;
+      const { container, rerender } = render(
+        <Scorecard state={playing} circuit={bell} classPrefix={p} onWipe={() => (wipes += 1)} />,
+      );
+      const btn = container.querySelector(`.${p}-golf-wipe`) as HTMLButtonElement;
+      expect(btn.textContent).toBe('Wipe board (+1 stroke)');
+      fireEvent.click(btn);
+      expect(wipes).toBe(1);
+
+      // Nothing on the board: nothing to wipe.
+      rerender(
+        <Scorecard
+          state={playing}
+          circuit={{ qubits: 5, gates: [] }}
+          classPrefix={p}
+          onWipe={() => (wipes += 1)}
+        />,
+      );
+      expect(container.querySelector(`.${p}-golf-wipe`)).toBeNull();
+
+      // Ball in: clearing the board is how you leave, and it is free.
+      rerender(
+        <Scorecard
+          state={{ ...playing, holedIn: true }}
+          circuit={bell}
+          classPrefix={p}
+          onWipe={() => (wipes += 1)}
+        />,
+      );
+      expect(container.querySelector(`.${p}-golf-wipe`)).toBeNull();
+      cleanup();
+    }
+
+    // Camera and booth surfaces pass no handler — on the table, sweeping IS
+    // lifting the tiles, and each one is a stroke (#73).
+    const camera = render(
+      <Scorecard
+        state={{ ...initialGolfState(), levelIndex: 1, strokes: 3 }}
+        circuit={bell}
+        classPrefix="pk"
+      />,
+    );
+    expect(camera.container.querySelector('.pk-golf-wipe')).toBeNull();
+  });
+
+  it('wiping does not restart the stuck window or refund the reveal (#100)', () => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'],
+    });
+    try {
+      resetCourseTimers();
+      const playing = { ...initialGolfState(), levelIndex: 1, strokes: 2 };
+      const { container, rerender } = render(
+        <Scorecard state={playing} circuit={bell} classPrefix="pk" onWipe={() => {}} />,
+      );
+      act(() => {
+        vi.advanceTimersByTime(40_000);
+      });
+
+      // The wipe as the engine leaves it: one more stroke, board empty. The
+      // hole is the same hole, so its minute keeps running.
+      const wiped = { ...playing, strokes: 3 };
+      rerender(
+        <Scorecard
+          state={wiped}
+          circuit={{ qubits: 5, gates: [] }}
+          classPrefix="pk"
+          onWipe={() => {}}
+        />,
+      );
+      act(() => {
+        vi.advanceTimersByTime(21_000);
+      });
+      expect(container.querySelector('.pk-golf-stuck')).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+      resetCourseTimers();
+    }
+  });
+
   it('names the price of a mid-hole reveal before it is taken (#99)', () => {
     for (const p of ['bo', 'pk'] as const) {
       // E2, par 4 → the offer says what it will cost, in strokes, up front.

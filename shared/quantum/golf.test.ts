@@ -29,6 +29,7 @@ import {
   GOLF_REVEALED_KEY,
   holeScore,
   golfReveal,
+  golfWipe,
   loadRevealed,
   saveRevealed,
 } from './golf';
@@ -749,4 +750,72 @@ describe('the price of the mid-hole reveal (#99)', () => {
     expect(loadRevealed(null)).toEqual({});
   });
 
+});
+
+describe('wipe the board for one stroke (#100)', () => {
+  const holeState = (n: number) => ({ ...initialGolfState(), levelIndex: n - 1 });
+
+  it('costs exactly one stroke however much was on the board', () => {
+    // X tiles on distinct wires: a board that grows without ever holing in, so
+    // the wipe is measured against a hole still in play.
+    const junk = (n: number) => circuit([0, 1, 2, 3, 4].slice(0, n).map((q) => g('X', q, { qubit: q })));
+    for (const gates of [1, 3, 5]) {
+      // Build up `gates` tiles the honest way: one stroke each.
+      let step = golfStep(holeState(5), empty);
+      for (let i = 0; i < gates; i++) {
+        step = golfStep(step.state, junk(i + 1));
+      }
+      expect(step.strokes).toBe(gates);
+
+      // The wipe is one stroke, and the board-clear that follows it is free —
+      // per-gate teardown would have cost `gates` more (#73).
+      const wiped = golfWipe(step.state, junk(gates));
+      expect(wiped.strokes).toBe(gates + 1);
+      const cleared = golfStep(wiped, empty);
+      expect(cleared.strokes).toBe(gates + 1);
+      expect(cleared.advanced).toBe(false);
+      expect(cleared.state.holedIn).toBe(false);
+    }
+  });
+
+  it('is a no-op on an empty board, and after the ball is in', () => {
+    const teed = holeState(2);
+    expect(golfWipe(teed, empty)).toBe(teed);
+
+    // Holed in: the score is written and clearing the board is how you leave —
+    // charging a stroke to walk to the next tee would be nonsense.
+    const holed = golfStep(teed, refCircuit(2)).state;
+    expect(holed.holedIn).toBe(true);
+    expect(golfWipe(holed, refCircuit(2))).toBe(holed);
+
+    const done = { ...teed, complete: true };
+    expect(golfWipe(done, refCircuit(2))).toBe(done);
+  });
+
+  it('leaves every other mid-hole rule where it was', () => {
+    // Strokes keep counting from where the wipe left them, the hole plays on,
+    // and re-adds cost one each — the wipe buys a clean board, not a do-over.
+    let step = golfStep(holeState(2), circuit([g('X', 0, { qubit: 0 })]));
+    expect(step.strokes).toBe(1);
+    const wiped = golfWipe(step.state, circuit([g('X', 0, { qubit: 0 })]));
+    step = golfStep(wiped, empty);
+    expect(step.strokes).toBe(2);
+    step = golfStep(step.state, refCircuit(2)); // two gates back on: two strokes
+    expect(step.strokes).toBe(4);
+    expect(step.justHoledIn).toBe(true);
+    expect(step.state.best[2]).toBe(4);
+  });
+
+  it('does not wash away a revealed hole’s price (#99)', () => {
+    // Peek, then wipe and start over: the answer has still been seen, so the
+    // hole still records at least double par.
+    const peeked = golfReveal(holeState(2), 2);
+    const played = golfStep(peeked, circuit([g('X', 0, { qubit: 0 })]));
+    const wiped = golfWipe(played.state, circuit([g('X', 0, { qubit: 0 })]));
+    expect(wiped.revealed[2]).toBe(true);
+    const holed = golfStep(golfStep(wiped, empty).state, refCircuit(2));
+    expect(holed.strokes).toBe(4);
+    expect(holed.score).toBe(8);
+    expect(holed.state.best[2]).toBe(8);
+  });
 });
