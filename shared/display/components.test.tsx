@@ -29,6 +29,9 @@ import {
 import { courseCode, randomCourse } from '@quantum/golfRandom';
 
 afterEach(cleanup);
+// The course clock and the per-hole stuck clocks are module stores (#83, #98):
+// one test's fake-time stamps must never be inherited by the next.
+afterEach(resetCourseTimers);
 
 let seq = 0;
 const g = (partial: Omit<Gate, 'id'>): Gate => ({ id: `g${seq++}`, ...partial });
@@ -428,16 +431,20 @@ describe('Scorecard (shared)', () => {
   });
 
   it('offers it a minute after the FIRST stroke, never after idle reading (#79)', () => {
-    // `performance` must be faked too: the hook times the hole with
-    // `performance.now()` (monotonic, unlike Date), and vitest does not fake it
-    // by default — without this the timer fires but no time has "passed".
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
+    // `Date` must be faked too: the hole clock stamps `Date.now()` into the
+    // module store, and the card re-reads it on a one-second interval (#98) —
+    // without both the interval fires but no time has "passed".
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'],
+    });
     try {
       // A board nobody has touched: the clock has not started, so a minute of
       // reading the target must not trigger the offer.
       const idle = { ...initialGolfState(), levelIndex: 1, strokes: 0 };
       const untouched = render(<Scorecard state={idle} circuit={bell} classPrefix="pk" />);
-      vi.advanceTimersByTime(120_000);
+      act(() => {
+        vi.advanceTimersByTime(120_000);
+      });
       untouched.rerender(<Scorecard state={idle} circuit={bell} classPrefix="pk" />);
       expect(untouched.container.querySelector('.pk-golf-solution-btn')).toBeNull();
       cleanup();
@@ -447,7 +454,9 @@ describe('Scorecard (shared)', () => {
       const { container, rerender } = render(
         <Scorecard state={playing} circuit={bell} classPrefix="pk" />,
       );
-      vi.advanceTimersByTime(30_000);
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+      });
       rerender(<Scorecard state={playing} circuit={bell} classPrefix="pk" />);
       expect(container.querySelector('.pk-golf-solution-btn')).toBeNull();
 
@@ -460,6 +469,107 @@ describe('Scorecard (shared)', () => {
       ).toBe('Stuck? Show solution');
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it('keeps the stuck window across a remount of the card (#98)', () => {
+    // The field bug: the sixty-second door never opened, only the par+3 one.
+    // The difference between them is where the fact lives — strokes come from
+    // engine state, which outlives a remount, while the window used to sit in a
+    // component ref that was stamped afresh every time the card mounted with a
+    // stroke already on the board. A card that remounts mid-hole (a panel
+    // toggling, a layout change) restarted the minute under the player.
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'],
+    });
+    try {
+      for (const course of ['classic', 'random'] as const) {
+        resetCourseTimers();
+        const playing = { ...initialGolfState({}, course, 4242), levelIndex: 1, strokes: 1 };
+        const first = render(<Scorecard state={playing} circuit={bell} classPrefix="pk" />);
+        act(() => {
+          vi.advanceTimersByTime(40_000);
+        });
+        expect(first.container.querySelector('.pk-golf-stuck')).toBeNull();
+        cleanup();
+
+        // Same hole, same stroke, a fresh mount 40 seconds in: the remaining
+        // twenty seconds are all that is owed.
+        const { container } = render(<Scorecard state={playing} circuit={bell} classPrefix="pk" />);
+        act(() => {
+          vi.advanceTimersByTime(21_000);
+        });
+        expect(container.querySelector('.pk-golf-stuck')).not.toBeNull();
+        cleanup();
+      }
+    } finally {
+      vi.useRealTimers();
+      resetCourseTimers();
+    }
+  });
+
+  it('offers it a minute in on a GENERATED hole too, bloch and qsphere (#98)', () => {
+    // The 60s trigger was dead on random rounds in the field: the offer only
+    // ever arrived through the strokes >= par+3 door. Both display paths are
+    // exercised — a 1-qubit hole draws a Bloch sphere, wider ones a Q-sphere —
+    // because the reveal hangs off the same card either way.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'] });
+    try {
+      const holes = randomCourse(4242);
+      const bloch = holes.findIndex((h) => h.view === 'bloch');
+      const qsphere = holes.findIndex((h) => h.view === 'qsphere');
+      expect(bloch).toBeGreaterThanOrEqual(0);
+      expect(qsphere).toBeGreaterThanOrEqual(0);
+
+      for (const levelIndex of [bloch, qsphere]) {
+        resetCourseTimers();
+        // One stroke, far below par + 3, so only the clock can open the offer.
+        const playing = { ...initialGolfState({}, 'random', 4242), levelIndex, strokes: 1 };
+        expect(playing.strokes).toBeLessThan(holes[levelIndex].par + 3);
+        const { container } = render(<Scorecard state={playing} circuit={bell} classPrefix="pk" />);
+        expect(container.querySelector('.pk-golf-solution-btn')).toBeNull();
+
+        act(() => {
+          vi.advanceTimersByTime(61_000);
+        });
+        expect(container.querySelector('.pk-golf-stuck')).not.toBeNull();
+        cleanup();
+      }
+    } finally {
+      vi.useRealTimers();
+      resetCourseTimers();
+    }
+  });
+
+  it('restarts the stuck clock on the next hole, on both courses (#98)', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'] });
+    try {
+      for (const course of ['classic', 'random'] as const) {
+        resetCourseTimers();
+        const base = initialGolfState({}, course, 4242);
+        const first = { ...base, levelIndex: 1, strokes: 1 };
+        const { container, rerender } = render(
+          <Scorecard state={first} circuit={bell} classPrefix="pk" />,
+        );
+        act(() => {
+          vi.advanceTimersByTime(61_000);
+        });
+        expect(container.querySelector('.pk-golf-stuck')).not.toBeNull();
+
+        // Next hole, first stroke just played: the window starts over, so the
+        // player is not greeted by an offer they did not earn.
+        const next = { ...base, levelIndex: 2, strokes: 1 };
+        rerender(<Scorecard state={next} circuit={bell} classPrefix="pk" />);
+        expect(container.querySelector('.pk-golf-stuck')).toBeNull();
+        act(() => {
+          vi.advanceTimersByTime(61_000);
+        });
+        expect(container.querySelector('.pk-golf-stuck')).not.toBeNull();
+        cleanup();
+      }
+    } finally {
+      vi.useRealTimers();
+      resetCourseTimers();
     }
   });
 
@@ -508,7 +618,9 @@ describe('Scorecard (shared)', () => {
       // Play: one stroke starts the clock …
       const playing = { ...initialGolfState(best), strokes: 1 };
       const live = render(<Scorecard state={playing} circuit={bell} classPrefix="pk" />);
-      vi.advanceTimersByTime(90_000);
+      act(() => {
+        vi.advanceTimersByTime(90_000);
+      });
       cleanup();
 
       // … and completing freezes it into the summary's result line.

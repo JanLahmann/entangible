@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { initialGolfState } from '@quantum/golf';
-import { courseElapsed, courseKey, resetCourseTimers, tickCourseTimer } from './courseTimer';
+import {
+  courseElapsed,
+  courseKey,
+  holeKey,
+  resetCourseTimers,
+  tickCourseTimer,
+  tickHoleTimer,
+} from './courseTimer';
 
 beforeEach(resetCourseTimers);
 
@@ -62,7 +69,7 @@ describe('course timer (#83)', () => {
     expect(tickCourseTimer(at(1), 300_000).startedAt).toBe(300_000);
   });
 
-  it('gives every course its own clock, so a new deal starts fresh', () => {
+  it('gives every course its own clock, so a new deal starts fresh (course)', () => {
     expect(courseKey(at(0, false, 42, 'random'))).toBe('random:42');
     expect(courseKey(at(0))).toBe('classic:0');
 
@@ -73,5 +80,41 @@ describe('course timer (#83)', () => {
     expect(tickCourseTimer(at(0), 5_000).startedAt).toBeNull();
     // …and the original round is still running, untouched.
     expect(tickCourseTimer(at(2, false, 42, 'random'), 9_000).startedAt).toBe(1_000);
+  });
+});
+
+describe('hole timer — the stuck-help window (#79/#98)', () => {
+  it('starts at the hole’s first stroke, and survives being re-read', () => {
+    // Teed off but untouched: no window — reading the target is not playing.
+    expect(tickHoleTimer(at(0), 2, 1_000)).toBeNull();
+
+    // The first stroke stamps it, and every later reading measures from there —
+    // which is the whole point of the store: a card that remounts (or a driver
+    // asking a second time) reads the SAME start, not a fresh one.
+    expect(tickHoleTimer(at(1), 2, 10_000)).toBe(0);
+    expect(tickHoleTimer(at(1), 2, 40_000)).toBe(30_000);
+    expect(tickHoleTimer(at(4), 2, 71_000)).toBe(61_000);
+  });
+
+  it('gives every hole — and every course — its own window', () => {
+    expect(holeKey(at(0), 7)).toBe('classic:0:7');
+    expect(holeKey(at(0, false, 42, 'random'), 7)).toBe('random:42:7');
+
+    tickHoleTimer(at(1), 2, 10_000);
+    // The next hole has not been teed off, whatever hole 2 has been doing.
+    expect(tickHoleTimer(at(0), 3, 40_000)).toBeNull();
+    expect(tickHoleTimer(at(1), 3, 40_000)).toBe(0);
+    // Hole 2 of another course is another hole entirely.
+    expect(tickHoleTimer(at(1, false, 42, 'random'), 2, 40_000)).toBe(0);
+    // …and hole 2 of this one is still where it was.
+    expect(tickHoleTimer(at(2), 2, 50_000)).toBe(40_000);
+  });
+
+  it('resets the window when the hole is re-teed (advance, restart)', () => {
+    tickHoleTimer(at(1), 2, 10_000);
+    // Strokes back at zero is what leaving a hole looks like (#68) — the window
+    // goes with it, so a replay of the same hole starts its minute again.
+    expect(tickHoleTimer(at(0), 2, 40_000)).toBeNull();
+    expect(tickHoleTimer(at(1), 2, 100_000)).toBe(0);
   });
 });

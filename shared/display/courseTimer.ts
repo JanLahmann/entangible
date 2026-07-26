@@ -97,7 +97,68 @@ export function courseElapsed(timing: CourseTiming, now: number): number | null 
   return (timing.finishedAt ?? now) - timing.startedAt;
 }
 
+/**
+ * Per-HOLE clocks — when the stuck-help offer (#79) becomes due.
+ *
+ * ## Why this moved out of the card (#98)
+ * The window used to live in a `useRef` inside the scorecard, stamped during
+ * the render that first saw a stroke, and it was re-evaluated by ONE
+ * `setTimeout` armed to fire exactly at the sixty-second mark. Both halves were
+ * fragile in the field:
+ *
+ *  - a ref is born empty on every MOUNT, so any remount of the card while a
+ *    hole was in play re-stamped the window from "now" — the clock restarted
+ *    and never reached a minute, however long the player had really been stuck;
+ *  - the single timer was never re-armed, so if it fired a hair early (browsers
+ *    truncate fractional `setTimeout` delays) the condition read false once and
+ *    was not looked at again until some other render happened to occur.
+ *
+ * That is exactly the shape of the bug report: the strokes >= par+3 door still
+ * worked, because that one is derived from engine state that survives a
+ * remount, while the time door never opened. So the timestamp now lives here,
+ * beside the course clock, keyed by course + seed + hole, and the card re-reads
+ * it on a plain one-second tick instead of trying to wake up on the exact
+ * millisecond.
+ */
+const HOLE_STARTS = new Map<string, number>();
+const HOLE_LIMIT = 24;
+
+/** Which hole a stuck-clock belongs to: the course, its deal, and the hole. */
+export function holeKey(
+  state: Pick<GolfState, 'course' | 'randomSeed'>,
+  holeNumber: number,
+): string {
+  return `${state.course}:${state.randomSeed}:${holeNumber}`;
+}
+
+/**
+ * Fold one observation of the hole in play into its stuck-clock, and return the
+ * milliseconds since its FIRST stroke (`null` before it).
+ *
+ * Idempotent like `tickCourseTimer`, so the card may call it on every render.
+ * A hole seen with no strokes is a hole that has not been teed off — its clock
+ * is dropped, which is what resets the window on a hole advance and on a
+ * course restart (both arrive as strokes back at 0).
+ */
+export function tickHoleTimer(
+  state: Pick<GolfState, 'course' | 'randomSeed' | 'strokes'>,
+  holeNumber: number,
+  now: number,
+): number | null {
+  const key = holeKey(state, holeNumber);
+  if (state.strokes <= 0) {
+    HOLE_STARTS.delete(key);
+    return null;
+  }
+  const at = HOLE_STARTS.get(key);
+  if (at !== undefined) return now - at;
+  if (HOLE_STARTS.size >= HOLE_LIMIT) HOLE_STARTS.clear();
+  HOLE_STARTS.set(key, now);
+  return 0;
+}
+
 /** Forget every clock — for tests, which must not inherit each other's. */
 export function resetCourseTimers(): void {
   TIMINGS.clear();
+  HOLE_STARTS.clear();
 }

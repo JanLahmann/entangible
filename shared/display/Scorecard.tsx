@@ -46,7 +46,7 @@
  * `monoKet` toggles the one pre-SC2 difference: pocket adds `pk-mono` to the
  * target-ket span; the booth does not tint its ket.
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { Circuit } from '@qamposer/react';
 import {
   ROUND_LABEL,
@@ -68,7 +68,7 @@ import {
 import { courseCode, courseHoles } from '@quantum/golfRandom';
 import { findOptimalAsync, type OptimalResult } from '@quantum/optimal';
 import { MiniCircuit } from './MiniCircuit';
-import { courseElapsed, tickCourseTimer } from './courseTimer';
+import { courseElapsed, tickCourseTimer, tickHoleTimer } from './courseTimer';
 
 const ROUNDS: readonly GolfRound[] = ['easy', 'medium', 'difficult', 'extra'];
 
@@ -248,31 +248,28 @@ export function isStuck(strokes: number, par: number, msSinceFirstStroke: number
  *
  * Deliberately a UI concern: the golf engine is pure and has no clock, and a
  * timer that lived in it would have to be threaded through every caller and
- * every replay. The timestamp is taken when `strokes` first leaves 0, cleared
- * when the hole changes, and a single timer re-renders once the threshold
- * passes so the offer appears without waiting for the next gate.
+ * every replay. The timestamp itself lives in `courseTimer`'s module store
+ * rather than in a ref here (#98) — a ref is empty again after every remount,
+ * which restarted the window under a player who had not moved — and the
+ * condition is simply re-read once a second while the window is open, which is
+ * cheap and cannot miss the threshold the way a single timer armed to the exact
+ * millisecond could.
  */
-function useTimeOnHole(holeNumber: number, strokes: number): number | null {
-  const startedAt = useRef<number | null>(null);
+function useTimeOnHole(state: GolfState, holeNumber: number, watching: boolean): number | null {
   const [, tick] = useState(0);
-  const holeRef = useRef(holeNumber);
+  const elapsed = tickHoleTimer(state, holeNumber, Date.now());
+  // Tick only while the answer could still change: until the offer is due, and
+  // only on a hole still being played. Afterwards there is nothing left to
+  // discover, and a card left open should not repaint forever.
+  const ticking = watching && elapsed !== null && elapsed < STUCK_MS;
 
-  if (holeRef.current !== holeNumber) {
-    holeRef.current = holeNumber;
-    startedAt.current = null;
-  }
-  if (startedAt.current === null && strokes > 0) startedAt.current = performance.now();
-
-  const started = startedAt.current;
   useEffect(() => {
-    if (started === null) return;
-    const remaining = STUCK_MS - (performance.now() - started);
-    if (remaining <= 0) return;
-    const timer = setTimeout(() => tick((n) => n + 1), remaining);
-    return () => clearTimeout(timer);
-  }, [started]);
+    if (!ticking) return;
+    const id = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [ticking]);
 
-  return started === null ? null : performance.now() - started;
+  return elapsed;
 }
 
 export function Scorecard({
@@ -312,7 +309,7 @@ export function Scorecard({
   // Stuck-detection (#79) runs on every hole, holed in or not, so its clock is
   // already ticking when the offer becomes due. Hooks may not be conditional,
   // so both live above the course-complete return.
-  const onHoleMs = useTimeOnHole(hole.hole, state.strokes);
+  const onHoleMs = useTimeOnHole(state, hole.hole, !state.holedIn && !state.complete);
   const courseMs = useCourseElapsed(state);
   const stuck = !state.holedIn && isStuck(state.strokes, hole.par, onHoleMs);
   const revealed = (state.holedIn || stuck) && !state.complete && solutionFor === hole.hole;
