@@ -8,9 +8,10 @@
 Writes, per variant, ``out/hardware/<variant>/`` containing per-colour STL
 parts and a coloured 3MF for every requested tile, plus a ``plates.md`` MMU
 guide. ``--mono`` adds the single-colour (no-MMU) forms and ``--corners`` the
-board-furniture family — the four corner blocks that replace the printed mat
-plus the qubit-wire block that sets how many qubits the board plays — both
-opt-in, so the default kit is exactly what it was.
+board-furniture family — the four corner blocks that replace the printed mat,
+the qubit-wire block that sets how many qubits the board plays and the
+measurement block that ends a wire — both opt-in, so the default kit is exactly
+what it was.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from qamposer_vision.markers import MARKER_TABLE, GateSpec
 from .build import (
     build_corner_block,
     build_double_tile,
+    build_measure_block,
     build_qubit_wire_block,
     build_tile,
 )
@@ -50,7 +52,14 @@ from .export import (
     write_mono_md,
     write_plates_md,
 )
-from .face import QUBIT_WIRE_COPIES, QUBIT_WIRE_ID, corner_block_ids
+from .face import (
+    FURNITURE_IDS,
+    MEASURE_BLOCK_COPIES,
+    MEASURE_BLOCK_ID,
+    QUBIT_WIRE_COPIES,
+    QUBIT_WIRE_ID,
+    corner_block_ids,
+)
 from .pack import parse_bed
 from .params import (
     DOUBLE_FACED_KIT,
@@ -65,11 +74,11 @@ _DEFAULT_OUT = Path("out/hardware")
 
 
 def _all_gate_ids() -> list[int]:
-    """Every printable **gate** tile — never a corner or the qubit-wire block."""
+    """Every printable **gate** tile — never a corner, never board furniture."""
     return sorted(
         mid
         for mid, spec in MARKER_TABLE.items()
-        if spec.kind == "gate" and mid != QUBIT_WIRE_ID
+        if spec.kind == "gate" and mid not in FURNITURE_IDS
     )
 
 
@@ -168,15 +177,16 @@ def _emit_corner_blocks(
 ) -> tuple[int, int]:
     """Write the board-furniture blocks into ``vdir``; return (files, bytes).
 
-    The four corner blocks **and one** qubit-wire block: the wire blocks are all
-    the same design, so ``generate`` emits it once and the user prints it three
-    to five times (see ``corners.md``). Furniture is single-faced by nature (one
-    marker face), so these are the same pieces whether the run is a single- or
-    double-faced kit — only the body height follows the kit.
+    The four corner blocks **and one each** of the qubit-wire and measurement
+    blocks: both of those ship as five identical pieces, so ``generate`` emits
+    the design once and the user prints it up to five times (see
+    ``corners.md``). Furniture is single-faced by nature (one marker face), so
+    these are the same pieces whether the run is a single- or double-faced kit —
+    only the body height follows the kit.
     """
     total_files = 0
     total_bytes = 0
-    for mid in [*corner_block_ids(), QUBIT_WIRE_ID]:
+    for mid in [*corner_block_ids(), QUBIT_WIRE_ID, MEASURE_BLOCK_ID]:
         t0 = time.time()
         if mid == QUBIT_WIRE_ID:
             parts = build_qubit_wire_block(
@@ -184,6 +194,12 @@ def _emit_corner_blocks(
                 params=params, magnets=magnets,
             )
             kind = f"wire ×{QUBIT_WIRE_COPIES}"
+        elif mid == MEASURE_BLOCK_ID:
+            parts = build_measure_block(
+                config, variant=variant, height=height,
+                params=params, magnets=magnets,
+            )
+            kind = f"measure ×{MEASURE_BLOCK_COPIES}"
         else:
             parts = build_corner_block(
                 mid, config, variant=variant, height=height,
@@ -471,8 +487,8 @@ def main(argv: list[str] | None = None) -> int:
         "--corners", action="store_true",
         help="also emit the board furniture: the four corner blocks "
              "(UL/UR/LL/LR, marker IDs 0-3) that replace the printed mat, plus "
-             "the qubit-wire block (ID 46) — one design, print 3-5 of them "
-             "(default: off)",
+             "the qubit-wire block (ID 46) and the measurement block (ID 47) — "
+             "one design each, print up to 5 of them (default: off)",
     )
     gen.add_argument(
         "--out", default=str(_DEFAULT_OUT), type=Path,
@@ -511,7 +527,8 @@ def main(argv: list[str] | None = None) -> int:
     plates.add_argument(
         "--corners", action="store_true",
         help="also pack the board furniture — four corner blocks + "
-             f"{QUBIT_WIRE_COPIES} qubit-wire blocks — onto its own plate "
+             f"{QUBIT_WIRE_COPIES} qubit-wire blocks + {MEASURE_BLOCK_COPIES} "
+             "measurement blocks — onto its own plate "
              "(white + black only, no accent slot) (default: off)",
     )
     plates.add_argument(

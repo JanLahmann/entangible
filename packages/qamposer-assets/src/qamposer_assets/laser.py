@@ -42,6 +42,16 @@ from .corner_block import (
     corner_block_marker_origin,
 )
 from .marker_svg import marker_group
+from .measure_block import (
+    MEASURE_BLOCK_COPIES,
+    MEASURE_BLOCK_ID,
+    MEASURE_BLOCK_LABEL,
+    measure_gauge,
+    measure_glyph_box,
+    measure_line_y,
+    measure_marker_origin,
+    measure_segments,
+)
 from .qubit_wire_block import (
     QUBIT_WIRE_COPIES,
     QUBIT_WIRE_ID,
@@ -53,7 +63,13 @@ from .qubit_wire_block import (
     qubit_wire_segments,
 )
 from .svgbase import esc, fmt, line, rect, svg_document
-from .symbols import control_dot, swap_cross, target_cross, text
+from .symbols import (
+    control_dot,
+    measure_gauge as measure_gauge_svg,
+    swap_cross,
+    target_cross,
+    text,
+)
 from .tile_face import _CAP_TO_EM, _fit_font, _rotated_text, tile_label
 
 __all__ = [
@@ -71,6 +87,8 @@ __all__ = [
     "laser_corner_svg",
     "laser_wire_body",
     "laser_wire_svg",
+    "laser_measure_body",
+    "laser_measure_svg",
     "laser_piece_body",
     "laser_bed_grid",
     "laser_sheet_svgs",
@@ -231,8 +249,8 @@ def laser_tile_body(marker_id: int, cfg: AssetsConfig, *, kerf: float = 0.0) -> 
     make this exact). ``kerf`` = 0 draws the cut at nominal size and the shop
     applies its own offset.
     """
-    if marker_id == QUBIT_WIRE_ID:
-        raise ValueError(f"marker {marker_id} is the qubit-wire block, not a gate tile")
+    if marker_id in (QUBIT_WIRE_ID, MEASURE_BLOCK_ID):
+        raise ValueError(f"marker {marker_id} is board furniture, not a gate tile")
     spec = MARKER_TABLE[marker_id]
     if spec.kind != "gate":
         raise ValueError(f"marker {marker_id} is not a gate tile ({spec.label})")
@@ -469,10 +487,97 @@ def laser_wire_svg(cfg: AssetsConfig, *, kerf: float = 0.0) -> str:
     )
 
 
+# ---------------------------------------------------------------------------
+# The measurement block
+# ---------------------------------------------------------------------------
+
+
+def laser_measure_body(cfg: AssetsConfig, *, kerf: float = 0.0) -> str:
+    """Inner SVG for the measurement block: a ``#cut`` and an ``#engrave`` group.
+
+    The wire block's face, mirrored (see :mod:`~qamposer_assets.measure_block`):
+    the same 60 mm outline and red-cut / black-engrave convention, the same
+    centred tile marker, the same wire line engraved at mid-height in the two
+    runs the quiet zone leaves free — and, in place of the ``q``, a measurement
+    gauge in the strip along the block's **inner** (left) edge.
+
+    The gauge is vector art, not a ``<text>`` element: no meter code point
+    renders reliably, and this piece carries a fiducial, so nothing on it is
+    allowed to depend on a font being installed at the shop.
+
+    As on the corner and wire blocks there is deliberately **no border score**:
+    the frame line would run through the wire line's own ink and, on the
+    marker's own sides, inside its quiet zone.
+    """
+    t = cfg.tile
+    k2 = kerf / 2.0
+
+    cut = (
+        '<g id="cut">'
+        + rect(
+            -k2,
+            -k2,
+            t.size + kerf,
+            t.size + kerf,
+            fill="none",
+            stroke=CUT_COLOR,
+            stroke_width=CUT_STROKE_MM,
+            rx=t.corner_radius + k2,
+        )
+        + "</g>"
+    )
+
+    mx, my = measure_marker_origin(cfg)
+    marker = marker_group(
+        MEASURE_BLOCK_ID,
+        mx,
+        my,
+        t.marker_size,
+        dictionary=cfg.aruco_dictionary,
+        group_id="marker",
+        with_background=False,
+    )
+    cy = measure_line_y(cfg)
+    wire = "".join(
+        line(x0, cy, x1, cy, stroke=ENGRAVE_COLOR, stroke_width=WIRE_STROKE_MM)
+        for x0, x1 in measure_segments(cfg)
+    )
+    g = measure_gauge(measure_glyph_box(cfg))
+    glyph = measure_gauge_svg(
+        g.cx,
+        g.cy,
+        g.radius,
+        color=ENGRAVE_COLOR,
+        stroke=g.stroke,
+        needle=g.needle,
+        pivot_radius=g.pivot_radius,
+    )
+    engrave = f'<g id="engrave">{marker}{wire}{glyph}</g>'
+    return f'<g id="laser-measure-{MEASURE_BLOCK_ID}">{cut}{engrave}</g>'
+
+
+def laser_measure_svg(cfg: AssetsConfig, *, kerf: float = 0.0) -> str:
+    """A standalone measurement-block laser SVG document."""
+    k2 = kerf / 2.0
+    t = cfg.tile
+    body = (
+        f'<g transform="translate({fmt(k2)},{fmt(k2)})">'
+        f"{laser_measure_body(cfg, kerf=kerf)}</g>"
+    )
+    return svg_document(
+        t.size + kerf,
+        t.size + kerf,
+        body,
+        title=f"Laser measurement block {esc(MEASURE_BLOCK_LABEL)}",
+    )
+
+
 def laser_piece_body(marker_id: int, cfg: AssetsConfig, *, kerf: float = 0.0) -> str:
-    """Dispatch to the gate-tile, corner-block or wire-block body by marker ID."""
+    """Dispatch to the gate-tile, corner-block or furniture-block body by ID."""
     if marker_id == QUBIT_WIRE_ID:
         return laser_wire_body(cfg, kerf=kerf)
+    if marker_id == MEASURE_BLOCK_ID:
+        return laser_measure_body(cfg, kerf=kerf)
     if MARKER_TABLE[marker_id].kind == "corner":
         return laser_corner_body(marker_id, cfg, kerf=kerf)
     return laser_tile_body(marker_id, cfg, kerf=kerf)
@@ -630,6 +735,27 @@ blocks; each one declares one qubit wire at its own height, read top to bottom
   * No border score on these pieces either — it would cross the wire line.
 
 Keep wire-block centres at least {fmt(b.pitch)} mm apart (the board's row pitch).
+
+Measurement blocks (corners/qmeasure.svg)
+-----------------------------------------
+{MEASURE_BLOCK_COPIES} more {fmt(cfg.tile.size)} mm pieces, again all cut from
+the SAME file (marker ID {MEASURE_BLOCK_ID}). They are the qubit-wire blocks
+mirrored: lay them along the board's RIGHT edge, between the UR and LR corner
+blocks, level with the wire blocks across from them, and the table reads like a
+circuit diagram — state prep on the left, measurement on the right.
+
+  * They are OPTIONAL. A wire exists because its LEFT block exists; a
+    measurement block only says where that wire ends. Cut none and nothing
+    changes; cut one per wire block for the full picture.
+  * Same centred {fmt(cfg.tile.marker_size)} mm marker, same
+    {fmt(WIRE_STROKE_MM)} mm bar at mid-height running into both edges and
+    passing behind the marker.
+  * The GAUGE — a half dial with a needle — engraves just above the bar on the
+    block's INNER (left) edge, facing the board. It is vector art, not text:
+    nothing on this piece needs a font installed.
+  * No border score on these pieces either.
+
+Keep measurement-block centres {fmt(b.pitch)} mm apart, exactly as on the left.
 """
     return f"""Entangible — laser-cut wood gate-tile kit
 ============================================

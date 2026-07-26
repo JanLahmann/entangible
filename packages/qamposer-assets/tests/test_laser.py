@@ -19,6 +19,8 @@ from qamposer_assets.laser import (
     laser_sheet_svgs,
     laser_tile_body,
     laser_tile_svg,
+    laser_measure_body,
+    laser_measure_svg,
     laser_wire_body,
     laser_wire_svg,
 )
@@ -26,6 +28,16 @@ from qamposer_assets.corner_block import (
     corner_block_ids,
     corner_block_label,
     corner_block_marker_origin,
+)
+from qamposer_assets.measure_block import (
+    MEASURE_BLOCK_COPIES,
+    MEASURE_BLOCK_ID,
+    MEASURE_BLOCK_SLUG,
+    measure_gauge,
+    measure_glyph_box,
+    measure_line_y,
+    measure_marker_origin,
+    measure_segments,
 )
 from qamposer_assets.qubit_wire_block import (
     QUBIT_WIRE_COPIES,
@@ -305,7 +317,8 @@ def test_cli_laser_corners_emit_svgs_and_notes(tmp_path):
         "corner-1.svg",
         "corner-2.svg",
         "corner-3.svg",
-        # One file for all five wire blocks — they are the same piece.
+        # One file per furniture family that ships as five identical pieces.
+        f"{MEASURE_BLOCK_SLUG}.svg",
         f"{QUBIT_WIRE_SLUG}.svg",
     ]
     for path in corners:
@@ -427,3 +440,140 @@ def test_cli_laser_wire_block_is_opt_in(tmp_path):
     assert f'id="laser-wire-{QUBIT_WIRE_ID}"' not in nested
     notes = (tmp_path / "laser" / "README.txt").read_text(encoding="utf-8")
     assert "Qubit-wire blocks" not in notes
+
+
+# ---------------------------------------------------------------------------
+# Measurement block (opt-in): the wire block mirrored, with a vector gauge
+# ---------------------------------------------------------------------------
+
+
+def test_measure_block_has_cut_and_engrave_layers():
+    svg = laser_measure_svg(CFG)
+    assert 'id="cut"' in svg
+    assert 'id="engrave"' in svg
+    colours = set(_HEX.findall(svg))
+    assert colours == {CUT_COLOR, ENGRAVE_COLOR}, colours
+    assert "#ffffff" not in svg
+
+
+def test_measure_block_marker_is_the_tile_marker_centred():
+    """The tiles' 36 mm marker, centred — same convention as the wire block."""
+    x, y = measure_marker_origin(CFG)
+    assert (x, y) == pytest.approx(((CFG.tile.size - CFG.tile.marker_size) / 2.0,) * 2)
+    expected = marker_group(
+        MEASURE_BLOCK_ID,
+        x,
+        y,
+        CFG.tile.marker_size,
+        dictionary=CFG.aruco_dictionary,
+        group_id="marker",
+        with_background=False,
+    )
+    assert expected in laser_measure_body(CFG)
+
+
+def test_measure_block_engraves_both_runs_at_mid_height():
+    """Two black lines at y = size/2, each touching one edge of the block.
+
+    Byte-identical placement to the wire block's, which is what lets a left and
+    a right block put their bars on one line across the table.
+    """
+    engrave = laser_measure_body(CFG).split('id="engrave"', 1)[1]
+    cy = measure_line_y(CFG)
+    assert cy == qubit_wire_line_y(CFG)
+    for x0, x1 in measure_segments(CFG):
+        assert (
+            f'<line x1="{fmt(x0)}" y1="{fmt(cy)}" x2="{fmt(x1)}" y2="{fmt(cy)}" '
+            f'stroke="{ENGRAVE_COLOR}" stroke-width="{fmt(WIRE_STROKE_MM)}"'
+        ) in engrave
+
+
+def test_measure_block_engraves_a_vector_gauge_and_no_text():
+    """Arc + needle + pivot, drawn as shapes — and not one ``<text>`` element.
+
+    A font substitution on a piece that carries a fiducial is a silent shipping
+    defect, so the gauge may never be a glyph (see ``symbols.measure_gauge``).
+    """
+    body = laser_measure_body(CFG)
+    engrave = body.split('id="engrave"', 1)[1]
+    assert "<text" not in body
+    art = engrave.split("</g>", 1)[1]  # drop the marker group
+    assert art.count("<path ") == 1  # the dial arc
+    assert art.count("<circle ") == 1  # the pivot dot
+    # ... and exactly three lines: the two bar runs plus the needle.
+    assert art.count("<line ") == 3
+    g = measure_gauge(measure_glyph_box(CFG))
+    # The arc is stroked at radius - stroke/2 so the ink lands on ``radius``.
+    r = g.radius - g.stroke / 2.0
+    assert f'A {fmt(r)} {fmt(r)} 0 0 1 {fmt(g.cx + r)} {fmt(g.cy)}' in art
+    assert f'x2="{fmt(g.needle[0])}" y2="{fmt(g.needle[1])}"' in art
+
+
+def test_measure_block_ink_never_enters_the_quiet_zone():
+    """Every engraved x — bar runs, arc and needle — is outside the white ring."""
+    t = CFG.tile
+    mx, _my = measure_marker_origin(CFG)
+    lo, hi = mx - t.min_quiet_zone, mx + t.marker_size + t.min_quiet_zone
+    engrave = laser_measure_body(CFG).split('id="engrave"', 1)[1]
+    art = engrave.split("</g>", 1)[1]  # drop the marker group
+    for x0, x1 in re.findall(r'<line x1="([-\d.]+)"[^>]*x2="([-\d.]+)"', art):
+        assert float(x0) <= lo + 1e-9 or float(x0) >= hi - 1e-9
+        assert float(x1) <= lo + 1e-9 or float(x1) >= hi - 1e-9
+    g = measure_gauge(measure_glyph_box(CFG))
+    assert g.cx + g.radius <= lo + 1e-9  # the whole dial sits left of the zone
+
+
+def test_measure_block_gauge_sits_on_the_inner_edge_above_the_bar():
+    """Mirror of the wire block's ``q``: inner (left) strip, above the line."""
+    g = measure_gauge(measure_glyph_box(CFG))
+    assert g.cx < CFG.tile.size / 2.0  # left half of the block
+    assert g.cy + g.pivot_radius < measure_line_y(CFG) - WIRE_STROKE_MM / 2.0
+
+
+def test_measure_block_has_no_border_score():
+    """A frame score would cross the bar and enter the quiet zone."""
+    engrave = laser_measure_body(CFG).split('id="engrave"', 1)[1]
+    art = engrave.split('id="marker"', 1)[1].split("</g>", 1)[1]
+    assert "<rect" not in art
+
+
+def test_sheet_nesting_dispatches_the_measure_block():
+    """``laser_sheet_svgs`` handles ID 47 exactly like a gate, corner or wire ID."""
+    svgs = laser_sheet_svgs(CFG, [10, 0, QUBIT_WIRE_ID, MEASURE_BLOCK_ID], 300.0, 200.0)
+    assert len(svgs) == 1
+    assert 'id="laser-tile-10"' in svgs[0]
+    assert 'id="laser-corner-0"' in svgs[0]
+    assert f'id="laser-wire-{QUBIT_WIRE_ID}"' in svgs[0]
+    assert f'id="laser-measure-{MEASURE_BLOCK_ID}"' in svgs[0]
+
+
+def test_single_tile_svg_rejects_the_measure_block():
+    with pytest.raises(ValueError):
+        laser_tile_body(MEASURE_BLOCK_ID, CFG)
+
+
+def test_cli_laser_nests_five_measure_blocks_and_documents_them(tmp_path):
+    rc = cli.main(["--out", str(tmp_path), "--corners", "laser"])
+    assert rc == 0
+    one_off = tmp_path / "laser" / "corners" / f"{MEASURE_BLOCK_SLUG}.svg"
+    assert one_off.stat().st_size > 500
+    sheets = sorted((tmp_path / "laser" / "sheets").glob("*.svg"))
+    nested = "".join(p.read_text(encoding="utf-8") for p in sheets)
+    # A full set of both families has to be cuttable from the kit sheets.
+    assert nested.count(f'id="laser-measure-{MEASURE_BLOCK_ID}"') == MEASURE_BLOCK_COPIES
+    assert nested.count(f'id="laser-wire-{QUBIT_WIRE_ID}"') == QUBIT_WIRE_COPIES
+    notes = (tmp_path / "laser" / "README.txt").read_text(encoding="utf-8")
+    assert "Measurement blocks" in notes
+    assert f"{MEASURE_BLOCK_SLUG}.svg" in notes
+    assert "OPTIONAL" in notes
+    assert "RIGHT edge" in notes
+
+
+def test_cli_laser_measure_block_is_opt_in(tmp_path):
+    rc = cli.main(["--out", str(tmp_path), "laser"])
+    assert rc == 0
+    sheets = sorted((tmp_path / "laser" / "sheets").glob("*.svg"))
+    nested = "".join(p.read_text(encoding="utf-8") for p in sheets)
+    assert f'id="laser-measure-{MEASURE_BLOCK_ID}"' not in nested
+    notes = (tmp_path / "laser" / "README.txt").read_text(encoding="utf-8")
+    assert "Measurement blocks" not in notes

@@ -198,7 +198,7 @@ The board mat itself is optional: four printed or laser-cut **corner blocks**
 corner of the play area and detection gets exactly the fiducials the mat would
 have provided. They ship in the 3D and laser kits (`--corners`); the generated
 `corners.md` documents placement, orientation and spacing. See
-[`hardware/README.md`](../hardware/README.md#corner-blocks-no-mat).
+[`hardware/README.md`](../hardware/README.md#board-furniture--corner-qubit-wire-and-measurement-blocks-no-mat).
 
 ## SVG → PDF backend
 

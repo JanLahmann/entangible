@@ -242,9 +242,13 @@ def test_furniture_blocks_are_opt_in(config, tmp_path):
     )
     for form in MONO_FORMS:
         placed = sorted(s for i in with_corners if i.form == form for s in i.slugs)
-        # The whole furniture family: four corners + five identical wire blocks.
-        assert placed == ["h", "ll", "lr", "qwire", "qwire", "qwire", "qwire",
-                          "qwire", "ul", "ur"]
+        # The whole furniture family: four corners + five identical wire
+        # blocks + five identical measurement blocks.
+        assert placed == ["h", "ll", "lr",
+                          "qmeasure", "qmeasure", "qmeasure", "qmeasure",
+                          "qmeasure",
+                          "qwire", "qwire", "qwire", "qwire", "qwire",
+                          "ul", "ur"]
 
 
 # --------------------------------------------------------------------------- #

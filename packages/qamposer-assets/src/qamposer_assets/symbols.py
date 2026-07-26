@@ -16,6 +16,7 @@ __all__ = [
     "target_cross",
     "swap_cross",
     "ket_zero",
+    "measure_gauge",
     "text",
     "CROSS_STROKE_FRACTION",
 ]
@@ -126,6 +127,50 @@ def ket_zero(x_left: float, cy: float, cap: float, *, color: str) -> tuple[str, 
     )
     width = (chev_x + chev_w + s / 2.0) - x_left
     return bar + zero + chevron, width
+
+
+def measure_gauge(
+    cx: float,
+    cy: float,
+    radius: float,
+    *,
+    color: str,
+    stroke: float,
+    needle: tuple[float, float],
+    pivot_radius: float,
+) -> str:
+    """Measurement-gauge glyph: a half-dial arc, a needle and its pivot dot.
+
+    The glyph of a measurement box on a circuit diagram, drawn as **vector**
+    shapes for the same reason ``●``/``⊕``/``×`` are: no meter code point
+    renders reliably across the print, laser and OpenCASCADE font stacks, and a
+    tofu on a fiducial-bearing piece would ship silently.
+
+    ``radius`` is the arc's **outer** ink radius, so the glyph spans exactly
+    ``cx ± radius`` and ``cy - radius … cy`` (SVG ``y`` grows downward, so the
+    dial opens *upward*); the stroked path is therefore drawn at
+    ``radius - stroke/2``. The needle runs from the pivot to ``needle``. Every
+    dimension is resolved by
+    :func:`qamposer_assets.measure_block.measure_gauge`, so the printed, laser
+    and 3D gauges are the same glyph.
+    """
+    nx, ny = needle
+    r = radius - stroke / 2.0
+    arc = (
+        f'<path d="M {fmt(cx - r)} {fmt(cy)} '
+        f"A {fmt(r)} {fmt(r)} 0 0 1 {fmt(cx + r)} {fmt(cy)}\" "
+        f'fill="none" stroke="{color}" stroke-width="{fmt(stroke)}" '
+        f'stroke-linecap="butt" />'
+    )
+    hand = (
+        f'<line x1="{fmt(cx)}" y1="{fmt(cy)}" x2="{fmt(nx)}" y2="{fmt(ny)}" '
+        f'stroke="{color}" stroke-width="{fmt(stroke)}" stroke-linecap="round" />'
+    )
+    pivot = (
+        f'<circle cx="{fmt(cx)}" cy="{fmt(cy)}" r="{fmt(pivot_radius)}" '
+        f'fill="{color}" />'
+    )
+    return arc + hand + pivot
 
 
 def text(

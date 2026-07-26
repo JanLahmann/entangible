@@ -46,11 +46,13 @@ from qamposer_assets.config import AssetsConfig
 from .face import (
     WIRE_STROKE_MM,
     FaceLayout,
+    Gauge,
     Rect,
     corner_face_layout,
     double_color_name,
     double_notch_rects,
     face_layout,
+    measure_face_layout,
     qubit_wire_face_layout,
 )
 from .params import HardwareParams
@@ -64,6 +66,10 @@ __all__ = [
     "build_qubit_wire_block",
     "qubit_wire_accent_sketch",
     "qubit_wire_side_labels",
+    "build_measure_block",
+    "measure_gauge_sketch",
+    "measure_accent_sketch",
+    "measure_side_labels",
     "build_double_tile",
     "footprint_area",
     "has_side_labels",
@@ -823,6 +829,147 @@ def build_qubit_wire_block(
 
 
 # --------------------------------------------------------------------------- #
+# Measurement blocks — where a qubit wire ends (marker ID 47)
+# --------------------------------------------------------------------------- #
+
+
+def measure_gauge_sketch(gauge: Gauge):
+    """The measurement gauge as a face sketch, in the gauge's own frame.
+
+    Half-dial annulus + needle + pivot dot — the sketch twin of
+    :func:`qamposer_assets.symbols.measure_gauge`, so the engraved, printed and
+    extruded gauges are one glyph. ``gauge.radius`` is the *outer* ink radius,
+    so the annulus runs ``radius - stroke … radius`` and the dial spans exactly
+    ``cx ± radius``. The half is taken by intersecting with the box above the
+    pivot (3D face coords: ``+y`` is up, so the dial opens upward).
+    """
+    r = gauge.radius
+    ring = Circle(r) - Circle(r - gauge.stroke)
+    upper = Pos(0.0, r / 2.0) * Rectangle(2.0 * r, r)
+    dial = ring & upper
+
+    nx, ny = gauge.needle
+    dx, dy = nx - gauge.cx, ny - gauge.cy
+    length = math.hypot(dx, dy)
+    hand = Pos(dx / 2.0, dy / 2.0) * Rectangle(length, gauge.stroke).rotate(
+        Axis.Z, math.degrees(math.atan2(dy, dx))
+    )
+    # Round cap at the tip; the pivot dot serves as the cap at the root.
+    hand = hand + Pos(dx, dy) * Circle(gauge.stroke / 2.0)
+
+    return Pos(gauge.cx, gauge.cy) * (dial + hand + Circle(gauge.pivot_radius))
+
+
+def measure_accent_sketch(layout: FaceLayout, config: AssetsConfig):
+    """The measurement block's top-face art: the wire runs + the gauge.
+
+    The runs come straight from :attr:`FaceLayout.wires` and the gauge from
+    :attr:`FaceLayout.gauge` (both derived once in
+    :mod:`qamposer_assets.measure_block`); everything is intersected with the
+    tile footprint so ink can never sit outside the body. There is no text on
+    this piece — nothing here goes near a font.
+    """
+    if layout.gauge is None:
+        raise ValueError("measurement block layout carries no gauge")
+    footprint = _footprint(layout)
+    sketch = footprint & measure_gauge_sketch(layout.gauge)
+    for wr in layout.wires:
+        sketch = sketch + (footprint & (Pos(wr.cx, wr.cy) * Rectangle(wr.w, wr.h)))
+    return sketch
+
+
+def measure_side_labels(
+    layout: FaceLayout,
+    height: float,
+    params: HardwareParams,
+    *,
+    depth: float | None = None,
+) -> list[SideLabel]:
+    """The wire bar + gauge repeated on all four vertical faces of a cube block.
+
+    Exactly the wire block's side treatment (:func:`qubit_wire_side_labels`) —
+    a bar spanning the face's flat width at mid-height, the glyph centred above
+    it — with the gauge in place of the ``q``. Unlike the ``q`` the gauge is
+    vector art, so it is scaled rather than re-typeset, and it can be drawn far
+    larger here than in the 5 mm strip the top face allows: this is the face a
+    player actually reads from a seat. Black, like every other mark on the
+    piece. Returns ``[]`` for a flat tile.
+    """
+    if not has_side_labels(height, params):
+        return []
+    if layout.gauge is None:
+        raise ValueError("measurement block layout carries no gauge")
+    flat = layout.size - 2.0 * layout.corner_radius
+    bar = Rectangle(flat, WIRE_STROKE_MM)
+    max_h = height / 2.0 - WIRE_STROKE_MM / 2.0 - params.side_label_margin
+    max_w = _side_max_width(layout, params)
+    sketch = bar
+    if max_h > 1.0 and max_w > 1.0:
+        glyph = _fit_sketch(measure_gauge_sketch(layout.gauge), max_w, max_h)
+        gh = glyph.bounding_box().size.Y
+        v = WIRE_STROKE_MM / 2.0 + (max_h - gh) / 2.0 + gh / 2.0
+        sketch = sketch + Pos(0.0, v) * glyph
+    d = params.side_label_depth if depth is None else depth
+    return [
+        SideLabel(
+            face=name,
+            role=f"side-{name}",
+            color_name=layout.accent_name,
+            hex=layout.accent_hex,
+            solid=_side_prism(sketch, plane, 0.0, 0.0, d),
+        )
+        for name, plane in side_face_planes(layout.size, height)
+    ]
+
+
+def build_measure_block(
+    config: AssetsConfig,
+    *,
+    variant: str,
+    height: float,
+    params: HardwareParams | None = None,
+    magnets: bool = False,
+) -> TileParts:
+    """Build the one measurement-block design (marker ID 47) as :class:`TileParts`.
+
+    Same three-part split as a corner or wire block — white body, black marker,
+    black "accent" (here the wire bar and the gauge) — so a measurement block
+    never adds a filament slot. One design: the kit prints it up to five times,
+    and each placed block simply says where one wire ends. A cube-height block
+    repeats the bar and the gauge on all four vertical faces (the #62 side-inlay
+    technique, in black).
+    """
+    params = params or HardwareParams()
+    layout = measure_face_layout(config)
+    fd = params.face_depth
+
+    body = extrude(_footprint(layout), amount=height)
+    body = _chamfer_bottom(body, params.bottom_chamfer)
+    if height > params.hollow_min_height:
+        body = _hollow(body, layout, params, height)
+    if magnets:
+        body = _magnet_pockets(body, layout, params)
+
+    accent = _extrude_top(measure_accent_sketch(layout, config), height, fd)
+    marker = _marker_solid(layout, height, fd, params.marker_bleed)
+    side_labels = _clip_to_body(measure_side_labels(layout, height, params), body)
+
+    white_body = body - accent - marker
+    for sl in side_labels:
+        white_body = white_body - sl.solid
+
+    return TileParts(
+        layout=layout,
+        variant=variant,
+        height=height,
+        body=white_body,
+        marker=marker,
+        accent=accent,
+        side_labels=side_labels,
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Double-faced pieces
 # --------------------------------------------------------------------------- #
 
@@ -1072,6 +1219,8 @@ def _mono_side_wells(parts, params: HardwareParams) -> Solid | None:
         labels = double_side_label_solids(
             parts.layout_a, parts.layout_b, parts.height, params, depth=depth
         )
+    elif parts.layout.gauge is not None:  # measurement block: bar + gauge
+        labels = measure_side_labels(parts.layout, parts.height, params, depth=depth)
     elif parts.layout.wires:  # qubit-wire block: a wire bar, not a gate name
         labels = qubit_wire_side_labels(
             parts.layout, parts.height, params, depth=depth

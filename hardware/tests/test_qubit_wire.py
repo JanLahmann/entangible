@@ -74,7 +74,7 @@ TILE_H = 6.0
 CUBE_H = 60.0
 PARAMS = HardwareParams()
 
-#: The CLI's shipped wipe-tower cap — the reason nine furniture blocks become
+#: The CLI's shipped wipe-tower cap — the reason the furniture family becomes
 #: two beds. Spelled out here so a change to the default fails visibly.
 CAP = 8
 
@@ -442,16 +442,20 @@ def test_generate_without_corners_has_no_wire_block(tmp_path):
     assert not [n for n in names if n.startswith(QUBIT_WIRE_SLUG)]
 
 
-def test_furniture_ids_are_four_corners_and_five_wires():
+def test_furniture_ids_carry_five_wire_blocks():
+    """The wire blocks' share of the furniture set — five copies of one ID.
+
+    The set as a whole (corners + wire blocks + measurement blocks) is asserted
+    in ``test_measure_block.py``; here only the wire family's own contribution.
+    """
     ids = furniture_ids()
-    assert len(ids) == len(corner_block_ids()) + QUBIT_WIRE_COPIES == 9
     assert Counter(ids)[QUBIT_WIRE_ID] == QUBIT_WIRE_COPIES == 5
-    assert [i for i in ids if i != QUBIT_WIRE_ID] == corner_block_ids()
+    assert ids[: len(corner_block_ids())] == corner_block_ids()
 
 
 @pytest.fixture(scope="module")
 def furniture_infos(config, tmp_path_factory):
-    """The shipped furniture plate: nine blocks, the CLI's 8-piece bed cap."""
+    """The shipped furniture plate: fourteen blocks, the CLI's 8-piece bed cap."""
     out = tmp_path_factory.mktemp("furniture")
     return export_corner_batches(
         config,
@@ -466,24 +470,23 @@ def furniture_infos(config, tmp_path_factory):
 
 
 def test_plates_place_five_wire_blocks_exactly_once_each(furniture_infos):
-    """Totality on the furniture bed: 4 corners + 5 wire blocks, all placed."""
+    """Totality for the wire family: exactly five ``qwire`` pieces on the beds."""
     placed = [s for i in furniture_infos for s in i.slugs]
-    assert Counter(placed) == Counter(
-        {"ul": 1, "ur": 1, "lr": 1, "ll": 1, QUBIT_WIRE_SLUG: QUBIT_WIRE_COPIES}
-    )
-    assert len(placed) == 9
+    assert Counter(placed)[QUBIT_WIRE_SLUG] == QUBIT_WIRE_COPIES == 5
+    assert Counter(placed)["ul"] == 1
     for info in furniture_infos:
         assert info.path.exists() and info.path.stat().st_size > 10_000
         assert len(info.positions) == len(info.slugs)
 
 
-def test_nine_blocks_split_across_two_beds_under_the_wipe_tower_cap(furniture_infos):
-    """9 > the 8-piece cap, so the family becomes batch1 + batch2 — cleanly."""
+def test_the_furniture_set_splits_at_the_wipe_tower_cap(furniture_infos):
+    """The family is bigger than the 8-piece cap, so it becomes batch1 + batch2."""
     assert [i.path.name for i in furniture_infos] == [
         "corners-batch1.3mf",
         "corners-batch2.3mf",
     ]
-    assert [len(i.slugs) for i in furniture_infos] == [CAP, 9 - CAP]
+    assert furniture_infos[0].slugs.count(QUBIT_WIRE_SLUG) >= 1
+    assert [len(i.slugs) for i in furniture_infos][0] == CAP
     # Every piece keeps its own bed slot: no two pieces on one position.
     for info in furniture_infos:
         assert len(set(info.positions)) == len(info.positions)

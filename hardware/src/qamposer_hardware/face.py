@@ -31,6 +31,19 @@ from qamposer_assets.corner_block import (
     corner_block_marker_origin,
 )
 from qamposer_assets.marker_svg import marker_bit_matrix
+from qamposer_assets.measure_block import (
+    MEASURE_BLOCK_COPIES,
+    MEASURE_BLOCK_ID,
+    MEASURE_BLOCK_LABEL,
+    MEASURE_BLOCK_SLUG,
+    Gauge,
+    measure_block_spec,
+    measure_gauge,
+    measure_glyph_box,
+    measure_line_y,
+    measure_marker_origin,
+    measure_segments,
+)
 from qamposer_assets.qubit_wire_block import (
     QUBIT_WIRE_COPIES,
     QUBIT_WIRE_ID,
@@ -84,7 +97,24 @@ __all__ = [
     "qubit_wire_glyph_band",
     "qubit_wire_rects",
     "qubit_wire_face_layout",
+    # Measurement blocks — the right-edge counterpart, same re-export rule.
+    "MEASURE_BLOCK_ID",
+    "MEASURE_BLOCK_SLUG",
+    "MEASURE_BLOCK_LABEL",
+    "MEASURE_BLOCK_COPIES",
+    "Gauge",
+    "measure_block_spec",
+    "measure_glyph_band",
+    "measure_rects",
+    "measure_gauge_3d",
+    "measure_face_layout",
+    "FURNITURE_IDS",
 ]
+
+#: Every board-furniture marker ID — the two blocks that are neither gate nor
+#: corner. Kept as one name so "is this a gate face?" checks can never grow a
+#: family and forget one of them.
+FURNITURE_IDS: frozenset[int] = frozenset({QUBIT_WIRE_ID, MEASURE_BLOCK_ID})
 
 #: Depth of the coloured top face (last N mm of tile height) — the MMU colour
 #: layer. Kept small so the body below stays single-colour white.
@@ -198,7 +228,8 @@ class FaceLayout:
     label: str  # band caption text (e.g. "RX π/2"); "" for CNOT tiles
     side_label: str = ""  # cube side-face gate name (family only); "" = vector glyph
     dial: DialFace | None = None  # dial-face geometry (IDs 42/43/44), else None
-    wires: tuple[Rect, ...] = ()  # qubit-wire block: the wire line's drawn runs
+    wires: tuple[Rect, ...] = ()  # wire / measurement block: the line's drawn runs
+    gauge: Gauge | None = None  # measurement block: the gauge glyph, 3D coords
 
     @property
     def black_cells(self) -> tuple[tuple[int, int], ...]:
@@ -325,10 +356,10 @@ def face_layout(marker_id: int, config: AssetsConfig) -> FaceLayout:
     """Build the :class:`FaceLayout` for a gate tile.
 
     Raises ``ValueError`` if ``marker_id`` is not a gate tile (corners 0-3 and
-    the qubit-wire block 46 have no printable gate face).
+    the furniture blocks 46/47 have no printable gate face).
     """
-    if marker_id == QUBIT_WIRE_ID:
-        raise ValueError(f"marker {marker_id} is the qubit-wire block, not a gate tile")
+    if marker_id in FURNITURE_IDS:
+        raise ValueError(f"marker {marker_id} is board furniture, not a gate tile")
     spec = MARKER_TABLE[marker_id]
     if spec.kind != "gate":
         raise ValueError(f"marker {marker_id} is not a gate tile ({spec.label})")
@@ -433,9 +464,9 @@ def corner_face_layout(marker_id: int, config: AssetsConfig) -> FaceLayout:
     ``corner_marker_size``, unrotated, at the mat's own corner inset (see
     :mod:`qamposer_assets.corner_block`).
     """
-    if marker_id == QUBIT_WIRE_ID:
+    if marker_id in FURNITURE_IDS:
         raise ValueError(
-            f"marker {marker_id} is the qubit-wire block, not a board corner"
+            f"marker {marker_id} is board furniture, not a board corner"
         )
     spec = MARKER_TABLE[marker_id]
     if spec.kind != "corner":
@@ -586,6 +617,122 @@ def qubit_wire_face_layout(config: AssetsConfig) -> FaceLayout:
         label=QUBIT_WIRE_LABEL,
         side_label=QUBIT_WIRE_LABEL,
         wires=qubit_wire_rects(config),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Measurement blocks — where a qubit wire ends (marker ID 47)
+# --------------------------------------------------------------------------- #
+#
+# The mirror of the wire block, along the board's RIGHT edge: same centred
+# marker, same mid-height bar, same black-only ink — only the glyph differs, and
+# it is vector art rather than a letter (see
+# :mod:`qamposer_assets.measure_block`). As with the corner and wire blocks the
+# geometry is derived once on the assets side and shared with the laser-cut wood
+# piece; this module only lifts it into the 3D face frame.
+
+
+def measure_glyph_band(config: AssetsConfig) -> Rect:
+    """The gauge glyph box on a measurement block's top face (3D coords)."""
+    x, y, w, h = measure_glyph_box(config)
+    size = config.tile.size
+    return Rect(cx=x + w / 2.0, cy=_flip_y(size, y + h / 2.0), w=w, h=h)
+
+
+def measure_gauge_3d(config: AssetsConfig) -> Gauge:
+    """The gauge glyph resolved into the 3D face frame (y up).
+
+    The one place the SVG→3D flip is applied to the gauge: :mod:`build` and the
+    tests read this, never the SVG values, so the dial can only ever open
+    *upward* on the printed piece in exactly one way.
+    """
+    size = config.tile.size
+    g = measure_gauge(measure_glyph_box(config))
+    nx, ny = g.needle
+    return Gauge(
+        cx=g.cx,
+        cy=_flip_y(size, g.cy),
+        radius=g.radius,
+        stroke=g.stroke,
+        needle=(nx, _flip_y(size, ny)),
+        pivot_radius=g.pivot_radius,
+    )
+
+
+def measure_rects(config: AssetsConfig) -> tuple[Rect, ...]:
+    """The wire line's drawn runs on a measurement block's face (3D coords).
+
+    Two runs — inner and outer — because the marker's quiet zone interrupts the
+    line; see :func:`qamposer_assets.measure_block.measure_segments`. Both reach
+    the block's edge exactly, at the block's mid-height, so the bar lines up
+    with the wire block's at the far end of the row.
+    """
+    size = config.tile.size
+    cy = _flip_y(size, measure_line_y(config))
+    return tuple(
+        Rect(cx=(x0 + x1) / 2.0, cy=cy, w=x1 - x0, h=WIRE_STROKE_MM)
+        for x0, x1 in measure_segments(config)
+    )
+
+
+def measure_face_layout(config: AssetsConfig) -> FaceLayout:
+    """:class:`FaceLayout` for the measurement block (marker ID 47).
+
+    The wire block's face mirrored: plain body-white, no frame and no colour
+    band, the tile's 36 mm marker centred on both axes (so the marker centre is
+    the block centre is the height at which the wire ends), the wire bar in
+    :attr:`FaceLayout.wires`, and — in place of the wire block's ``q`` — the
+    measurement gauge in :attr:`FaceLayout.gauge`, boxed by
+    :attr:`FaceLayout.band`. :attr:`FaceLayout.label` is deliberately empty:
+    there is no text on this piece at all.
+    """
+    t = config.tile
+    size = t.size
+    inner_radius = max(t.corner_radius - t.frame_width, 0.0)
+    field_w = size - 2 * t.frame_width
+    centre = size / 2.0
+    white_field = Rect(cx=centre, cy=centre, w=field_w, h=field_w)
+
+    band = measure_glyph_band(config)
+
+    matrix = marker_bit_matrix(MEASURE_BLOCK_ID, config.aruco_dictionary)
+    n = len(matrix)
+    module = t.marker_size / n
+    mx, my = measure_marker_origin(config)
+    cells: list[ModuleCell] = []
+    for r, row in enumerate(matrix):
+        for c, bit in enumerate(row):
+            cx = mx + c * module + module / 2.0
+            cy = _flip_y(size, my + r * module + module / 2.0)
+            cells.append(
+                ModuleCell(
+                    row=r,
+                    col=c,
+                    bit=int(bit),
+                    rect=Rect(cx=cx, cy=cy, w=module, h=module),
+                )
+            )
+
+    return FaceLayout(
+        marker_id=MEASURE_BLOCK_ID,
+        spec=measure_block_spec(),
+        size=size,
+        corner_radius=t.corner_radius,
+        frame_width=t.frame_width,
+        band_height=band.h,
+        accent_hex=FURNITURE_INK_HEX,
+        accent_name="black",
+        white_field=white_field,
+        inner_radius=inner_radius,
+        band=band,
+        module_size=module,
+        modules=tuple(cells),
+        notch_count=0,
+        notches=(),
+        label="",  # vector gauge only — never a font glyph
+        side_label="",
+        wires=measure_rects(config),
+        gauge=measure_gauge_3d(config),
     )
 
 

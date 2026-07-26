@@ -48,7 +48,7 @@ Options: `--variant tile|cube|all`, `--gates H,X,RX,CNOT,...|<marker-id>,...|all
 `--magnets`, `--mono` (single-colour STLs for non-MMU printers — see
 [No MMU?](#no-mmu-single-colour-routes)), `--corners` (the board furniture:
 four corner blocks + the qubit-wire block — see [Corner
-blocks](#corner-blocks-no-mat)), `--out DIR` (default `out/hardware`,
+blocks](#board-furniture--corner-qubit-wire-and-measurement-blocks-no-mat)), `--out DIR` (default `out/hardware`,
 git-ignored).
 
 Output per variant lands in `out/hardware/<variant>/`:
@@ -246,7 +246,7 @@ mono forms**, raised included: a filament swap changes whole layers and therefor
 cannot colour a vertical face, but an acrylic pen can. Leaving them unpainted is
 fine too — the recess alone reads.
 
-## Corner blocks (no mat)
+## Board furniture — corner, qubit-wire and measurement blocks (no mat)
 
 `--corners` (on `generate` and `plates`) adds four blocks — **UL, UR, LL, LR** —
 that replace the printed board mat: each is a literal 60 mm crop of the mat's
@@ -269,9 +269,25 @@ passes behind a gate box, because ink may not enter the ArUco quiet zone — plu
 small `q` on the inner edge. The marker is the standard 36 mm tile marker and it
 is *centred*, so the marker's centre is the block's centre is the wire's height:
 centre a block on a row and the wire is on the row, and a block turned 180° still
-declares the same wire. `plates --corners` packs the whole family — 4 corners +
-5 wire blocks = 9 pieces — onto `corners-batch1/2.3mf` (white + black only, no
-accent slot). `corners.md` covers placement for both.
+declares the same wire.
+
+The same flag also emits the **measurement block** (`qmeasure`, marker ID 47) —
+the wire block mirrored, and again one design you print up to five times. Lay
+them along the board's **right** edge between UR and LR, level with the wire
+blocks across from them, and the table reads like a circuit diagram: state prep
+on the left, measurement on the right. They are **optional and never create a
+wire** — a wire exists because its *left* block exists; a right block only says
+where that wire ends, and the app then runs the wire as the straight line
+through both block centres (so slightly out-of-square rows give a tilted wire
+that still follows the tiles). A measurement block with no wire block across
+from it is ignored and warned about. The face is the wire block's mirrored: same
+centred 36 mm marker, same 2 mm bar at mid-height into both edges, and in place
+of the `q` a **measurement gauge** — a half dial with a needle, drawn as vector
+art (never a font glyph) — on the block's inner (left) edge.
+
+`plates --corners` packs the whole family — 4 corners + 5 wire blocks +
+5 measurement blocks = 14 pieces — onto `corners-batch1/2.3mf` (white + black
+only, no accent slot). `corners.md` covers placement for all three.
 
 ## Double-faced pieces
 
