@@ -31,8 +31,8 @@ describe('matchMarkerGrid', () => {
   });
 
   it('reports the rotation for each of the four turns', () => {
-    const id = 10; // H tile
-    let inner = markers['10'].bits;
+    const id = 30; // H tile
+    let inner = markers['30'].bits;
     for (let r = 0; r < 4; r++) {
       const match = matchMarkerGrid(withBorder(inner));
       expect(match).not.toBeNull();
@@ -43,11 +43,11 @@ describe('matchMarkerGrid', () => {
   });
 
   it('tolerates a single-bit error (Hamming ≤ 1)', () => {
-    const inner = markers['10'].bits.map((row) => [...row]);
+    const inner = markers['30'].bits.map((row) => [...row]);
     inner[2][1] ^= 1; // flip one inner module
     const match = matchMarkerGrid(withBorder(inner));
     expect(match).not.toBeNull();
-    expect(match!.id).toBe(10);
+    expect(match!.id).toBe(30);
   });
 
   it('rejects a two-bit error as no match', () => {
@@ -63,7 +63,7 @@ describe('matchMarkerGrid', () => {
   });
 
   it('rejects a border violation (a light border module)', () => {
-    const grid = withBorder(markers['10'].bits);
+    const grid = withBorder(markers['30'].bits);
     grid[0][3] = 0; // a border cell reads white → not a marker
     expect(matchMarkerGrid(grid)).toBeNull();
   });

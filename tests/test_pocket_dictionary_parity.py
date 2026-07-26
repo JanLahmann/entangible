@@ -62,6 +62,8 @@ def test_dictionary_covers_every_detectable_id() -> None:
     assert {QUBIT_WIRE_ID, MEASURE_BLOCK_ID} <= set(DETECTABLE_IDS)
     assert QUBIT_WIRE_ID not in MARKER_TABLE
     assert MEASURE_BLOCK_ID not in MARKER_TABLE
+    # The IDs freed by task #96 must not have leaked back into the export.
+    assert not ({11, 14} & {int(k) for k in exported})
 
 
 def test_every_marker_has_four_distinct_rotations_all_ids_unique() -> None:

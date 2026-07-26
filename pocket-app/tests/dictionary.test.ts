@@ -21,6 +21,18 @@ describe('marker dictionary (generated, parity-gated by pytest)', () => {
       expect(markers[String(id)]).toBeDefined();
       expect(MARKER_TABLE.has(id)).toBe(false);
     }
+    // 11 (old X) and 14 (old CNOT control ●) were freed by #96: neither is a
+    // gate any more, and neither may be decoded.
+    for (const freed of [11, 14]) {
+      expect(MARKER_TABLE.has(freed)).toBe(false);
+      expect(markers[String(freed)]).toBeUndefined();
+      expect(DETECTABLE_IDS.has(freed)).toBe(false);
+    }
+    // The IDs they moved to are live gates.
+    expect(MARKER_TABLE.get(35)?.gate).toBe('X');
+    expect(MARKER_TABLE.get(17)?.role).toBe('control');
+    expect(MARKER_TABLE.get(30)?.gate).toBe('H');
+    expect(MARKER_TABLE.get(10)?.gate).toBe('RZ');
   });
 
   it('gives every marker a 4×4 bit matrix and four rotation codes', () => {

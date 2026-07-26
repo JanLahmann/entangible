@@ -85,7 +85,7 @@ def test_only_two_colours_red_cut_black_engrave(marker_id):
     assert "#ffffff" not in svg
 
 
-@pytest.mark.parametrize("marker_id", [10, 14, 15, 21, 40, 42, 45])
+@pytest.mark.parametrize("marker_id", [30, 17, 15, 21, 40, 42, 45])
 def test_cut_is_red_hairline_stroke_no_fill(marker_id):
     svg = laser_tile_body(marker_id, CFG)
     cut = svg.split('id="cut"', 1)[1].split("</g>", 1)[0]
@@ -120,7 +120,7 @@ def test_marker_is_36mm_at_the_config_position():
     t = CFG.tile
     assert t.marker_size == 36.0
     expected = marker_group(
-        10,
+        30,
         t.marker_x,
         t.marker_y,
         t.marker_size,
@@ -128,7 +128,7 @@ def test_marker_is_36mm_at_the_config_position():
         group_id="marker",
         with_background=False,
     )
-    assert expected in laser_tile_body(10, CFG)
+    assert expected in laser_tile_body(30, CFG)
 
 
 def test_dial_marker_is_centred():
@@ -165,7 +165,7 @@ def test_kerf_outsets_the_cut_rect():
     assert f'width="{fmt(CFG.tile.size + kerf)}"' in cut
     assert f'height="{fmt(CFG.tile.size + kerf)}"' in cut
     # Nominal (kerf 0) draws the outline at exactly the tile size.
-    nominal = laser_tile_body(10, CFG).split('id="cut"', 1)[1].split("</g>", 1)[0]
+    nominal = laser_tile_body(30, CFG).split('id="cut"', 1)[1].split("</g>", 1)[0]
     assert f'width="{fmt(CFG.tile.size)}"' in nominal
 
 
@@ -182,7 +182,7 @@ def test_bed_grid_default_bed():
 
 def test_bed_grid_too_small_raises():
     with pytest.raises(ValueError):
-        laser_sheet_svgs(CFG, [10], 50.0, 50.0)
+        laser_sheet_svgs(CFG, [30], 50.0, 50.0)
 
 
 def test_sheet_count_matches_grid():
@@ -197,7 +197,7 @@ def test_sheet_count_matches_grid():
 
 
 def test_sheet_places_expected_tile_count_on_full_sheet():
-    ids = list(range(10, 16)) + list(range(20, 30))  # 16 tiles > 8 per sheet
+    ids = [30, 35, 12, 13, 15, 17] + list(range(20, 30))  # 16 tiles > 8 per sheet
     svgs = laser_sheet_svgs(CFG, ids, 300.0, 200.0, spacing=3.0)
     assert len(svgs) == 2
     # First (full) sheet holds exactly cols*rows = 8 tile groups.
@@ -293,9 +293,9 @@ def test_corner_block_rejects_a_gate_marker():
 
 def test_sheet_nesting_dispatches_corner_blocks():
     """``laser_sheet_svgs`` handles corner IDs exactly like gate IDs."""
-    svgs = laser_sheet_svgs(CFG, [10, 0, 2], 300.0, 200.0)
+    svgs = laser_sheet_svgs(CFG, [30, 0, 2], 300.0, 200.0)
     assert len(svgs) == 1
-    assert 'id="laser-tile-10"' in svgs[0]
+    assert 'id="laser-tile-30"' in svgs[0]
     assert 'id="laser-corner-0"' in svgs[0]
     assert 'id="laser-corner-2"' in svgs[0]
 
@@ -404,9 +404,9 @@ def test_wire_block_has_no_border_score():
 
 def test_sheet_nesting_dispatches_the_wire_block():
     """``laser_sheet_svgs`` handles the wire ID exactly like a gate or corner ID."""
-    svgs = laser_sheet_svgs(CFG, [10, 0, QUBIT_WIRE_ID], 300.0, 200.0)
+    svgs = laser_sheet_svgs(CFG, [30, 0, QUBIT_WIRE_ID], 300.0, 200.0)
     assert len(svgs) == 1
-    assert 'id="laser-tile-10"' in svgs[0]
+    assert 'id="laser-tile-30"' in svgs[0]
     assert 'id="laser-corner-0"' in svgs[0]
     assert f'id="laser-wire-{QUBIT_WIRE_ID}"' in svgs[0]
 
@@ -539,9 +539,9 @@ def test_measure_block_has_no_border_score():
 
 def test_sheet_nesting_dispatches_the_measure_block():
     """``laser_sheet_svgs`` handles ID 47 exactly like a gate, corner or wire ID."""
-    svgs = laser_sheet_svgs(CFG, [10, 0, QUBIT_WIRE_ID, MEASURE_BLOCK_ID], 300.0, 200.0)
+    svgs = laser_sheet_svgs(CFG, [30, 0, QUBIT_WIRE_ID, MEASURE_BLOCK_ID], 300.0, 200.0)
     assert len(svgs) == 1
-    assert 'id="laser-tile-10"' in svgs[0]
+    assert 'id="laser-tile-30"' in svgs[0]
     assert 'id="laser-corner-0"' in svgs[0]
     assert f'id="laser-wire-{QUBIT_WIRE_ID}"' in svgs[0]
     assert f'id="laser-measure-{MEASURE_BLOCK_ID}"' in svgs[0]

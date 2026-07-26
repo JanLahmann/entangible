@@ -119,7 +119,7 @@ Output layout (SVG only — laser shops import vector SVG, so no PDF is produced
 ```
 out/assets/laser/
   sheets/  kit-bed300x200-p01.svg …   (kit nested onto the bed, one file per sheet)
-  tiles/   tile-10.svg … tile-45.svg  (one SVG per gate, for one-off cuts)
+  tiles/   tile-10.svg … tile-45.svg  (one SVG per gate id, for one-off cuts)
   README.txt                          (the shop notes: colour convention, kerf, validation)
 ```
 
@@ -163,7 +163,8 @@ nominal size yields a piece that is kerf-narrow.
 
 ### Validate one tile before batch-cutting
 
-**Engrave one H tile first** (`out/assets/laser/tiles/tile-10.svg`). Photograph it
+**Engrave one H tile first** (`out/assets/laser/tiles/tile-30.svg` — H is marker
+ID 30, see `docs/marker-ids.md`). Photograph it
 on the mat and point the pocket app ([entangible.org](https://entangible.org)) at
 it; confirm the marker is detected and the gate reads as **H**. Only then cut the
 full kit. If detection fails, deepen/darken the engrave for more contrast or

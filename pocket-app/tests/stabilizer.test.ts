@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { TileStabilizer, tileKey } from '../src/vision/stabilizer';
 
 // Mirrors packages/qamposer-vision/tests/test_stabilizer.py.
-const T = tileKey(10, 0, 0); // an H tile at (0,0)
-const U = tileKey(14, 0, 1); // a second, unrelated tile
+const T = tileKey(30, 0, 0); // an H tile at (0,0)
+const U = tileKey(17, 0, 1); // a second, unrelated tile
 
 function run(seq: boolean[]) {
   const stab = new TileStabilizer();

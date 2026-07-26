@@ -8,12 +8,17 @@ so the physical print and the runtime detection can never drift apart.
 Deliberately dependency-free — it must NOT import ``cv2`` or ``numpy`` so that
 the assets package stays lightweight. Only the standard library is used.
 
-Marker scheme (``DICT_4X4_50``):
+Marker scheme (``DICT_4X4_50``) — an **explicit per-ID assignment**, deliberately
+*not* a contiguous range. Task #96 re-homed three tiles onto IDs whose printed
+bit pattern resembles the gate glyph (H → 30, X → 35, CNOT control → 17,
+displacing RZ(π) onto the freed 10), so the list below has intentional gaps and
+every ID is spelled out one by one in :func:`_build_marker_table`:
 
 * 0–3   board corners TL/TR/BR/BL (orientation implicit)
-* 10–13 single-qubit gates H/X/Y/Z
-* 14/15 CNOT control ``●`` / target ``⊕``
-* 20–31 rotation gates RX/RY/RZ, one distinct ID per angle variant
+* 30/35/12/13 single-qubit gates H/X/Y/Z
+* 17/15 CNOT control ``●`` / target ``⊕``
+* 20–23 RX(π/4, π/2, π, −π/2), 24–27 the same four RY angles, 28/29/**10**/31
+  the same four RZ angles — one distinct ID per angle variant
 * 40/41 S / T gates — emitted as their RZ equivalents (RZ(π/2) / RZ(π/4)),
   see :attr:`GateSpec.emit_as`
 * 42/43/44 RX/RY/RZ **dial** tiles — one tile per axis whose board-frame
@@ -22,6 +27,9 @@ Marker scheme (``DICT_4X4_50``):
 * 45    SWAP tile ``×`` — two ``×`` tiles in one column pair into a SWAP between
   their rows; emitted as the 3-CNOT decomposition until ``@qamposer/react`` gains
   a native SWAP type (see ``circuit_builder.emit_swap``)
+* 11/14 **free** — vacated by X and the CNOT control in task #96. They are not
+  reserved, just unassigned: nothing prints or decodes them today, and a future
+  tile may claim them.
 * 46    qubit-wire block — board furniture on the board's LEFT edge; up to five
   identical blocks declare the wires, see :data:`QUBIT_WIRE_ID`
 * 47    measurement block — the right-edge counterpart of the wire block, an
@@ -118,6 +126,12 @@ MEASURE_BLOCK_ID = 47
 #: qubit-wire block and 47 the measurement block; 48–49 stay reserved — never
 #: emitted by the current detector or assets generator, but claimed here so no
 #: other gate is assigned into this range.
+#:
+#: This is *reservation*, not a census of what is unused: the assignment is
+#: explicit per ID (see the module docstring), so plenty of IDs outside
+#: :data:`MARKER_TABLE` are simply **free** — 11 and 14 among them, vacated by
+#: task #96. Free IDs carry no promise either way; 48–49 are the ones held back
+#: on purpose.
 RESERVED_IDS = range(48, 50)
 
 
@@ -231,6 +245,38 @@ def pretty_angle(theta: float) -> str:
 # ---------------------------------------------------------------------------
 
 
+#: Single-qubit Pauli / Hadamard tiles, ``marker_id -> gate``. The IDs are
+#: **hand-picked, not sequential**: H sits on 30 and X on 35 because those two
+#: bit patterns read as their glyphs (see ``docs/marker-ids.md``, "Why these
+#: IDs"). Y/Z kept their original 12/13.
+_SINGLE_QUBIT_IDS: dict[int, str] = {30: "H", 35: "X", 12: "Y", 13: "Z"}
+
+#: CNOT halves, ``marker_id -> role``. The control ``●`` moved from 14 to 17 in
+#: task #96 (ID 17 is the dictionary's most solid pattern — a single square
+#: window in an otherwise black field); the target ``⊕`` never moved.
+_CNOT_IDS: dict[int, str] = {17: "control", 15: "target"}
+
+#: Fixed-angle rotation tiles, ``marker_id -> (family, angle)``. Written out one
+#: ID at a time on purpose: RZ(π) lives on **10** (the ID freed when H moved to
+#: 30), so the old "base 20 + index into :data:`ROTATION_ANGLES`" arithmetic no
+#: longer holds and must not be reintroduced. Insertion order is the canonical
+#: print order — family by family, angles in :data:`ROTATION_ANGLES` order.
+_ROTATION_IDS: dict[int, tuple[str, float]] = {
+    20: ("RX", math.pi / 4),
+    21: ("RX", math.pi / 2),
+    22: ("RX", math.pi),
+    23: ("RX", -math.pi / 2),
+    24: ("RY", math.pi / 4),
+    25: ("RY", math.pi / 2),
+    26: ("RY", math.pi),
+    27: ("RY", -math.pi / 2),
+    28: ("RZ", math.pi / 4),
+    29: ("RZ", math.pi / 2),
+    10: ("RZ", math.pi),
+    31: ("RZ", -math.pi / 2),
+}
+
+
 def _build_marker_table() -> dict[int, GateSpec]:
     table: dict[int, GateSpec] = {}
 
@@ -243,27 +289,28 @@ def _build_marker_table() -> dict[int, GateSpec]:
             role=role,
         )
 
-    # 10-13: single-qubit Pauli / Hadamard gates.
-    for marker_id, gate in ((10, "H"), (11, "X"), (12, "Y"), (13, "Z")):
+    # 30/35/12/13: single-qubit Pauli / Hadamard gates.
+    for marker_id, gate in _SINGLE_QUBIT_IDS.items():
         table[marker_id] = GateSpec(kind="gate", gate=gate, label=gate)
 
-    # 14/15: CNOT halves.
-    table[14] = GateSpec(kind="gate", gate="CNOT", label="CNOT control ●", role="control")
-    table[15] = GateSpec(kind="gate", gate="CNOT", label="CNOT target ⊕", role="target")
+    # 17/15: CNOT halves.
+    glyph = {"control": "●", "target": "⊕"}
+    for marker_id, role in _CNOT_IDS.items():
+        table[marker_id] = GateSpec(
+            kind="gate",
+            gate="CNOT",
+            label=f"CNOT {role} {glyph[role]}",
+            role=role,
+        )
 
-    # 20-31: rotation gates x angle variants (4 angles each, contiguous).
-    base = 20
-    for family in ROTATION_GATES:
-        for offset, angle in enumerate(ROTATION_ANGLES):
-            marker_id = base + offset
-            label = f"{family}({pretty_angle(angle)})"
-            table[marker_id] = GateSpec(
-                kind="gate",
-                gate=family,
-                label=label,
-                parameter=angle,
-            )
-        base += len(ROTATION_ANGLES)
+    # 20-29/10/31: rotation gates x angle variants, one explicit ID each.
+    for marker_id, (family, angle) in _ROTATION_IDS.items():
+        table[marker_id] = GateSpec(
+            kind="gate",
+            gate=family,
+            label=f"{family}({pretty_angle(angle)})",
+            parameter=angle,
+        )
 
     # 40/41: S and T. No native @qamposer/react gate type yet, so each carries an
     # ``emit_as`` mapping to its RZ equivalent (see design.md / docs/marker-ids.md);

@@ -44,29 +44,32 @@ DOUBLE_VARIANTS: dict[str, float] = {
 #: and face B (mirrored, see :mod:`build`) on the underside — flip to switch.
 #:
 #: Angle mapping verified against
-#: :data:`qamposer_vision.markers.ROTATION_ANGLES` = ``(π/4, π/2, π, -π/2)`` with
-#: family bases RX=20, RY=24, RZ=28 (offset = index into ROTATION_ANGLES):
-#:   * offset 1 = +π/2, offset 3 = -π/2  →  (21,23)/(25,27)/(29,31)
-#:   * offset 0 =  π/4, offset 2 =  π    →  (20,22)/(24,26)/(28,30)
+#: :data:`qamposer_vision.markers.ROTATION_ANGLES` = ``(π/4, π/2, π, -π/2)``.
+#: The marker IDs are an **explicit** per-ID assignment (task #96 broke the old
+#: "family base + angle offset" arithmetic — RZ(π) now lives on 10), so every
+#: pair below is written out and checked against ``MARKER_TABLE`` by
+#: ``hardware/tests/test_double.py``:
+#:   * ±π/2 pairs  →  (21,23) RX / (25,27) RY / (29,31) RZ
+#:   * π/4 | π pairs → (20,22) RX / (24,26) RY / (28,**10**) RZ
 #: so the rotation pairs are exactly (+π/2 | -π/2) and (π/4 | π) — a flip gives
 #: the inverse for the ±π/2 pieces.
 DOUBLE_FACED_KIT: list[tuple[int, int | None, int]] = [
-    (14, 15, 4),  # CNOT: control ● | target ⊕      (both dark blue)
+    (17, 15, 4),  # CNOT: control ● | target ⊕      (both dark blue)
     (21, 23, 1),  # RX: +π/2 | -π/2  (flip = inverse)
     (25, 27, 1),  # RY: +π/2 | -π/2
     (29, 31, 1),  # RZ: +π/2 | -π/2
     (20, 22, 1),  # RX: π/4 | π
     (24, 26, 1),  # RY: π/4 | π
-    (28, 30, 1),  # RZ: π/4 | π
+    (28, 10, 1),  # RZ: π/4 | π      (RZ(π) is id 10)
     (40, 41, 2),  # S | T                            (both light blue)
     # Single-qubit gates: two of every pair type. Symmetric — each of H/X/Y/Z
     # appears on exactly 6 faces. All six cross-family combinations appear, so
     # each of these pieces carries TWO accent colours.
-    (10, 11, 2),  # H | X   (red | dark blue)
-    (10, 12, 2),  # H | Y   (red | magenta)
-    (10, 13, 2),  # H | Z   (red | light blue)
-    (11, 12, 2),  # X | Y   (dark blue | magenta)
-    (11, 13, 2),  # X | Z   (dark blue | light blue)
+    (30, 35, 2),  # H | X   (red | dark blue)
+    (30, 12, 2),  # H | Y   (red | magenta)
+    (30, 13, 2),  # H | Z   (red | light blue)
+    (35, 12, 2),  # X | Y   (dark blue | magenta)
+    (35, 13, 2),  # X | Z   (dark blue | light blue)
     (12, 13, 2),  # Y | Z   (magenta | light blue)
 ]
 

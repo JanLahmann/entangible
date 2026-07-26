@@ -82,7 +82,7 @@ Every message is a JSON object with a `type` discriminator.
     "strayTiles": 0                     // gate tiles seen OFF the board; dropped, NOT off-grid
   },
   "markers": [
-    { "id": 10, "row": 0, "col": 0 },   // on-grid gate tile
+    { "id": 30, "row": 0, "col": 0 },   // on-grid gate tile (30 = H)
     { "id": 22, "offGrid": true }       // detected but rejected by grid mapping
   ],
   "warnings": [

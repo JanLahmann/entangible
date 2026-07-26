@@ -13,9 +13,10 @@ a **Prusa Core One with the MMU** (per-layer multi-colour).
 
 ## What it makes
 
-For every gate tile in `MARKER_TABLE` (IDs 10-15, 20-31, 40, 41 — H, X, Y, Z,
-CNOT control/target, RX/RY/RZ × {π/4, π/2, π, −π/2}, S, T; board corners 0-3 are
-*not* tiles):
+For every gate tile in `MARKER_TABLE` (H 30, X 35, Y 12, Z 13, CNOT control 17 /
+target 15, RX 20-23, RY 24-27, RZ 28/29/10/31, S 40, T 41 — the IDs are assigned
+explicitly, not by range, see `docs/marker-ids.md`; board corners 0-3 are *not*
+tiles):
 
 - Footprint **60 × 60 mm**, corner radius 4 mm (from `assets.toml`).
 - Two height variants: **`tile`** (H = 6 mm) and **`cube`** (H = 60 mm).
@@ -298,7 +299,7 @@ single physical object.
 
 ```bash
 uv run qamposer-hardware generate --faces double --variant tile   # the 24-piece kit
-uv run qamposer-hardware generate --faces double --variant cube --gates 14,21,40
+uv run qamposer-hardware generate --faces double --variant cube --gates 17,21,40
 uv run qamposer-hardware generate --faces double --variant all
 ```
 
@@ -438,6 +439,6 @@ uv run qamposer-hardware generate --variant tile --gates H
 uv run qamposer-vision detect --image path/to/photo.jpg --json
 ```
 
-You should see marker ID 10 (H) detected at the cell you placed it on. If not,
+You should see marker ID 30 (H) detected at the cell you placed it on. If not,
 check: matte surface (no glare), pure black/white marker, top face ironed, and
 the camera roughly overhead. Once one H tile detects cleanly, print the rest.

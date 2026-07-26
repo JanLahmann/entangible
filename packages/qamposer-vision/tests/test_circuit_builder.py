@@ -12,8 +12,8 @@ from qamposer_vision.markers import ROTATION_ANGLES
 QUBITS = 5
 
 # Marker IDs.
-H, X, Y, Z = 10, 11, 12, 13
-CTRL, TGT = 14, 15
+H, X, Y, Z = 30, 35, 12, 13
+CTRL, TGT = 17, 15
 RX_HALF_PI = 21  # RX(pi/2)
 RZ_HALF_PI = 29  # RZ(pi/2)
 S, T = 40, 41    # emitted as RZ(pi/2) / RZ(pi/4)
@@ -288,7 +288,7 @@ def _one_gate(gates: list[dict]) -> dict:
 
 
 def test_control_plus_x_is_cx_without_target_tile() -> None:
-    # ● + X (a plain X tile, id 11) ≡ ● + ⊕: a native CNOT, control = ●'s row.
+    # ● + X (a plain X tile, id 35) ≡ ● + ⊕: a native CNOT, control = ●'s row.
     result = build_circuit([TilePlacement(CTRL, 0, 0), TilePlacement(X, 1, 0)], QUBITS)
     assert result.warnings == []
     g = _one_gate(result.circuit["gates"])

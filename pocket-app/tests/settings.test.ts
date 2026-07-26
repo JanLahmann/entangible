@@ -87,6 +87,7 @@ describe('sanitize', () => {
       cameraId: null,
       boothUrl: null,
       courseCode: null,
+      courseScope: null,
       noise: 'off',
       menu: 'coffee',
       boardLayout: 'grid',

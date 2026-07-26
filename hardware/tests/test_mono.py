@@ -44,8 +44,8 @@ def config():
 
 @pytest.fixture(scope="module")
 def tile(config):
-    """H (id 10) single tile + its two mono variants, built once."""
-    parts = build_tile(10, config, variant="tile", height=TILE_H)
+    """H (id 30) single tile + its two mono variants, built once."""
+    parts = build_tile(30, config, variant="tile", height=TILE_H)
     return {
         "parts": parts,
         "recessed": build_mono_recessed(parts, PARAMS),
@@ -55,8 +55,8 @@ def tile(config):
 
 @pytest.fixture(scope="module")
 def double(config):
-    """H|X (10,11) cross-family double + its two mono variants, built once."""
-    parts = build_double_tile(10, 11, config, variant="tile", height=DOUBLE_H)
+    """H|X (30,35) cross-family double + its two mono variants, built once."""
+    parts = build_double_tile(30, 35, config, variant="tile", height=DOUBLE_H)
     return {
         "parts": parts,
         "recessed": build_double_mono_recessed(parts, PARAMS),

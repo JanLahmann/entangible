@@ -78,7 +78,7 @@ tests/                    # fixtures (golden circuits, synthetic + real images, 
 
 ## Key component designs
 
-**Markers (`markers.py`, `docs/marker-ids.md`)** — `DICT_4X4_50` (largest bits per mm; `cv2.aruco` is in the main opencv module since 4.7). ID table: 0–3 board corners (TL/TR/BR/BL — orientation implicit); 10–13 H/X/Y/Z; 14/15 CNOT control ●/target ⊕; 20–31 RX/RY/RZ × angle variants (π/4, π/2, π, −π/2) as distinct IDs; 40–49 reserved (S/T/SWAP later). One `MARKER_TABLE: dict[int, GateSpec]` imported by *both* the detector and the assets generator so print and detection can never drift.
+**Markers (`markers.py`, `docs/marker-ids.md`)** — `DICT_4X4_50` (largest bits per mm; `cv2.aruco` is in the main opencv module since 4.7). ID table (assigned **explicitly per ID**, never by range — task #96 re-homed three tiles onto IDs whose bit pattern resembles the glyph): 0–3 board corners (TL/TR/BR/BL — orientation implicit); 30/35/12/13 H/X/Y/Z; 17/15 CNOT control ●/target ⊕; RX 20–23, RY 24–27, RZ 28/29/**10**/31 × angle variants (π/4, π/2, π, −π/2) as distinct IDs; 40/41 S/T, 42–44 dials, 45 SWAP, 46/47 furniture, 48–49 reserved; 11/14 free. One `MARKER_TABLE: dict[int, GateSpec]` imported by *both* the detector and the assets generator so print and detection can never drift.
 
 **Frame sources (`sources.py`)** — `FrameSource` protocol with: `Cv2CaptureSource` (USB webcams, Mac cams, Continuity Camera — a normal AVFoundation device; add `list-cameras` helper), `Picamera2Source` (required on Bookworm — `cv2.VideoCapture` does NOT see libcamera CSI cams; needs venv with `--system-site-packages`), `PushFrameSource` (latest-frame slot fed by `/ws/frames`), `ReplaySource` (fixtures → no-camera dev mode and CI).
 

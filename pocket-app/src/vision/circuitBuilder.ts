@@ -8,12 +8,26 @@
  */
 import { MARKER_TABLE, ROTATION_ANGLES, type GateSpec } from './markers';
 
-const CNOT_CONTROL_ID = 14;
-const CNOT_TARGET_ID = 15;
+/**
+ * The marker ID of a CNOT half, looked up by role in `MARKER_TABLE` — derived
+ * rather than hard-coded, because the ● moved 14 → 17 in task #96 and the table
+ * is the single source of truth. Mirrors `circuit_builder._cnot_id`.
+ */
+function cnotId(role: string): number {
+  for (const id of [...MARKER_TABLE.keys()].sort((a, b) => a - b)) {
+    const spec = MARKER_TABLE.get(id)!;
+    if (spec.gate === 'CNOT' && spec.role === role) return id;
+  }
+  throw new Error(`no CNOT ${role} in MARKER_TABLE`);
+}
+
+// The two CNOT marker halves — currently ● = 17, ⊕ = 15.
+const CNOT_CONTROL_ID = cnotId('control');
+const CNOT_TARGET_ID = cnotId('target');
 // The SWAP tile (×). Two in one column pair into a SWAP between their rows.
 const SWAP_ID = 45;
 
-// A ● (id 14) is a generic controlled-gate modifier (task #51): one single-qubit
+// A ● is a generic controlled-gate modifier (task #51): one single-qubit
 // gate tile + one ● in a column is that gate's controlled form. X → CX is a
 // native CNOT (● + X ≡ ● + ⊕); the rest map to a controlled type in the JSON.
 const CONTROLLED_GATE: Readonly<Record<string, string>> = {

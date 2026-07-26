@@ -11,67 +11,67 @@ const FIXTURES = resolve(here, '../../tests/fixtures/circuits');
 // SCENARIOS). Each `(markerId, row, col)`.
 const SCENARIOS: Record<string, Array<[number, number, number]>> = {
   empty: [],
-  single_h: [[10, 0, 0]],
+  single_h: [[30, 0, 0]],
   bell: [
-    [10, 0, 0],
-    [14, 0, 1],
+    [30, 0, 0],
+    [17, 0, 1],
     [15, 1, 1],
   ],
   ghz3: [
-    [10, 0, 0],
-    [14, 0, 1],
+    [30, 0, 0],
+    [17, 0, 1],
     [15, 1, 1],
-    [14, 0, 2],
+    [17, 0, 2],
     [15, 2, 2],
   ],
   all_families: [
-    [10, 0, 0],
-    [11, 1, 0],
+    [30, 0, 0],
+    [35, 1, 0],
     [12, 2, 0],
     [13, 3, 0],
     [21, 0, 1],
     [24, 1, 1],
-    [30, 2, 1],
-    [14, 0, 2],
+    [10, 2, 1],
+    [17, 0, 2],
     [15, 1, 2],
     [31, 3, 3],
   ],
   warn_lone_control: [
-    [10, 0, 0],
-    [14, 1, 1],
+    [30, 0, 0],
+    [17, 1, 1],
   ],
   s_and_t: [
-    [10, 0, 0],
+    [30, 0, 0],
     [40, 0, 1],
     [41, 0, 2],
   ],
   swap: [
-    [10, 0, 0],
+    [30, 0, 0],
     [45, 0, 1],
     [45, 1, 1],
   ],
   // Controlled gates via the ● modifier (task #51).
   cx_plain: [
-    [14, 0, 0],
-    [11, 1, 0],
+    [17, 0, 0],
+    [35, 1, 0],
   ],
   ch: [
-    [14, 0, 0],
-    [10, 1, 0],
+    [17, 0, 0],
+    [30, 1, 0],
   ],
   ccx: [
-    [14, 0, 0],
-    [14, 1, 0],
-    [11, 2, 0],
+    [17, 0, 0],
+    [17, 1, 0],
+    [35, 2, 0],
   ],
   controlled_family: [
-    [14, 0, 0],
+    [17, 0, 0],
     [12, 1, 0],
-    [14, 0, 1],
+    [17, 0, 1],
     [13, 1, 1],
-    [14, 0, 2],
+    [17, 0, 2],
     [40, 1, 2],
-    [14, 0, 3],
+    [17, 0, 3],
     [41, 1, 3],
   ],
 };
@@ -178,8 +178,8 @@ describe('controlled gates via the ● modifier (task #51)', () => {
 
   it('● + X (no ⊕) is a native CX, control = ●’s row', () => {
     const r = build([
-      [14, 0, 0],
-      [11, 1, 0],
+      [17, 0, 0],
+      [35, 1, 0],
     ]);
     expect(r.warnings).toEqual([]);
     expect(r.circuit.gates).toEqual([
@@ -191,12 +191,12 @@ describe('controlled gates via the ● modifier (task #51)', () => {
     for (const [marker, ctype] of [
       [12, 'CY'],
       [13, 'CZ'],
-      [10, 'CH'],
+      [30, 'CH'],
       [40, 'CS'],
       [41, 'CT'],
     ] as const) {
       const r = build([
-        [14, 2, 0],
+        [17, 2, 0],
         [marker, 4, 0],
       ]);
       expect(r.warnings).toEqual([]);
@@ -208,9 +208,9 @@ describe('controlled gates via the ● modifier (task #51)', () => {
 
   it('two ● + X is CCX with sorted controls', () => {
     const r = build([
-      [14, 4, 0],
-      [14, 1, 0],
-      [11, 2, 0],
+      [17, 4, 0],
+      [17, 1, 0],
+      [35, 2, 0],
     ]);
     expect(r.warnings).toEqual([]);
     expect(r.circuit.gates).toEqual([
@@ -221,28 +221,28 @@ describe('controlled gates via the ● modifier (task #51)', () => {
   it('excludes-with-warning: ● + 2 gates, 2 controls + non-X, 3 controls, ●+⊕+gate, ●+rotation', () => {
     const cases: Array<Array<[number, number, number]>> = [
       [
-        [14, 0, 0],
-        [10, 1, 0],
-        [11, 2, 0],
+        [17, 0, 0],
+        [30, 1, 0],
+        [35, 2, 0],
       ], // ● + 2 gate tiles
       [
-        [14, 0, 0],
-        [14, 1, 0],
-        [10, 2, 0],
+        [17, 0, 0],
+        [17, 1, 0],
+        [30, 2, 0],
       ], // 2 controls + non-X (H)
       [
-        [14, 0, 0],
-        [14, 1, 0],
-        [14, 2, 0],
-        [11, 3, 0],
+        [17, 0, 0],
+        [17, 1, 0],
+        [17, 2, 0],
+        [35, 3, 0],
       ], // 3 controls
       [
-        [14, 0, 0],
+        [17, 0, 0],
         [15, 1, 0],
-        [10, 2, 0],
+        [30, 2, 0],
       ], // ● + ⊕ + gate
       [
-        [14, 0, 0],
+        [17, 0, 0],
         [21, 1, 0],
       ], // ● + RX(π/2): no controlled rotations in v1
     ];
@@ -256,8 +256,8 @@ describe('controlled gates via the ● modifier (task #51)', () => {
 
   it('legacy ●● + ⊕ pairing (no gate tile) is unchanged — one CX + one lone control', () => {
     const r = build([
-      [14, 0, 0],
-      [14, 4, 0],
+      [17, 0, 0],
+      [17, 4, 0],
       [15, 1, 0],
     ]);
     const cnots = r.circuit.gates.filter((g) => g.type === 'CNOT');

@@ -24,8 +24,16 @@ from qamposer_vision.markers import (
     quadrant_rotation,
 )
 
-# The exact IDs the scheme documents (docs/marker-ids.md must match).
-EXPECTED_IDS = {0, 1, 2, 3, 10, 11, 12, 13, 14, 15, *range(20, 32), 40, 41, 42, 43, 44, 45}
+# The exact IDs the scheme documents (docs/marker-ids.md must match). Written
+# out in full on purpose: the assignment is explicit per ID, not a range — 10 is
+# RZ(π), 30 is H, 35 is X and 17 is the CNOT control, while 11 and 14 are free.
+EXPECTED_IDS = {
+    0, 1, 2, 3,
+    10, 12, 13, 15, 17,
+    20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 31,
+    30, 35,
+    40, 41, 42, 43, 44, 45,
+}
 
 
 def test_no_cv2_import() -> None:
@@ -68,7 +76,7 @@ def test_all_gate_types_valid() -> None:
 
 
 def test_single_qubit_gates() -> None:
-    for marker_id, gate in ((10, "H"), (11, "X"), (12, "Y"), (13, "Z")):
+    for marker_id, gate in ((30, "H"), (35, "X"), (12, "Y"), (13, "Z")):
         spec = MARKER_TABLE[marker_id]
         assert spec.kind == "gate"
         assert spec.gate == gate
@@ -77,28 +85,51 @@ def test_single_qubit_gates() -> None:
 
 
 def test_cnot_halves() -> None:
-    control = MARKER_TABLE[14]
+    control = MARKER_TABLE[17]
     target = MARKER_TABLE[15]
     assert control.gate == target.gate == "CNOT"
     assert control.role == "control"
     assert target.role == "target"
 
 
-def test_rotation_angles_match_documented_set() -> None:
-    rotations = {
-        family: {} for family in ("RX", "RY", "RZ")
-    }
-    for marker_id in range(20, 32):
-        spec = MARKER_TABLE[marker_id]
-        assert spec.gate in rotations
-        assert spec.parameter is not None
-        rotations[spec.gate][marker_id] = spec.parameter
+#: The fixed-angle rotation tiles, spelled out per family. RZ(π) sits on **10**
+#: (freed when H moved to 30, task #96), so this is deliberately NOT ``range``
+#: arithmetic — a regression here means someone reintroduced "base + offset".
+ROTATION_ID_ORDER: dict[str, tuple[int, int, int, int]] = {
+    "RX": (20, 21, 22, 23),
+    "RY": (24, 25, 26, 27),
+    "RZ": (28, 29, 10, 31),
+}
 
-    for family, id_range in (("RX", range(20, 24)), ("RY", range(24, 28)), ("RZ", range(28, 32))):
-        angles = [MARKER_TABLE[i].parameter for i in id_range]
-        assert angles == list(ROTATION_ANGLES), family
+
+def test_rotation_angles_match_documented_set() -> None:
+    fixed_rotation_ids = {
+        marker_id
+        for marker_id, spec in MARKER_TABLE.items()
+        if spec.gate in ("RX", "RY", "RZ") and spec.dial_axis is None
+    }
+    assert fixed_rotation_ids == {i for ids in ROTATION_ID_ORDER.values() for i in ids}
+
+    for family, ids in ROTATION_ID_ORDER.items():
+        angles = []
+        for marker_id in ids:
+            spec = MARKER_TABLE[marker_id]
+            assert spec.gate == family, marker_id
+            assert spec.parameter is not None
+            angles.append(spec.parameter)
         # Each family carries exactly the four documented angles, in order.
+        assert angles == list(ROTATION_ANGLES), family
         assert set(angles) == set(ROTATION_ANGLES)
+
+
+def test_freed_ids_are_unassigned() -> None:
+    """11 (old X) and 14 (old CNOT control) are free — no gate, not reserved."""
+    from qamposer_vision.markers import DETECTABLE_IDS
+
+    for freed in (11, 14):
+        assert freed not in MARKER_TABLE
+        assert freed not in DETECTABLE_IDS
+        assert freed not in RESERVED_IDS
 
 
 def test_rotation_angle_values() -> None:
@@ -216,7 +247,7 @@ def test_param_label_matches_pretty_angle() -> None:
 
 
 def test_gatespec_is_frozen() -> None:
-    spec = MARKER_TABLE[10]
+    spec = MARKER_TABLE[30]
     try:
         spec.gate = "X"  # type: ignore[misc]
     except Exception:

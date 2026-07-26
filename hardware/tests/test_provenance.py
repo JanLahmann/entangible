@@ -47,7 +47,7 @@ STAMP_RE = re.compile(
     re.MULTILINE,
 )
 
-DOUBLE_KIT = [(10, 11, 2), (12, None, 1)]
+DOUBLE_KIT = [(30, 35, 2), (12, None, 1)]
 
 
 @pytest.fixture(scope="module")
@@ -148,7 +148,7 @@ def _assert_stamped_3mf(path, stem: str) -> None:
 
 
 def test_tile_3mf_stamped(config, tmp_path):
-    parts = build_tile(10, config, variant="tile", height=6.0, params=HardwareParams())
+    parts = build_tile(30, config, variant="tile", height=6.0, params=HardwareParams())
     path = export_tile_3mf(parts, tmp_path)
     assert path is not None
     _assert_stamped_3mf(path, "h")
@@ -156,7 +156,7 @@ def test_tile_3mf_stamped(config, tmp_path):
 
 def test_double_tile_3mf_stamped(config, tmp_path):
     parts = build_double_tile(
-        10, 11, config, variant="tile", height=8.0, params=HardwareParams()
+        30, 35, config, variant="tile", height=8.0, params=HardwareParams()
     )
     path = export_double_tile_3mf(parts, tmp_path)
     assert path is not None
@@ -165,7 +165,7 @@ def test_double_tile_3mf_stamped(config, tmp_path):
 
 def test_batch_3mf_stamped(config, tmp_path):
     """A batch 3MF is titled by its filename stem, e.g. ``plate1-batch1``."""
-    pieces = [_single_piece(10, config, "tile", 6.0, HardwareParams())]
+    pieces = [_single_piece(30, config, "tile", 6.0, HardwareParams())]
     positions = pack_positions(len(pieces), BED, FOOTPRINT, SPACING)
     path = tmp_path / "plate1-batch1.3mf"
     _write_batch_3mf(pieces, positions, path)

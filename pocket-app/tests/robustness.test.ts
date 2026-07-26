@@ -79,7 +79,7 @@ function paintAt(cv: Canvas, id: number, x0: number, y0: number, size: number): 
 describe('robust single-quad decode', () => {
   it('border-aware threshold separates a painted marker and decodes it', () => {
     const cv = blank(200, 200);
-    const corners = paintAt(cv, 10, 40, 40, 90);
+    const corners = paintAt(cv, 30, 40, 40, 90);
     const gray = asGray(cv);
 
     const samples = sampleGridGray(gray, corners, true);
@@ -91,7 +91,7 @@ describe('robust single-quad decode', () => {
 
     const match = decodeQuad(gray, corners, { robust: true, extraThresholds: true });
     expect(match).not.toBeNull();
-    expect(match!.id).toBe(10);
+    expect(match!.id).toBe(30);
   });
 
   it('border-aware threshold is null on a non-marker (all-white) quad', () => {
@@ -112,19 +112,19 @@ describe('robust single-quad decode', () => {
 describe('spatial dedupe (repeated marker ids)', () => {
   it('keeps two identical-id markers at different locations', () => {
     const cv = blank(400, 200);
-    paintMarker(cv, 14, 40, 55, 90); // CNOT control, left
-    paintMarker(cv, 14, 260, 55, 90); // CNOT control, right — same id
+    paintMarker(cv, 17, 40, 55, 90); // CNOT control, left
+    paintMarker(cv, 17, 260, 55, 90); // CNOT control, right — same id
     const found = detectMarkers(asGray(cv));
-    const id14 = found.filter((m) => m.id === 14);
-    expect(id14.length).toBe(2);
+    const id17 = found.filter((m) => m.id === 17);
+    expect(id17.length).toBe(2);
   });
 
   it('legacy id-dedupe collapses them to one (the original GHZ-3 failure)', () => {
     const cv = blank(400, 200);
-    paintMarker(cv, 14, 40, 55, 90);
-    paintMarker(cv, 14, 260, 55, 90);
+    paintMarker(cv, 17, 40, 55, 90);
+    paintMarker(cv, 17, 260, 55, 90);
     const found = detectMarkers(asGray(cv), { legacyIdDedupe: true });
-    expect(found.filter((m) => m.id === 14).length).toBe(1);
+    expect(found.filter((m) => m.id === 17).length).toBe(1);
   });
 });
 
@@ -143,12 +143,12 @@ describe('grid-guided redetection', () => {
       const [px, py] = mmToPx(sq[0][0], sq[0][1]);
       paintMarker(cv, id, px, py, BOARD.cornerMarkerSize * ppm);
     }
-    // Paint one gate tile (H, id 10) at cell (0,0).
+    // Paint one gate tile (H, id 30) at cell (0,0).
     const grid = new GridMapper(BOARD);
     const [cx, cy] = grid.cellCenter(0, 0);
     const half = TILE.markerSize / 2;
     const [tx, ty] = mmToPx(cx - half, cy - half);
-    paintMarker(cv, 10, tx, ty, TILE.markerSize * ppm);
+    paintMarker(cv, 30, tx, ty, TILE.markerSize * ppm);
 
     const gray = asGray(cv);
     const all = detectMarkers(gray);
@@ -159,7 +159,7 @@ describe('grid-guided redetection', () => {
     const blindCornersOnly = all.filter((m) => m.id <= 3);
     const rescued = guidedRedetect(gray, board!, blindCornersOnly, grid);
 
-    const rescuedH = rescued.find((m) => m.id === 10);
+    const rescuedH = rescued.find((m) => m.id === 30);
     expect(rescuedH).toBeDefined();
     const [bx, by] = board!.imageToBoard(rescuedH!.center);
     expect(grid.assign(bx, by)).toEqual({ row: 0, col: 0 });

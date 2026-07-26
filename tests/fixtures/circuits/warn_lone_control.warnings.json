@@ -5,7 +5,7 @@
       "message": "CNOT control at row 1, column 1 has no target in its column; excluded.",
       "row": 1,
       "col": 1,
-      "marker_ids": [14]
+      "marker_ids": [17]
     }
   ]
 }

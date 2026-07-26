@@ -69,7 +69,7 @@ def test_center_maps_to_expected_mm(config: BoardConfig, detector: ArucoDetector
     markers = detector.detect(img)
     board = fit_board(markers, config)
     assert board is not None
-    gate = next(m for m in markers if m.id == 10)
+    gate = next(m for m in markers if m.id == 30)  # H
     xy = board.image_to_board(gate.center)[0]
     expected_x = config.grid_offset_x + config.cell_size / 2.0
     expected_y = config.grid_offset_y + config.cell_size / 2.0

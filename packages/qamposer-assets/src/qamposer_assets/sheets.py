@@ -21,7 +21,12 @@ composition (which tiles, how many) comes from ``[kit]`` in ``assets.toml``.
 
 from __future__ import annotations
 
-from qamposer_vision.markers import DIAL_IDS, MARKER_TABLE, ROTATION_GATES
+from qamposer_vision.markers import (
+    DIAL_IDS,
+    MARKER_TABLE,
+    ROTATION_ANGLES,
+    ROTATION_GATES,
+)
 
 from .config import AssetsConfig
 from .paper import calibration_ruler, page_size
@@ -63,18 +68,28 @@ def _gate_id(gate: str, role: str | None = None) -> int:
 
 
 def _rotation_ids() -> list[int]:
-    """All rotation-variant marker IDs (RX/RY/RZ × each angle), sorted.
+    """All rotation-variant marker IDs (RX/RY/RZ × each angle), in print order.
 
-    Dial tiles (:data:`DIAL_IDS`) are excluded — they share the RX/RY/RZ gate
-    families but carry no fixed angle, and are added to the kit separately.
+    Ordered by **family then angle** (RX π/4, π/2, π, −π/2, then RY, then RZ),
+    not by marker ID: the IDs are an explicit per-ID assignment and RZ(π) sits
+    on 10 (task #96), so sorting numerically would scatter the RZ row across the
+    sheet. Dial tiles (:data:`DIAL_IDS`) are excluded — they share the RX/RY/RZ
+    gate families but carry no fixed angle, and are added to the kit separately.
     """
-    return sorted(
-        mid
-        for mid, spec in MARKER_TABLE.items()
-        if spec.kind == "gate"
-        and spec.gate in ROTATION_GATES
-        and spec.dial_axis is None
-    )
+    ordered: list[tuple[int, int, int]] = []
+    for mid, spec in MARKER_TABLE.items():
+        if (
+            spec.kind != "gate"
+            or spec.gate not in ROTATION_GATES
+            or spec.dial_axis is not None
+            or spec.parameter is None
+        ):
+            continue
+        angle_idx = next(
+            i for i, a in enumerate(ROTATION_ANGLES) if abs(a - spec.parameter) < 1e-9
+        )
+        ordered.append((ROTATION_GATES.index(spec.gate), angle_idx, mid))
+    return [mid for _, _, mid in sorted(ordered)]
 
 
 def _dial_id(axis: str) -> int:

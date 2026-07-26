@@ -10,6 +10,12 @@ current scheme plus the reserved range).
 > runtime detection can never drift apart. This document is generated to match
 > that table — if you change the table, regenerate this file.
 
+> **IDs are assigned one by one, not by range.** There is no "base + offset"
+> arithmetic anywhere: task #96 re-homed H, X and the CNOT control ● onto IDs
+> whose printed bit pattern resembles the glyph, which pushed RZ(π) onto the
+> freed ID 10. Any code that reconstructs the table from `range(...)` is a bug —
+> see "Why these IDs" below.
+
 ## ID table
 
 | ID | Kind | Gate | Label | Angle | Role |
@@ -18,12 +24,11 @@ current scheme plus the reserved range).
 | 1 | corner | TR | Corner TR |  | TR |
 | 2 | corner | BR | Corner BR |  | BR |
 | 3 | corner | BL | Corner BL |  | BL |
-| 10 | gate | H | H |  |  |
-| 11 | gate | X | X |  |  |
+| 10 | gate | RZ | RZ(π) | π |  |
 | 12 | gate | Y | Y |  |  |
 | 13 | gate | Z | Z |  |  |
-| 14 | gate | CNOT | CNOT control ● |  | control |
 | 15 | gate | CNOT | CNOT target ⊕ |  | target |
+| 17 | gate | CNOT | CNOT control ● |  | control |
 | 20 | gate | RX | RX(π/4) | π/4 |  |
 | 21 | gate | RX | RX(π/2) | π/2 |  |
 | 22 | gate | RX | RX(π) | π |  |
@@ -34,14 +39,73 @@ current scheme plus the reserved range).
 | 27 | gate | RY | RY(-π/2) | -π/2 |  |
 | 28 | gate | RZ | RZ(π/4) | π/4 |  |
 | 29 | gate | RZ | RZ(π/2) | π/2 |  |
-| 30 | gate | RZ | RZ(π) | π |  |
+| 30 | gate | H | H |  |  |
 | 31 | gate | RZ | RZ(-π/2) | -π/2 |  |
+| 35 | gate | X | X |  |  |
 | 40 | gate | S | S |  |  |
 | 41 | gate | T | T |  |  |
 | 42 | gate | RX | RX dial |  |  |
 | 43 | gate | RY | RY dial |  |  |
 | 44 | gate | RZ | RZ dial |  |  |
 | 45 | gate | SWAP | SWAP × |  |  |
+
+Plus the two board-furniture blocks — **46** (qubit wire) and **47**
+(measurement), which decode but carry no `GateSpec` — and the reserved **48–49**.
+Everything else in `DICT_4X4_50` is **free**: unassigned, never printed, never
+decoded. That includes **11** (vacated by X) and **14** (vacated by the CNOT
+control ●); they carry no promise for the future, unlike the reserved pair.
+
+## Why these IDs
+
+The tile face shows a big glyph *and* the ArUco marker. Where a free ID's bit
+pattern happens to echo the glyph, the tile reads as one design instead of two,
+so three tiles were moved onto such IDs (`#`= black module, `.`= white; the
+outer ring is the marker's black border):
+
+**CNOT control ● → 17.** The most *solid* pattern in the dictionary: 32 of 36
+modules are black, broken by a single 2×2 white window (horizontally centred).
+One isolated feature in a dense black field — the ●'s single, filled mark.
+
+```
+######      Only one white region in the whole marker.
+##..##
+##..##
+######
+######
+######
+```
+
+**X → 35.** The white modules sit at the four corners of a square with a fifth
+near its centre — a diagonal, ×-shaped scatter, exactly the X glyph's geometry.
+
+```
+######      White pips: (2,1) (2,4) — (3,3) — (4,1) (4,4)
+######      → two diagonals crossing near the middle.
+#.##.#
+###.##
+#.##.#
+######
+```
+
+**H → 30.** Two *full-height black columns* (the 2nd and 4th of the six) joined
+by a single black module partway down — an H skeleton: two uprights and a
+crossbar.
+
+```
+######      Columns 1 and 3 (0-indexed) are solid black top to bottom;
+##.###      the black cell at row 3, column 2 is the crossbar.
+##.###
+####.#
+##.#.#
+######
+```
+
+**RZ(π) → 10** is the knock-on move, not a glyph choice: ID 10 fell free when H
+left it, and RZ(π) took it so the rotation family keeps all twelve variants on
+distinct IDs. RZ(π)'s tile face is a text label, so its pattern is arbitrary.
+
+No kits existed in the wild at the time of the change, so there is **no backward
+compatibility path**: anything already printed on the old IDs must be reprinted.
 
 ## Dial tiles (42 / 43 / 44)
 
@@ -122,9 +186,9 @@ target, position}` gate later is a one-function edit.
 accepted for now; a native SWAP display arrives with the qamposer-react fork
 (then `emit_swap` returns one `{type: "SWAP", …}` gate and the overlap goes away).
 
-## Control tile ● (14) as a generic modifier
+## Control tile ● (17) as a generic modifier
 
-The control tile **● (ID 14)** is a *generic controlled-gate modifier*. In one
+The control tile **● (ID 17)** is a *generic controlled-gate modifier*. In one
 column, a single-qubit gate tile + one ● is that gate's **controlled version**;
 the **control** qubit is the ●'s row, the **target** is the gate's row:
 
@@ -216,7 +280,9 @@ Like ID 46, ID 47 carries no `GateSpec`, so it is absent from `MARKER_TABLE`
 
 IDs **48–49** (`RESERVED_IDS = range(48, 50)`) are reserved for future tiles.
 They are never emitted by the current detector or assets generator, and no
-current gate is assigned into this range. (IDs 40/41 are live S/T tiles,
+current gate is assigned into this range. `RESERVED_IDS` is a *reservation*, not
+a census of unused IDs — the assignment is explicit per ID, so many IDs (11 and
+14 among them) are simply free. (IDs 40/41 are live S/T tiles,
 42/43/44 are live RX/RY/RZ dial tiles, 45 is the live SWAP × tile, 46 is the
 qubit-wire block and 47 the measurement block — see above.)
 
@@ -225,15 +291,16 @@ qubit-wire block and 47 the measurement block — see above.)
 - **Corners (0–3)** are board fiducials placed TL/TR/BR/BL. Orientation is
   implicit from which corner is which; the board homography works with 3 of 4
   corners visible.
-- **Rotation gates (20–31)** encode each angle variant as a *distinct* marker ID
-  (π/4, π/2, π, −π/2) rather than a parameterised marker, so a single tile fully
-  specifies its gate. Angle labels are rendered by `pretty_angle()` /
+- **Rotation gates (20–29, 10, 31)** encode each angle variant as a *distinct*
+  marker ID (π/4, π/2, π, −π/2) rather than a parameterised marker, so a single
+  tile fully specifies its gate. RX is 20–23 and RY 24–27; RZ is 28 (π/4), 29
+  (π/2), **10** (π) and 31 (−π/2) — the odd one out, see "Why these IDs". Angle labels are rendered by `pretty_angle()` /
   `GateSpec.param_label` so tiles and QASM format angles identically. The **dial
   tiles (42–44)** cover the same four angles per axis with one physical tile,
   choosing the angle from the tile's board-frame rotation instead of the ID.
-- **CNOT (14/15)** is split into a control (●) and target (⊕) tile; the two are
+- **CNOT (17/15)** is split into a control (●) and target (⊕) tile; the two are
   paired within a column by the circuit builder. The ● is also a **generic
-  controlled-gate modifier** — see "Control tile ● (14) as a generic modifier".
+  controlled-gate modifier** — see "Control tile ● (17) as a generic modifier".
 - Base tile gate types match `@qamposer/react`'s `GateType`
   (`H`, `X`, `Y`, `Z`, `RX`, `RY`, `RZ`, `CNOT`). The controlled forms emitted by
   the ● modifier (`CY`, `CZ`, `CH`, `CS`, `CT`, `CCX`) are additional Circuit-JSON

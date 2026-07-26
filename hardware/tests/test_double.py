@@ -29,12 +29,12 @@ VOL_TOL = 0.5
 
 # One representative of every pairing shape.
 SAMPLE_PAIRS = [
-    (14, 15),  # CNOT ctrl | tgt      (same family, no notches)
+    (17, 15),  # CNOT ctrl | tgt      (same family, no notches)
     (21, 23),  # RX +π/2 | -π/2       (same family, notches 2|4)
-    (28, 30),  # RZ π/4  | π          (same family, notches 1|3)
+    (28, 10),  # RZ π/4  | π          (same family, notches 1|3; RZ(π) = id 10)
     (40, 41),  # S | T                (same family)
-    (10, 11),  # H | X                (cross-family)
-    (11, 13),  # X | Z                (cross-family)
+    (30, 35),  # H | X                (cross-family)
+    (35, 13),  # X | Z                (cross-family)
     (12, 13),  # Y | Z                (cross-family)
 ]
 
@@ -159,7 +159,7 @@ def test_accent_count_matches_family_span(config, pieces, a, b):
 
 def test_cross_family_accents_are_disjoint_colours(config, pieces):
     """A cross-family piece has two accent solids in two distinct colour layers."""
-    p = pieces[(10, 11)]  # H (red, top) | X (dark blue, bottom)
+    p = pieces[(30, 35)]  # H (red, top) | X (dark blue, bottom)
     assert len(p.accents) == 2
     hexes = {h.lower() for h, _ in p.accents}
     assert hexes == {"#fa4d56", "#002d9c"}
@@ -246,7 +246,7 @@ def test_plates_span_at_most_three_families(config):
 
 
 def test_double_slug_examples():
-    assert double_slug(MARKER_TABLE[14], MARKER_TABLE[15]) == "cnot-ctrl+cnot-tgt"
+    assert double_slug(MARKER_TABLE[17], MARKER_TABLE[15]) == "cnot-ctrl+cnot-tgt"
     assert double_slug(MARKER_TABLE[21], MARKER_TABLE[23]) == "rx-p2+rx-m2"
     assert double_slug(MARKER_TABLE[40], MARKER_TABLE[41]) == "s+t"
-    assert double_slug(MARKER_TABLE[10], MARKER_TABLE[11]) == "h+x"
+    assert double_slug(MARKER_TABLE[30], MARKER_TABLE[35]) == "h+x"

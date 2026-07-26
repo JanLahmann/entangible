@@ -24,7 +24,7 @@ def _reference_matrix(marker_id: int) -> list[list[int]]:
     return [[1 if int(px) == 0 else 0 for px in row] for row in np.asarray(img)]
 
 
-@pytest.mark.parametrize("marker_id", [0, 1, 2, 3, 10, 14, 15, 21, 31])
+@pytest.mark.parametrize("marker_id", [0, 1, 2, 3, 30, 17, 15, 21, 31])
 def test_matrix_matches_opencv(marker_id):
     ours = [list(row) for row in marker_bit_matrix(marker_id, ARUCO_DICT_NAME)]
     assert ours == _reference_matrix(marker_id)

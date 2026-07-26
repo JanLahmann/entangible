@@ -6,6 +6,11 @@
  * represents. Kept byte-for-byte equivalent to the Python table (checked
  * indirectly by the circuit-builder golden tests): same IDs, same gate types,
  * same rotation angles, same S/T → RZ `emitAs` mappings.
+ *
+ * The ID assignment is EXPLICIT per ID, not a contiguous range: task #96
+ * re-homed H → 30, X → 35 and the CNOT control ● → 17 onto IDs whose printed
+ * bit pattern resembles the glyph, which pushed RZ(π) onto the freed 10. IDs 11
+ * and 14 are now free (unassigned, not reserved); 48–49 stay reserved.
  */
 
 export const ARUCO_DICT_NAME = 'DICT_4X4_50';
@@ -73,6 +78,44 @@ export const QUBIT_WIRE_ID = 46;
  */
 export const MEASURE_BLOCK_ID = 47;
 
+/**
+ * Single-qubit Pauli / Hadamard tiles, `[markerId, gate]`. Hand-picked IDs, not
+ * sequential: H on 30 and X on 35 read as their glyphs in print (#96).
+ */
+const SINGLE_QUBIT_IDS: ReadonlyArray<readonly [number, string]> = [
+  [30, 'H'],
+  [35, 'X'],
+  [12, 'Y'],
+  [13, 'Z'],
+];
+
+/** CNOT halves, `[markerId, role, glyph]`. The control ● moved 14 → 17 (#96). */
+const CNOT_IDS: ReadonlyArray<readonly [number, string, string]> = [
+  [17, 'control', '●'],
+  [15, 'target', '⊕'],
+];
+
+/**
+ * Fixed-angle rotation tiles, `[markerId, family, angle]` — written out one ID
+ * at a time on purpose. RZ(π) lives on 10 (the ID freed when H moved to 30), so
+ * the old "base 20 + index into ROTATION_ANGLES" arithmetic no longer holds and
+ * must not come back. Array order is the canonical print order.
+ */
+const ROTATION_IDS: ReadonlyArray<readonly [number, string, number]> = [
+  [20, 'RX', Math.PI / 4],
+  [21, 'RX', Math.PI / 2],
+  [22, 'RX', Math.PI],
+  [23, 'RX', -Math.PI / 2],
+  [24, 'RY', Math.PI / 4],
+  [25, 'RY', Math.PI / 2],
+  [26, 'RY', Math.PI],
+  [27, 'RY', -Math.PI / 2],
+  [28, 'RZ', Math.PI / 4],
+  [29, 'RZ', Math.PI / 2],
+  [10, 'RZ', Math.PI],
+  [31, 'RZ', -Math.PI / 2],
+];
+
 function buildMarkerTable(): Map<number, GateSpec> {
   const table = new Map<number, GateSpec>();
 
@@ -82,34 +125,24 @@ function buildMarkerTable(): Map<number, GateSpec> {
     table.set(id, { kind: 'corner', gate: role, label: `Corner ${role}`, role });
   }
 
-  // 10-13: single-qubit Pauli / Hadamard gates.
-  const single: Array<[number, string]> = [
-    [10, 'H'],
-    [11, 'X'],
-    [12, 'Y'],
-    [13, 'Z'],
-  ];
-  for (const [id, gate] of single) {
+  // 30/35/12/13: single-qubit Pauli / Hadamard gates.
+  for (const [id, gate] of SINGLE_QUBIT_IDS) {
     table.set(id, { kind: 'gate', gate, label: gate });
   }
 
-  // 14/15: CNOT halves.
-  table.set(14, { kind: 'gate', gate: 'CNOT', label: 'CNOT control ●', role: 'control' });
-  table.set(15, { kind: 'gate', gate: 'CNOT', label: 'CNOT target ⊕', role: 'target' });
+  // 17/15: CNOT halves.
+  for (const [id, role, glyph] of CNOT_IDS) {
+    table.set(id, { kind: 'gate', gate: 'CNOT', label: `CNOT ${role} ${glyph}`, role });
+  }
 
-  // 20-31: rotation gates × angle variants (4 angles each, contiguous).
-  let base = 20;
-  for (const family of ROTATION_GATES) {
-    ROTATION_ANGLES.forEach((angle, offset) => {
-      const id = base + offset;
-      table.set(id, {
-        kind: 'gate',
-        gate: family,
-        label: `${family}(${prettyAngle(angle)})`,
-        parameter: angle,
-      });
+  // 20-29/10/31: rotation gates × angle variants, one explicit ID each.
+  for (const [id, family, angle] of ROTATION_IDS) {
+    table.set(id, {
+      kind: 'gate',
+      gate: family,
+      label: `${family}(${prettyAngle(angle)})`,
+      parameter: angle,
     });
-    base += ROTATION_ANGLES.length;
   }
 
   // 40/41: S and T, emitted as their RZ equivalents.
@@ -125,7 +158,7 @@ function buildMarkerTable(): Map<number, GateSpec> {
   // 45: SWAP tile (×). No native @qamposer/react SWAP type, so two × tiles in
   // one column are emitted by the circuit builder as a 3-CNOT SWAP between their
   // rows (see circuitBuilder.emitSwap). 46/47 are furniture (wire / measurement
-  // blocks, no GateSpec); IDs 48-49 remain reserved.
+  // blocks, no GateSpec); IDs 48-49 remain reserved and 11/14 are free (#96).
   table.set(45, { kind: 'gate', gate: 'SWAP', label: 'SWAP ×' });
 
   return table;

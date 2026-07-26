@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from qamposer_vision.stabilizer import TileStabilizer
 
-T = (10, 0, 0, 0)   # an H tile at (0, 0), rotation 0
-U = (14, 0, 1, 0)   # a second, unrelated tile
+T = (30, 0, 0, 0)   # an H tile at (0, 0), rotation 0
+U = (17, 0, 1, 0)   # a second, unrelated tile
 
 
 def _run(seq: list[bool]):

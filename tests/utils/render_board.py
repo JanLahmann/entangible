@@ -30,11 +30,12 @@ from qamposer_vision.markers import (
 # Scenarios: (marker_id, row, col) tile placements + golden fixture basename.
 # ---------------------------------------------------------------------------
 
-# Marker IDs (see markers.MARKER_TABLE):
-#   H=10 X=11 Y=12 Z=13   CNOT control=14 target=15
+# Marker IDs (see markers.MARKER_TABLE — an explicit per-ID assignment, NOT a
+# contiguous range: task #96 moved H/X/● onto glyph-alike patterns):
+#   H=30 X=35 Y=12 Z=13   CNOT control=17 target=15
 #   RX: pi/4=20 pi/2=21 pi=22 -pi/2=23
 #   RY: pi/4=24 pi/2=25 pi=26 -pi/2=27
-#   RZ: pi/4=28 pi/2=29 pi=30 -pi/2=31
+#   RZ: pi/4=28 pi/2=29 pi=10 -pi/2=31   (pi took over the ID H vacated)
 #   S=40 (emitted as RZ(pi/2))   T=41 (emitted as RZ(pi/4))
 #   Dials: RX-dial=42 RY-dial=43 RZ-dial=44 (angle = ROTATION_ANGLES[rotation])
 #   SWAP ×=45 (two in one column → a SWAP between their rows, emitted as 3 CNOTs)
@@ -54,46 +55,46 @@ class Scenario:
 
 SCENARIOS: list[Scenario] = [
     Scenario("empty", ()),
-    Scenario("single_h", ((10, 0, 0),)),
-    Scenario("bell", ((10, 0, 0), (14, 0, 1), (15, 1, 1))),
+    Scenario("single_h", ((30, 0, 0),)),
+    Scenario("bell", ((30, 0, 0), (17, 0, 1), (15, 1, 1))),
     Scenario(
         "ghz3",
-        ((10, 0, 0), (14, 0, 1), (15, 1, 1), (14, 0, 2), (15, 2, 2)),
+        ((30, 0, 0), (17, 0, 1), (15, 1, 1), (17, 0, 2), (15, 2, 2)),
     ),
     Scenario(
         "all_families",
         (
-            (10, 0, 0), (11, 1, 0), (12, 2, 0), (13, 3, 0),   # H X Y Z
-            (21, 0, 1), (24, 1, 1), (30, 2, 1),               # RX(pi/2) RY(pi/4) RZ(pi)
-            (14, 0, 2), (15, 1, 2),                           # CNOT c0/t1
+            (30, 0, 0), (35, 1, 0), (12, 2, 0), (13, 3, 0),   # H X Y Z
+            (21, 0, 1), (24, 1, 1), (10, 2, 1),               # RX(pi/2) RY(pi/4) RZ(pi)
+            (17, 0, 2), (15, 1, 2),                           # CNOT c0/t1
             (31, 3, 3),                                       # RZ(-pi/2)
         ),
     ),
-    Scenario("warn_lone_control", ((10, 0, 0), (14, 1, 1))),
+    Scenario("warn_lone_control", ((30, 0, 0), (17, 1, 1))),
     # S and T tiles on q0: H then S (→ RZ(pi/2)) then T (→ RZ(pi/4)).
-    Scenario("s_and_t", ((10, 0, 0), (40, 0, 1), (41, 0, 2))),
+    Scenario("s_and_t", ((30, 0, 0), (40, 0, 1), (41, 0, 2))),
     # Dial tiles at mixed rotations: RX-dial r=1 → RX(pi/2), RY-dial r=3 →
     # RY(-pi/2), RZ-dial r=2 → RZ(pi). Emitted byte-identically to classic tiles.
     Scenario("dials", ((42, 0, 0, 1), (43, 1, 1, 3), (44, 2, 2, 2))),
     # SWAP: H on q0, then two × tiles in column 1 (q0/q1) → a SWAP(0,1) emitted
     # as its 3-CNOT decomposition (cx(0,1), cx(1,0), cx(0,1)).
-    Scenario("swap", ((10, 0, 0), (45, 0, 1), (45, 1, 1))),
+    Scenario("swap", ((30, 0, 0), (45, 0, 1), (45, 1, 1))),
     # --- Controlled gates via the ● modifier (task #51) ---------------------
     # ● + X (no ⊕) → CX(0,1): the ● is a generic modifier, X is a plain X tile.
-    Scenario("cx_plain", ((14, 0, 0), (11, 1, 0))),
+    Scenario("cx_plain", ((17, 0, 0), (35, 1, 0))),
     # ● + H → CH(0,1) (controlled-Hadamard).
-    Scenario("ch", ((14, 0, 0), (10, 1, 0))),
+    Scenario("ch", ((17, 0, 0), (30, 1, 0))),
     # Two ● + X → CCX (Toffoli): controls q0/q1, target q2.
-    Scenario("ccx", ((14, 0, 0), (14, 1, 0), (11, 2, 0))),
+    Scenario("ccx", ((17, 0, 0), (17, 1, 0), (35, 2, 0))),
     # One controlled gate per column: ●+Y→CY, ●+Z→CZ, ●+S→CS, ●+T→CT. CS/CT are
     # controlled-phase (cu1) in QASM; CY/CZ are native qelib1.
     Scenario(
         "controlled_family",
         (
-            (14, 0, 0), (12, 1, 0),   # CY(0,1)
-            (14, 0, 1), (13, 1, 1),   # CZ(0,1)
-            (14, 0, 2), (40, 1, 2),   # CS(0,1)  (S tile id 40)
-            (14, 0, 3), (41, 1, 3),   # CT(0,1)  (T tile id 41)
+            (17, 0, 0), (12, 1, 0),   # CY(0,1)
+            (17, 0, 1), (13, 1, 1),   # CZ(0,1)
+            (17, 0, 2), (40, 1, 2),   # CS(0,1)  (S tile id 40)
+            (17, 0, 3), (41, 1, 3),   # CT(0,1)  (T tile id 41)
         ),
     ),
 ]

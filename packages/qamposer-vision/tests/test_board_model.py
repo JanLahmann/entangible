@@ -337,7 +337,7 @@ def test_end_to_end_scale_layout_wires(
     model = build_board_model(config, rect, layout, wires or None)
 
     # A Bell pair on the first two wires, at the first two columns.
-    placements = ((10, 0, 0), (14, 0, 1), (15, 1, 1))
+    placements = ((30, 0, 0), (17, 0, 1), (15, 1, 1))
     img = render_board(
         placements,
         config,
@@ -391,7 +391,7 @@ def test_grid_layout_uses_the_extra_columns(
     assert model.cols >= config.cols + 8
     far = model.cols - 1
     img = render_board(
-        ((10, 0, 0), (11, 0, far)),
+        ((30, 0, 0), (35, 0, far)),
         config,
         RenderOptions(rect=(rect.width, rect.height), grid=model.grid, px_per_mm=1.8),
     )

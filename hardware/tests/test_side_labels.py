@@ -58,7 +58,7 @@ def cubes(config):
     """One cube per label shape: letter, two-glyph family, ●, ⊕, ×, dial."""
     return {
         mid: build_tile(mid, config, variant="cube", height=CUBE_H, params=PARAMS)
-        for mid in (10, 21, 14, 15, 45, 42)
+        for mid in (30, 21, 17, 15, 45, 42)
     }
 
 
@@ -66,7 +66,7 @@ def cubes(config):
 def double_cube(config):
     """H | X cross-family flip cube (two accents, two different letters)."""
     return build_double_tile(
-        10, 11, config, variant="cube", height=CUBE_H, params=PARAMS
+        30, 35, config, variant="cube", height=CUBE_H, params=PARAMS
     )
 
 
@@ -74,7 +74,7 @@ def double_cube(config):
 def same_gate_cube(config):
     """H | H flip cube — face A and face B are geometrically identical."""
     return build_double_tile(
-        10, None, config, variant="cube", height=CUBE_H, params=PARAMS
+        30, None, config, variant="cube", height=CUBE_H, params=PARAMS
     )
 
 
@@ -96,10 +96,10 @@ def _vol(inter) -> float:
 def test_flat_tiles_have_no_side_labels(config):
     """The 6 mm / 8 mm tiles are untouched — still exactly three colour parts."""
     assert not has_side_labels(TILE_H, PARAMS)
-    tile = build_tile(10, config, variant="tile", height=TILE_H, params=PARAMS)
+    tile = build_tile(30, config, variant="tile", height=TILE_H, params=PARAMS)
     assert tile.side_labels == []
     assert len(tile.named_parts()) == 3
-    double = build_double_tile(10, 11, config, variant="tile", height=8.0, params=PARAMS)
+    double = build_double_tile(30, 35, config, variant="tile", height=8.0, params=PARAMS)
     assert double.side_labels == []
     assert len(double.named_parts()) == 4  # body, marker, two accents
 
@@ -117,12 +117,12 @@ def test_single_cube_has_four_side_labels(cubes):
         assert {sl.color_name for sl in labels} == {parts.layout.accent_name}, mid
         assert all(sl.solid.volume > 1.0 for sl in labels), mid
     # body, marker, accent + four side names
-    assert len(cubes[10].named_parts()) == 7
+    assert len(cubes[30].named_parts()) == 7
 
 
 def test_side_label_part_names_are_unique(cubes):
     """Roles differ per face, so the four STLs never overwrite each other."""
-    names = [f"h-{role}-{cn}" for role, cn, _s in cubes[10].named_parts()]
+    names = [f"h-{role}-{cn}" for role, cn, _s in cubes[30].named_parts()]
     assert len(names) == len(set(names))
     assert "h-side-front-red" in names and "h-side-left-red" in names
 
@@ -132,7 +132,7 @@ def test_side_label_part_names_are_unique(cubes):
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("mid", [10, 21, 14, 45])
+@pytest.mark.parametrize("mid", [30, 21, 17, 45])
 def test_body_is_watertight_after_pocketing(cubes, mid):
     parts = cubes[mid]
     assert len(parts.body.solids()) == 1
@@ -142,7 +142,7 @@ def test_body_is_watertight_after_pocketing(cubes, mid):
     assert parts.body.volume < 0.5 * SIZE**3
 
 
-@pytest.mark.parametrize("mid", [10, 21, 14, 45])
+@pytest.mark.parametrize("mid", [30, 21, 17, 45])
 def test_side_labels_sit_in_the_wall_flush_with_the_face(cubes, mid):
     """Each plug spans exactly ``side_label_depth`` inward from its own face."""
     depth = PARAMS.side_label_depth
@@ -165,7 +165,7 @@ def test_side_labels_sit_in_the_wall_flush_with_the_face(cubes, mid):
         assert depth < PARAMS.wall
 
 
-@pytest.mark.parametrize("mid", [10, 21, 14])
+@pytest.mark.parametrize("mid", [30, 21, 17])
 def test_colour_parts_stay_pairwise_disjoint(cubes, mid):
     parts = cubes[mid]
     solids = [parts.body, parts.marker, parts.accent] + [
@@ -178,7 +178,7 @@ def test_colour_parts_stay_pairwise_disjoint(cubes, mid):
 
 def test_cube_footprint_bounding_box_unchanged(cubes):
     """Inlays are recesses — the 60 x 60 x 60 envelope is untouched."""
-    bb = cubes[10].body.bounding_box()
+    bb = cubes[30].body.bounding_box()
     assert bb.size.X == pytest.approx(SIZE, abs=1e-6)
     assert bb.size.Y == pytest.approx(SIZE, abs=1e-6)
     assert bb.size.Z == pytest.approx(CUBE_H, abs=1e-6)
@@ -194,7 +194,7 @@ def _flat_half_extent(layout) -> float:
     return layout.size / 2.0 - layout.corner_radius
 
 
-@pytest.mark.parametrize("mid", [10, 21, 14, 15, 45, 42])
+@pytest.mark.parametrize("mid", [30, 21, 17, 15, 45, 42])
 def test_side_labels_keep_the_edge_margin(cubes, mid):
     """≥ ``side_label_margin`` from every edge of the flat side face."""
     parts = cubes[mid]
@@ -271,19 +271,19 @@ def test_side_labels_clear_the_magnet_pockets(config):
 
 def test_side_label_text_is_family_only():
     """The angle stays top-face information (band caption + tactile notches)."""
-    for mid in range(20, 32):
+    for mid in (20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 10, 31):
         spec = MARKER_TABLE[mid]
         assert side_label_text(spec) == spec.gate
         assert "π" not in side_label_text(spec)
     for mid, axis in ((42, "RX"), (43, "RY"), (44, "RZ")):
         assert side_label_text(MARKER_TABLE[mid]) == axis  # dials: axis only
-    for mid, text in ((10, "H"), (11, "X"), (12, "Y"), (13, "Z"), (40, "S"), (41, "T")):
+    for mid, text in ((30, "H"), (35, "X"), (12, "Y"), (13, "Z"), (40, "S"), (41, "T")):
         assert side_label_text(MARKER_TABLE[mid]) == text
 
 
 def test_cnot_and_swap_carry_no_text(config):
     """Those three code points tofu in fonts — they are drawn as vectors."""
-    for mid in (14, 15, 45):
+    for mid in (17, 15, 45):
         assert side_label_text(MARKER_TABLE[mid]) == ""
         assert face_layout(mid, config).side_label == ""
 
@@ -292,7 +292,7 @@ def test_cnot_control_side_glyph_is_a_disc(cubes):
     """● = a filled circle of the target cap height, not a font glyph."""
     cap = PARAMS.side_label_cap * CUBE_H
     expected = math.pi * (cap / 2.0) ** 2 * PARAMS.side_label_depth
-    for sl in cubes[14].side_labels:
+    for sl in cubes[17].side_labels:
         bb = sl.solid.bounding_box()
         assert len(sl.solid.solids()) == 1
         assert max(bb.size.X, bb.size.Y, bb.size.Z) == pytest.approx(cap, abs=0.05)

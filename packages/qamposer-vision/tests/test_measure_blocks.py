@@ -319,7 +319,7 @@ def test_end_to_end_left_and_right_block_counts(
     measures = _wire_ys(config, rect.height, right)
     model = build_board_model(config, rect, "grid", wires or None)
 
-    placements = ((10, 0, 0), (14, 0, 1), (15, 1, 1))
+    placements = ((30, 0, 0), (17, 0, 1), (15, 1, 1))
     img = render_board(
         placements,
         config,
@@ -367,7 +367,7 @@ def test_end_to_end_unpaired_right_block_warns_and_changes_nothing(
     stray = (150.0 + config.pitch,)  # squarely between the two wires
     model = build_board_model(config, None, "grid", wires)
     img = render_board(
-        ((10, 0, 0),),
+        ((30, 0, 0),),
         config,
         RenderOptions(grid=model.grid, wire_mm=wires, measure_mm=stray, px_per_mm=3.0),
     )
@@ -401,7 +401,7 @@ def test_end_to_end_a_tilted_board_still_files_its_tiles(
     tilted = mat_board_model(config, left_ys, spans)
     assert tilted.measure_count == 2
 
-    placements = ((10, 0, 0), (11, 0, tilted.grid.cols - 1), (12, 1, 3))
+    placements = ((30, 0, 0), (35, 0, tilted.grid.cols - 1), (12, 1, 3))
     img = render_board(
         placements,
         config,
@@ -431,7 +431,7 @@ def test_end_to_end_zero_right_blocks_is_the_pre_97_result(
     """The regression that matters most: printing none must change nothing."""
     wires = (150.0, 250.0, 350.0)
     model = build_board_model(config, None, "grid", wires)
-    placements = ((10, 0, 0), (14, 0, 1), (15, 2, 1))
+    placements = ((30, 0, 0), (17, 0, 1), (15, 2, 1))
     opts = dict(grid=model.grid, wire_mm=wires, px_per_mm=3.0)
     img = render_board(placements, config, RenderOptions(**opts))
     result = detect_circuit(img, config, detector=detector)
@@ -595,7 +595,7 @@ def test_end_to_end_a_stray_block_leaves_the_wires_alone(
         (47, 692.0, config.mat_height + 80.0),
     )
     img = render_board(
-        ((10, 0, 0),),
+        ((30, 0, 0),),
         config,
         RenderOptions(
             grid=model.grid,
@@ -622,9 +622,9 @@ def test_end_to_end_a_tile_beside_the_board_is_dropped_silently(
     config: BoardConfig, detector: ArucoDetector
 ) -> None:
     """150 mm right of the board: counted, never ``off_grid``, never a gate."""
-    loose = ((11, config.mat_width + 150.0, 200.0),)
+    loose = ((35, config.mat_width + 150.0, 200.0),)
     img = render_board(
-        ((10, 0, 0),),
+        ((30, 0, 0),),
         config,
         RenderOptions(pad_mm=220.0, px_per_mm=2.0, extra_mm=loose),
     )
@@ -648,9 +648,9 @@ def test_end_to_end_a_tile_inside_the_board_still_warns_off_grid(
     cx4, _cy = grid.cell_center(2, 4)
     # Squarely in the gutter between two cells, and well clear of the H tile so
     # the two markers cannot overlap in the render.
-    between = ((11, (cx3 + cx4) / 2.0, cy2),)
+    between = ((35, (cx3 + cx4) / 2.0, cy2),)
     img = render_board(
-        ((10, 0, 0),),
+        ((30, 0, 0),),
         config,
         RenderOptions(px_per_mm=3.0, extra_mm=between),
     )
@@ -670,10 +670,11 @@ def test_end_to_end_booth_inventory_beside_the_board(
     five lines of noise for a table that is behaving perfectly normally.
     """
     heap = tuple(
-        (11 + (i % 3), 120.0 + 70.0 * i, config.mat_height + 150.0) for i in range(5)
+        ((35, 12, 13)[i % 3], 120.0 + 70.0 * i, config.mat_height + 150.0)
+            for i in range(5)
     )
     img = render_board(
-        ((10, 0, 0), (14, 0, 1), (15, 1, 1)),
+        ((30, 0, 0), (17, 0, 1), (15, 1, 1)),
         config,
         RenderOptions(pad_mm=220.0, px_per_mm=2.5, extra_mm=heap),
     )

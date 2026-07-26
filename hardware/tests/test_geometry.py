@@ -1,6 +1,6 @@
 """Geometry invariants for the 3D gate tiles — no slicing, all from solids.
 
-Sampled tiles: H (10), RX(π/2) (21), CNOT control (14), S (40). The suite
+Sampled tiles: H (30), RX(π/2) (21), CNOT control (17), S (40). The suite
 asserts bounding boxes, that the black marker part reproduces the ArUco bit
 matrix cell-for-cell, that the three colour parts are disjoint and tile the top
 face, that band/frame dimensions track ``assets.toml``, and that the hollow cube
@@ -20,7 +20,7 @@ from qamposer_hardware.build import build_tile, footprint_area
 from qamposer_hardware.face import FACE_DEPTH, face_layout
 from qamposer_hardware.params import HardwareParams
 
-SAMPLE_IDS = [10, 21, 14, 40]  # H, RX(π/2), CNOT control, S
+SAMPLE_IDS = [30, 21, 17, 40]  # H, RX(π/2), CNOT control, S
 TILE_H = 6.0
 AREA_TOL = 0.05  # mm² — tessellation/boolean numerical slack
 VOL_TOL = 0.5  # mm³
@@ -181,7 +181,7 @@ def test_band_and_frame_dimensions(config, mid):
 
 def test_accent_spans_full_footprint(tiles):
     """The gate-colour frame reaches all four tile edges."""
-    bb = tiles[10].accent.bounding_box()
+    bb = tiles[30].accent.bounding_box()
     assert bb.size.X == pytest.approx(60.0, abs=1e-6)
     assert bb.size.Y == pytest.approx(60.0, abs=1e-6)
 
@@ -199,7 +199,7 @@ def test_rotation_notches(config):
         1, 2, 3, 4,
     ]
     # Non-rotation tiles carry no notches.
-    assert notch_count(face_layout(10, config).spec) == 0
+    assert notch_count(face_layout(30, config).spec) == 0
 
 
 # --------------------------------------------------------------------------- #
@@ -208,7 +208,7 @@ def test_rotation_notches(config):
 
 
 def test_cube_hollow_less_than_solid(config):
-    hollow = build_tile(10, config, variant="cube", height=60.0)
+    hollow = build_tile(30, config, variant="cube", height=60.0)
     solid = build_tile(
         10, config, variant="cube", height=60.0,
         params=HardwareParams(hollow_min_height=math.inf),

@@ -5,7 +5,7 @@ Input: gate tiles already resolved to a ``(row, col)`` cell. Output: the exact
 ``qamposer-react/src/types/index.ts``):
 
 * single-qubit gate -> ``{id, type, qubit: row, position: col, parameter?}``
-* CNOT (control ID 14 + target ID 15 in the same column) ->
+* CNOT (control ID 17 + target ID 15 in the same column) ->
   ``{id, type: 'CNOT', control, target, position: col}``
 
 Pairing is deterministic (globally nearest control/target by row). Tiles that
@@ -35,13 +35,25 @@ __all__ = [
     "stray_tiles_warning",
 ]
 
-#: The two CNOT marker halves.
-_CNOT_CONTROL_ID = 14
-_CNOT_TARGET_ID = 15
+def _cnot_id(role: str) -> int:
+    """The marker ID of a CNOT half, looked up by role in :data:`MARKER_TABLE`.
+
+    Derived rather than hard-coded: the ● moved 14 → 17 in task #96, and the
+    table is the single source of truth for which ID carries which half.
+    """
+    for marker_id, spec in sorted(MARKER_TABLE.items()):
+        if spec.gate == "CNOT" and spec.role == role:
+            return marker_id
+    raise KeyError(f"no CNOT {role} in MARKER_TABLE")
+
+
+#: The two CNOT marker halves — currently ● = 17, ⊕ = 15.
+_CNOT_CONTROL_ID = _cnot_id("control")
+_CNOT_TARGET_ID = _cnot_id("target")
 #: The SWAP tile (``×``). Two in one column pair into a SWAP between their rows.
 _SWAP_ID = 45
 
-#: A ● (id 14) is a generic controlled-gate modifier (task #51): one single-qubit
+#: A ● is a generic controlled-gate modifier (task #51): one single-qubit
 #: gate tile + one ● in a column is that gate's controlled form. ``X`` maps to a
 #: native CNOT (``● + X ≡ ● + ⊕``, preserving legacy pairing); the rest map to a
 #: controlled type carried in the circuit JSON and emitted natively in QASM.

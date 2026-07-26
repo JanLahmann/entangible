@@ -85,13 +85,13 @@ def test_detection_serialized_camelcase():
         await hub.connect(client)
         await hub.publish_detection(
             FakeDetectionEvent(
-                markers=[FakeMarker(10, 0, 0), FakeMarker(22, off_grid=True)],
+                markers=[FakeMarker(30, 0, 0), FakeMarker(22, off_grid=True)],
                 warnings=[FakeWarning("lone_control", "oops", row=1, col=3)],
             )
         )
         det = next(m for m in client.sent if m["type"] == "detection")
         assert det["board"]["reprojectionErrorMm"] == 0.05
-        assert {"id": 10, "row": 0, "col": 0} in det["markers"]
+        assert {"id": 30, "row": 0, "col": 0} in det["markers"]
         assert {"id": 22, "offGrid": True} in det["markers"]
         assert det["warnings"][0] == {
             "code": "lone_control", "message": "oops", "row": 1, "col": 3,

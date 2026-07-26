@@ -97,7 +97,7 @@ def _resolve_gates(arg: str) -> list[int]:
     """Map a ``--gates`` value to marker IDs.
 
     ``all`` → every gate tile. Otherwise a comma list of gate families
-    (``H,X,RX,CNOT,S``) and/or explicit marker IDs (``10,21``).
+    (``H,X,RX,CNOT,S``) and/or explicit marker IDs (``30,21``).
     """
     if arg.strip().lower() == "all":
         return _all_gate_ids()

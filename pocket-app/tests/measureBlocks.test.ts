@@ -306,8 +306,8 @@ describe('PocketPipeline over left × right block counts', () => {
         const frame = renderBoard(
           model,
           [
-            [10, 0, 0],
-            [14, 0, 1],
+            [30, 0, 0],
+            [17, 0, 1],
             [15, 1, 1],
           ],
           wireYs,
@@ -348,7 +348,7 @@ describe('PocketPipeline over left × right block counts', () => {
     const wireYs = [150, 290];
     const stray = [150 + BOARD.pitch]; // squarely between the two wires
     const model = buildBoardModel(MAT_RECT_OF_BOARD, 'grid', wireYs);
-    const frame = renderBoard(model, [[10, 0, 0]], wireYs, 1.5, stray);
+    const frame = renderBoard(model, [[30, 0, 0]], wireYs, 1.5, stray);
     const result = settle(new PocketPipeline({ boardLayout: 'grid' }), frame);
 
     expect(result.model.wireCount).toBe(2); // unchanged by the stray block
@@ -378,8 +378,8 @@ describe('PocketPipeline over left × right block counts', () => {
     const frame = renderBoard(
       tilted,
       [
-        [10, 0, 0],
-        [11, 0, last],
+        [30, 0, 0],
+        [35, 0, last],
         [12, 1, 3],
       ],
       leftYs,
@@ -408,8 +408,8 @@ describe('PocketPipeline over left × right block counts', () => {
     const frame = renderBoard(
       model,
       [
-        [10, 0, 0],
-        [14, 0, 1],
+        [30, 0, 0],
+        [17, 0, 1],
         [15, 2, 1],
       ],
       wireYs,
@@ -562,7 +562,7 @@ describe('PocketPipeline ignores what is not on the board', () => {
   it('leaves the wires alone when blocks lie off the board', () => {
     const wireYs = [150, 250, 350];
     const model = buildBoardModel(MAT_RECT_OF_BOARD, 'grid', wireYs);
-    const frame = renderBoard(model, [[10, 0, 0]], wireYs, 2.0, {
+    const frame = renderBoard(model, [[30, 0, 0]], wireYs, 2.0, {
       padMm: 140,
       loose: [
         [QUBIT_WIRE_ID, 28, -80],
@@ -584,9 +584,9 @@ describe('PocketPipeline ignores what is not on the board', () => {
 
   it('drops a tile 150 mm right of the board silently', () => {
     const model = buildBoardModel(MAT_RECT_OF_BOARD, 'grid');
-    const frame = renderBoard(model, [[10, 0, 0]], [], 1.6, {
+    const frame = renderBoard(model, [[30, 0, 0]], [], 1.6, {
       padMm: 220,
-      loose: [[11, BOARD.matWidth + 150, 200]],
+      loose: [[35, BOARD.matWidth + 150, 200]],
     });
     const result = settle(new PocketPipeline({ boardLayout: 'grid' }), frame);
 
@@ -596,7 +596,7 @@ describe('PocketPipeline ignores what is not on the board', () => {
     expect(strays).toHaveLength(1);
     expect(strays[0].message).toContain('1 gate tile(s)');
     // ... and it never reaches the debug marker table either.
-    expect(result.markers.map((m) => m.id)).toEqual([10]);
+    expect(result.markers.map((m) => m.id)).toEqual([30]);
     expect(result.circuit.gates.map((g) => [g.type, g.position])).toEqual([['H', 0]]);
   });
 
@@ -605,8 +605,8 @@ describe('PocketPipeline ignores what is not on the board', () => {
     const mapper = new GridMapper(model.grid);
     const [cx3, cy2] = mapper.cellCenter(2, 3);
     const [cx4] = mapper.cellCenter(2, 4);
-    const frame = renderBoard(model, [[10, 0, 0]], [], 2.0, {
-      loose: [[11, (cx3 + cx4) / 2, cy2]],
+    const frame = renderBoard(model, [[30, 0, 0]], [], 2.0, {
+      loose: [[35, (cx3 + cx4) / 2, cy2]],
     });
     const result = settle(new PocketPipeline({ boardLayout: 'grid' }), frame);
 
@@ -620,13 +620,13 @@ describe('PocketPipeline ignores what is not on the board', () => {
     const model = buildBoardModel(MAT_RECT_OF_BOARD, 'grid');
     const heap: Array<readonly [number, number, number]> = Array.from(
       { length: 5 },
-      (_, i) => [11 + (i % 3), 120 + 70 * i, BOARD.matHeight + 150] as const,
+      (_, i) => [[35, 12, 13][i % 3], 120 + 70 * i, BOARD.matHeight + 150] as const,
     );
     const frame = renderBoard(
       model,
       [
-        [10, 0, 0],
-        [14, 0, 1],
+        [30, 0, 0],
+        [17, 0, 1],
         [15, 1, 1],
       ],
       [],

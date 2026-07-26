@@ -28,40 +28,41 @@ from qamposer_assets import board_svg, load_config, tile_svg  # noqa: E402
 
 SCALE = 3.0  # px per mm → 2160x1500 for the 720x500 mat
 
-# Marker ids (see docs/marker-ids.md): 10-13 H/X/Y/Z, 14 ●, 15 ⊕,
-# 20-23 RX(π/4, π/2, π, -π/2), 24-27 RY, 28-31 RZ, 40 S, 41 T,
+# Marker ids (see docs/marker-ids.md — explicit per ID, NOT a range): 30 H,
+# 35 X, 12 Y, 13 Z, 17 ●, 15 ⊕, 20-23 RX(π/4, π/2, π, -π/2), 24-27 RY,
+# 28/29/10/31 RZ (RZ(π) is id 10), 40 S, 41 T,
 # 42/43/44 RX/RY/RZ dials, 45 SWAP ×. A placement is (id, row, col) or (id, row, col, rot)
 # — the optional 4th element is the tile's clockwise 90° turn (0-3), which for a
 # dial selects the angle ROTATION_ANGLES[rot].
 SCENARIOS: dict[str, tuple[str, list[tuple[int, ...]]]] = {
     "01-empty": ("Empty board — corners only; expect an empty circuit", []),
-    "02-single-h": ("H on q0 — superposition", [(10, 0, 0)]),
+    "02-single-h": ("H on q0 — superposition", [(30, 0, 0)]),
     "03-bell": (
         "Bell pair — H then CNOT; expect the entanglement celebration",
-        [(10, 0, 0), (14, 0, 1), (15, 1, 1)],
+        [(30, 0, 0), (17, 0, 1), (15, 1, 1)],
     ),
     "04-ghz3": (
         "GHZ-3 — CNOT chain; repeated ●/⊕ ids exercise spatial dedupe",
-        [(10, 0, 0), (14, 0, 1), (15, 1, 1), (14, 1, 2), (15, 2, 2)],
+        [(30, 0, 0), (17, 0, 1), (15, 1, 1), (17, 1, 2), (15, 2, 2)],
     ),
     "05-ghz5": (
         "GHZ-5 — full-height CNOT staircase, golf hole 5",
-        [(10, 0, 0), (14, 0, 1), (15, 1, 1), (14, 1, 2), (15, 2, 2),
-         (14, 2, 3), (15, 3, 3), (14, 3, 4), (15, 4, 4)],
+        [(30, 0, 0), (17, 0, 1), (15, 1, 1), (17, 1, 2), (15, 2, 2),
+         (17, 2, 3), (15, 3, 3), (17, 3, 4), (15, 4, 4)],
     ),
     "06-all-families": (
         "Every gate family incl. S/T and rotations",
-        [(10, 0, 0), (11, 1, 0), (12, 2, 0), (13, 3, 0),
-         (40, 0, 1), (21, 1, 1), (41, 2, 1), (30, 3, 1),
-         (14, 0, 2), (15, 1, 2)],
+        [(30, 0, 0), (35, 1, 0), (12, 2, 0), (13, 3, 0),
+         (40, 0, 1), (21, 1, 1), (41, 2, 1), (10, 3, 1),
+         (17, 0, 2), (15, 1, 2)],
     ),
     "07-uniform-32": (
         "H on all five qubits — 32 equally likely outcomes (histogram stress)",
-        [(10, q, 0) for q in range(5)],
+        [(30, q, 0) for q in range(5)],
     ),
     "08-lone-control": (
         "Warning case — a ● with no ⊕ partner; expect a friendly warning, no CNOT",
-        [(10, 0, 0), (14, 1, 1)],
+        [(30, 0, 0), (17, 1, 1)],
     ),
     "09-dials": (
         "Dial tiles — RX/RY/RZ dials turned to r=0/1/2 → RX(π/4), RY(π/2), RZ(π)",
@@ -69,7 +70,7 @@ SCENARIOS: dict[str, tuple[str, list[tuple[int, ...]]]] = {
     ),
     "10-swap": (
         "SWAP — H on q0 then two × tiles in a column swap q0/q1 (emitted as 3 CNOTs)",
-        [(10, 0, 0), (45, 0, 1), (45, 1, 1)],
+        [(30, 0, 0), (45, 0, 1), (45, 1, 1)],
     ),
 }
 

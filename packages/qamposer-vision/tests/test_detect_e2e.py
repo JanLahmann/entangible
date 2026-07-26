@@ -81,18 +81,18 @@ def test_off_grid_tile_is_rejected(config, detector) -> None:
     # Drop an H tile deep in the gutter between cells 0 and 1 (off any footprint).
     gutter_x = cx + config.cell_size / 2.0 + (config.pitch - config.cell_size) / 2.0
     img = render_board(
-        (), config, RenderOptions(extra_mm=((10, gutter_x, cy),))
+        (), config, RenderOptions(extra_mm=((30, gutter_x, cy),))
     )
     result = detect_circuit(img, config, detector=detector)
     assert result.circuit == {"qubits": 5, "gates": []}
     assert result.placements == []
     off_grid = [w for w in result.warnings if w.kind == "off_grid"]
     assert len(off_grid) == 1
-    assert off_grid[0].marker_ids == (10,)
+    assert off_grid[0].marker_ids == (30,)
 
 
 def test_no_board_when_corners_missing(config, detector) -> None:
-    img = render_board(((10, 0, 0),), config, RenderOptions(corners=(0,)))
+    img = render_board(((30, 0, 0),), config, RenderOptions(corners=(0,)))
     result = detect_circuit(img, config, detector=detector)
     assert not result.has_board
     assert result.circuit == {"qubits": 5, "gates": []}

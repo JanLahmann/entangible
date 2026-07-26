@@ -17,11 +17,14 @@ def test_gate_ids_are_the_kind_gate_entries():
         mid for mid, spec in MARKER_TABLE.items() if spec.kind == "gate"
     )
     assert GATE_IDS == expected
-    # 10-15 (H/X/Y/Z + CNOT halves), 20-31 (rotations), 40/41 (S/T),
-    # 42/43/44 (RX/RY/RZ dials) and 45 (SWAP ×).
-    assert set(GATE_IDS) == (
-        set(range(10, 16)) | set(range(20, 32)) | {40, 41, 42, 43, 44, 45}
-    )
+    # H=30, X=35, Y=12, Z=13, CNOT ●=17 / ⊕=15, rotations 20-29 + 10 (RZ(π))
+    # + 31, S/T 40/41, RX/RY/RZ dials 42/43/44 and SWAP × 45. Spelled out, not a
+    # range: the assignment is explicit per ID (task #96) and 11/14 are free.
+    assert set(GATE_IDS) == {
+        10, 12, 13, 15, 17,
+        20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+        35, 40, 41, 42, 43, 44, 45,
+    }
 
 
 @pytest.mark.parametrize("marker_id", GATE_IDS)
@@ -45,11 +48,11 @@ def test_band_color_matches_gate_color(marker_id):
 @pytest.mark.parametrize(
     "marker_id,fragment",
     [
-        (10, ">H<"),
-        (11, ">X<"),
+        (30, ">H<"),
+        (35, ">X<"),
         (12, ">Y<"),
         (13, ">Z<"),
-        (14, "CONTROL"),
+        (17, "CONTROL"),
         (15, "TARGET"),
         (40, ">S<"),
         (41, ">T<"),
@@ -90,7 +93,9 @@ def test_s_and_t_tiles_use_z_family_color():
         assert f">{letter}<" in svg
 
 
-@pytest.mark.parametrize("marker_id", range(20, 32))
+@pytest.mark.parametrize(
+    "marker_id", [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 10, 31]
+)
 def test_rotation_label_has_family_and_angle(marker_id):
     spec = MARKER_TABLE[marker_id]
     label = tile_label(spec)

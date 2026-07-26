@@ -51,9 +51,9 @@ __all__ = ["OUTPUT_DIR", "make_recording"]
 
 OUTPUT_DIR = _REPO_ROOT / "tests" / "fixtures" / "recordings" / "bell-sequence"
 
-# Marker IDs (see markers.MARKER_TABLE): H=10, CNOT control=14, target=15.
-_H = (10, 0, 0)
-_CNOT_CONTROL = (14, 0, 1)
+# Marker IDs (see markers.MARKER_TABLE): H=30, CNOT control=17, target=15.
+_H = (30, 0, 0)
+_CNOT_CONTROL = (17, 0, 1)
 _CNOT_TARGET = (15, 1, 1)
 
 _EMPTY: tuple[tuple[int, int, int], ...] = ()

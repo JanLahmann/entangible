@@ -136,7 +136,7 @@ function applyCnot(state: StateVector, control: number, target: number): void {
 }
 
 // ---------------------------------------------------------------------------
-// Generic controlled-U (control ID 14 as a generic modifier — see task #51 /
+// Generic controlled-U (the control tile ● as a generic modifier — see task #51 /
 // docs/marker-ids.md). A column with one single-qubit gate + one ● is its
 // controlled version (X→CX, Y→CY, Z→CZ, H→CH, S→CS, T→CT); two ● + X is CCX.
 // One code path applies any controlled gate: a control MASK on the basis

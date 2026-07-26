@@ -8,12 +8,11 @@
  * intentionally forgiving about unknown ids.
  */
 export const MARKER_LABELS: Record<number, string> = {
-  10: 'H',
-  11: 'X',
+  10: 'RZ(π)',
   12: 'Y',
   13: 'Z',
-  14: 'CNOT ●',
   15: 'CNOT ⊕',
+  17: 'CNOT ●',
   20: 'RX(π/4)',
   21: 'RX(π/2)',
   22: 'RX(π)',
@@ -24,8 +23,9 @@ export const MARKER_LABELS: Record<number, string> = {
   27: 'RY(-π/2)',
   28: 'RZ(π/4)',
   29: 'RZ(π/2)',
-  30: 'RZ(π)',
+  30: 'H',
   31: 'RZ(-π/2)',
+  35: 'X',
 };
 
 export function markerLabel(id: number): string {

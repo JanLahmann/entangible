@@ -316,8 +316,8 @@ describe('PocketPipeline over scale × layout × wire count', () => {
           const frame = renderBoard(
             model,
             [
-              [10, 0, 0],
-              [14, 0, 1],
+              [30, 0, 0],
+              [17, 0, 1],
               [15, 1, 1],
             ],
             wireYs,
@@ -351,8 +351,8 @@ describe('PocketPipeline over scale × layout × wire count', () => {
     const frame = renderBoard(
       model,
       [
-        [10, 0, 0],
-        [11, 0, far],
+        [30, 0, 0],
+        [35, 0, far],
       ],
       [],
       1.0,
@@ -368,7 +368,7 @@ describe('PocketPipeline over scale × layout × wire count', () => {
   it('keeps a mat-sized board on the classic model whatever the switch says', () => {
     for (const layout of layouts) {
       const model = matBoardModel();
-      const frame = renderBoard(model, [[10, 0, 0]], [], 1.5);
+      const frame = renderBoard(model, [[30, 0, 0]], [], 1.5);
       const result = settle(new PocketPipeline({ boardLayout: layout }), frame);
       expect(result.model.kind).toBe('mat');
       expect(result.model.rect).toEqual(MAT_RECT);

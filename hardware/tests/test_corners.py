@@ -131,7 +131,7 @@ def test_gate_layout_rejects_a_corner_and_vice_versa(config):
     with pytest.raises(ValueError):
         face_layout(0, config)
     with pytest.raises(ValueError):
-        corner_face_layout(10, config)
+        corner_face_layout(30, config)
 
 
 # --------------------------------------------------------------------------- #

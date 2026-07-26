@@ -793,7 +793,8 @@ modules give the contrast.
 
 VALIDATE BEFORE BATCH-CUTTING
 -----------------------------
-Engrave ONE H tile first (tiles/tile-10.svg). Photograph it on the mat and point
+Engrave ONE H tile first (tiles/tile-30.svg — H is marker ID 30). Photograph it
+on the mat and point
 the pocket app (https://entangible.org) at it; confirm the marker is detected and
 the gate reads as H. Only then cut the full kit. If detection fails, increase
 engrave contrast (deeper / darker engrave) or switch to a lighter ply.

@@ -172,7 +172,7 @@ def config():
 def single_pieces(config):
     """Build H (red) and X (dark blue) single tiles once, reused across tests."""
     params = HardwareParams()
-    return [_single_piece(m, config, "tile", 6.0, params) for m in (10, 11)]
+    return [_single_piece(m, config, "tile", 6.0, params) for m in (30, 35)]
 
 
 @pytest.fixture(scope="module")
@@ -180,8 +180,8 @@ def double_pieces(config):
     """CNOT (same-family, 3 parts) and H|X (cross-family, 4 parts), built once."""
     params = HardwareParams()
     return [
-        _double_piece(14, 15, config, "tile", 8.0, params),  # both dark blue
-        _double_piece(10, 11, config, "tile", 8.0, params),  # red | dark blue
+        _double_piece(17, 15, config, "tile", 8.0, params),  # both dark blue
+        _double_piece(30, 35, config, "tile", 8.0, params),  # red | dark blue
     ]
 
 
@@ -285,7 +285,7 @@ def test_export_batches_splits_and_names(config, tmp_path):
     tiny = Bed(65.0, 145.0)  # 1 col x 2 rows = 2 pieces per bed
     infos = _export_batches(
         lambda mid: _single_piece(mid, config, "tile", 6.0, params),
-        [[10, 11, 12, 13], [40, 41]],  # plate1: 4 tiles → 2 batches; plate2: 1 batch
+        [[30, 35, 12, 13], [40, 41]],  # plate1: 4 tiles → 2 batches; plate2: 1 batch
         tiny,
         SPACING,
         tmp_path,
@@ -343,14 +343,14 @@ def _assert_canonical(palette, accent_hexes):
 
 def test_single_tile_3mf_shared_palette(config, tmp_path):
     """A per-piece single 3MF: white, black, then its one accent — one group."""
-    parts = build_tile(10, config, variant="tile", height=6.0, params=HardwareParams())
+    parts = build_tile(30, config, variant="tile", height=6.0, params=HardwareParams())
     path = export_tile_3mf(parts, tmp_path)
     _assert_canonical(_palette(path), ["#fa4d56"])  # H = red
 
 
 def test_double_tile_3mf_shared_palette(config, tmp_path):
     """A per-piece cross-family double 3MF: white, black, then both accents in order."""
-    parts = build_double_tile(10, 11, config, variant="tile", height=8.0, params=HardwareParams())
+    parts = build_double_tile(30, 35, config, variant="tile", height=8.0, params=HardwareParams())
     path = export_double_tile_3mf(parts, tmp_path)
     _assert_canonical(_palette(path), ["#fa4d56", "#002d9c"])  # H=red, X=darkblue
 
@@ -375,7 +375,7 @@ def test_batch_palette_carries_full_plate_and_keeps_slots(config, tmp_path):
     accents = ["#fa4d56", "#002d9c", "#9f1853"]
     infos = _export_batches(
         lambda mid: _single_piece(mid, config, "tile", 6.0, HardwareParams()),
-        [[10, 11, 12]],  # H(red), X(blue), Y(magenta) → 2 batches
+        [[30, 35, 12]],  # H(red), X(blue), Y(magenta) → 2 batches
         tiny,
         SPACING,
         tmp_path,
@@ -397,11 +397,11 @@ def test_cube_batch_keeps_the_tile_palette_and_adds_side_objects(config, tmp_pat
     positions = pack_positions(2, BED, FOOTPRINT, SPACING)
     accents = ["#fa4d56", "#002d9c"]  # H = red, X = dark blue
 
-    tiles = [_single_piece(m, config, "tile", 6.0, params) for m in (10, 11)]
+    tiles = [_single_piece(m, config, "tile", 6.0, params) for m in (30, 35)]
     tile_path = tmp_path / "tiles.3mf"
     tile_n = _write_batch_3mf(tiles, positions, tile_path, accents=accents)
 
-    cubes = [_single_piece(m, config, "cube", 60.0, params) for m in (10, 11)]
+    cubes = [_single_piece(m, config, "cube", 60.0, params) for m in (30, 35)]
     cube_path = tmp_path / "cubes.3mf"
     cube_n = _write_batch_3mf(cubes, positions, cube_path, accents=accents)
 

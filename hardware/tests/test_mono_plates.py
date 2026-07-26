@@ -41,7 +41,7 @@ DOUBLE_H = 8.0
 PARAMS = HardwareParams()
 
 #: Four gate tiles, enough to exercise splitting without building the whole kit.
-IDS = [10, 11, 12, 13]  # H, X, Y, Z
+IDS = [30, 35, 12, 13]  # H, X, Y, Z
 
 STAMP_RE = re.compile(
     r"^> Generated from `(?:[0-9a-f]{7,40}|unknown)` on \d{4}-\d{2}-\d{2} — "
@@ -211,7 +211,7 @@ def test_cap_is_respected(config, tmp_path):
 
 def test_double_kit_expands_quantities_per_form(config, tmp_path):
     """A ``qty`` of n puts n physical copies on the beds — per form."""
-    kit = [(10, 11, 2), (14, 15, 1)]
+    kit = [(30, 35, 2), (17, 15, 1)]
     infos = export_mono_batches(
         config,
         faces="double",
@@ -231,13 +231,13 @@ def test_double_kit_expands_quantities_per_form(config, tmp_path):
 def test_furniture_blocks_are_opt_in(config, tmp_path):
     without = export_mono_batches(
         config, faces="single", variant="tile", height=TILE_H, bed=BED,
-        spacing=SPACING, out_dir=tmp_path / "a", params=PARAMS, ids=[10],
+        spacing=SPACING, out_dir=tmp_path / "a", params=PARAMS, ids=[30],
     )
     assert sorted(s for i in without if i.form == "recessed" for s in i.slugs) == ["h"]
 
     with_corners = export_mono_batches(
         config, faces="single", variant="tile", height=TILE_H, bed=BED,
-        spacing=SPACING, out_dir=tmp_path / "b", params=PARAMS, ids=[10],
+        spacing=SPACING, out_dir=tmp_path / "b", params=PARAMS, ids=[30],
         corners=True,
     )
     for form in MONO_FORMS:
@@ -303,7 +303,7 @@ def test_mono_md_gains_a_print_jobs_section_with_the_swap_height(
 def test_double_notes_quote_the_second_swap(config, tmp_path):
     infos = export_mono_batches(
         config, faces="double", variant="tile", height=DOUBLE_H, bed=BED,
-        spacing=SPACING, out_dir=tmp_path, params=PARAMS, kit=[(10, 11, 1)],
+        spacing=SPACING, out_dir=tmp_path, params=PARAMS, kit=[(30, 35, 1)],
     )
     mono_md = write_mono_md(tmp_path, faces="double", height=DOUBLE_H, params=PARAMS)
     write_mono_batch_md(
