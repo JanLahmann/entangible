@@ -26,6 +26,7 @@ from __future__ import annotations
 import re
 import zipfile
 
+import prusa3mf
 import pytest
 from build123d import Box, Mesher, Pos
 from qamposer_assets.config import load_config
@@ -92,14 +93,14 @@ def _palette(path) -> list[tuple[str, str]]:
     return out
 
 
-def _objects(path) -> list[tuple[str, str]]:
-    """``(label, '#rrggbb')`` per object; fails if any object is uncoloured."""
-    out = []
-    for s in Mesher().read(str(path)):
-        assert s.color is not None, s.label
-        r, g, b, _a = tuple(s.color)
-        out.append((s.label, "#%02x%02x%02x" % (round(r * 255), round(g * 255), round(b * 255))))
-    return out
+def _parts(path) -> list[tuple[str, str]]:
+    """``(part name, '#rrggbb')`` per colour part of every piece in the file.
+
+    A piece is one object whose parts are triangle ranges, so this is the list
+    the slicer's part tree shows — and the colour comes off the triangles
+    themselves, so a part whose triangles were left unassigned cannot pass.
+    """
+    return prusa3mf.read(path).part_colors()
 
 
 # --------------------------------------------------------------------------- #
@@ -122,7 +123,7 @@ def test_bw_3mf_palette_is_exactly_white_and_black(config, tmp_path, mid):
     assert path is not None and path.name.endswith("-bw.3mf")
 
     assert _palette(path) == [("white", "#ffffff"), ("black", "#000000")]
-    assert {h for _lbl, h in _objects(path)} == {"#ffffff", "#000000"}
+    assert {h for _lbl, h in _parts(path)} == {"#ffffff", "#000000"}
 
 
 def test_cube_side_letters_are_black_too(config, tmp_path):
@@ -133,9 +134,9 @@ def test_cube_side_letters_are_black_too(config, tmp_path):
     """
     parts = build_tile(30, config, variant="cube", height=60.0, params=PARAMS)
     path = export_tile_bw_3mf(parts, tmp_path)
-    objs = _objects(path)
-    sides = [(lbl, h) for lbl, h in objs if "-side-" in lbl]
-    assert len(sides) == 4, objs
+    parts_read = _parts(path)
+    sides = [(lbl, h) for lbl, h in parts_read if "-side-" in lbl]
+    assert len(sides) == 4, parts_read
     assert {h for _lbl, h in sides} == {"#000000"}
     assert _palette(path) == [("white", "#ffffff"), ("black", "#000000")]
 
@@ -146,7 +147,7 @@ def test_cross_family_double_piece_needs_no_third_filament(config, tmp_path):
     path = export_double_tile_bw_3mf(parts, tmp_path)
     assert path is not None and path.name == "h+x-bw.3mf"
     assert _palette(path) == [("white", "#ffffff"), ("black", "#000000")]
-    assert {h for _lbl, h in _objects(path)} == {"#ffffff", "#000000"}
+    assert {h for _lbl, h in _parts(path)} == {"#ffffff", "#000000"}
 
 
 def test_object_labels_name_the_colour_they_actually_print(config, tmp_path):
@@ -154,7 +155,7 @@ def test_object_labels_name_the_colour_they_actually_print(config, tmp_path):
     object list is the only place a user checks the mapping."""
     parts = build_tile(30, config, variant="tile", height=TILE_H, params=PARAMS)
     path = export_tile_bw_3mf(parts, tmp_path)
-    assert sorted(lbl for lbl, _h in _objects(path)) == [
+    assert sorted(lbl for lbl, _h in _parts(path)) == [
         "h-accent-black",
         "h-body-white",
         "h-marker-black",
@@ -167,17 +168,25 @@ def test_object_labels_name_the_colour_they_actually_print(config, tmp_path):
 
 
 def test_bw_is_a_palette_change_only(config, tmp_path):
-    """The coloured 3MF and its b/w twin hold the same solids, object for object."""
+    """The coloured 3MF and its b/w twin hold the *identical* mesh, part for part.
+
+    Not "the same volume to nine digits": the same vertices and the same
+    triangles in the same order, split into parts at the same triangle indices.
+    Only the palette and the part names' colour suffix may differ.
+    """
     parts = build_tile(30, config, variant="tile", height=TILE_H, params=PARAMS)
     colored = export_tile_3mf(parts, tmp_path)
     bw = export_tile_bw_3mf(parts, tmp_path)
 
-    a = Mesher().read(str(colored))
-    b = Mesher().read(str(bw))
-    assert len(a) == len(b) == 3
-    for sa, sb in zip(a, b):
-        assert sa.volume == pytest.approx(sb.volume, rel=1e-9)
-        assert sa.bounding_box().size.Z == pytest.approx(sb.bounding_box().size.Z)
+    a, b = prusa3mf.read(colored), prusa3mf.read(bw)
+    assert len(a.objects) == len(b.objects) == 1
+    assert a.objects[0].vertices == b.objects[0].vertices
+    assert a.objects[0].triangles == b.objects[0].triangles
+    va, vb = a.objects[0].volumes, b.objects[0].volumes
+    assert len(va) == len(vb) == 3
+    for x, y in zip(va, vb):
+        assert (x.first, x.last) == (y.first, y.last)
+        assert x.name.rsplit("-", 1)[0] == y.name.rsplit("-", 1)[0]
 
 
 def test_band_caption_reads_white_out_of_black(config):
@@ -304,9 +313,11 @@ def test_bw_beds_are_two_filaments_end_to_end(bw_infos):
     _out, infos = bw_infos
     for info in infos:
         assert _palette(info.path) == [("white", "#ffffff"), ("black", "#000000")]
-        objs = _objects(info.path)
-        assert len(objs) == info.object_count
-        assert {h for _lbl, h in objs} == {"#ffffff", "#000000"}
+        parts_read = _parts(info.path)
+        assert len(parts_read) == info.object_count
+        assert {h for _lbl, h in parts_read} == {"#ffffff", "#000000"}
+        # one object per piece, not one per solid — the slot-cycling bug
+        assert len(prusa3mf.read(info.path).objects) == len(info.slugs)
 
 
 def test_bw_beds_are_corner_anchored_inside_the_bed(bw_infos):

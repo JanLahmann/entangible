@@ -2,18 +2,25 @@
 
 Per-colour STLs share one coordinate frame so PrusaSlicer's "import as single
 object with parts" reassembles the tile with each part on its own filament. The
-3MF bundles the same parts with their gate colours baked in (via ``lib3mf``),
-which slicers open directly as a multi-material object.
+3MF needs no such reassembly: every piece is written as **one object whose parts
+are already on the right filament slot** — PrusaSlicer reads that from the
+``Metadata/Slic3r_PE_model.config`` part, other slicers read the same colours
+off the 3MF base materials the triangles point at (see :class:`_ProjectMesher`).
 """
 
 from __future__ import annotations
 
+import copy
+import ctypes
 import datetime as _datetime
 import functools
 import subprocess
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+from xml.sax.saxutils import escape as xml_escape
 
+import lib3mf
 from build123d import Mesher, Pos, export_stl
 from qamposer_assets.config import AssetsConfig
 from qamposer_vision.markers import MARKER_TABLE, GateSpec, pretty_angle
@@ -224,20 +231,28 @@ def double_slug(spec_a: GateSpec, spec_b: GateSpec) -> str:
 class _MaterialPalette:
     """The one shared base-material group of a 3MF, in canonical slot order.
 
-    PrusaSlicer maps a 3MF's base materials to filament slots in the order they
-    appear, so this order *is* the slot order: white (slot 1), black (slot 2),
-    then the plate's accents in plates.md table order. Deduped by hex — a colour
-    never claims two slots — and named by colour, not by part, so a logical
-    colour lands on the same slot on every plate. lib3mf assigns property ids
-    1, 2, 3… in add order, so white=1 and black=2 by construction.
+    The order the materials are added in *is* the filament-slot order the kit
+    documents: white (slot 1), black (slot 2), then the plate's accents in
+    plates.md table order. Deduped by hex — a colour never claims two slots —
+    and named by colour, not by part, so a logical colour lands on the same slot
+    on every plate. lib3mf assigns property ids 1, 2, 3… in add order, so
+    white=1 and black=2 by construction and a property id *is* its 1-based
+    PrusaSlicer extruder number.
+
+    Base materials alone do **not** assign filaments in PrusaSlicer: it ignores
+    a generic 3MF's ``<basematerials>`` for extruder mapping and cycles its
+    loaded filaments over the objects instead. The slot assignment is carried by
+    the ``Metadata/Slic3r_PE_model.config`` part :class:`_ProjectMesher` writes;
+    this group is what *other* slicers (Bambu Studio, OrcaSlicer, the 3MF
+    viewers) read to show the piece in its real colours, via the per-triangle
+    properties that point back into it.
     """
 
     def __init__(self, mesher: Mesher, accents: list[str], name_accent) -> None:
         self._mesher = mesher
         self._group = mesher.model.AddBaseMaterialGroup()
-        self._resource_id = self._group.GetResourceID()
+        self.resource_id = self._group.GetResourceID()
         self._pid_by_hex: dict[str, int] = {}
-        self._coloured = 0
         self._add(WHITE_HEX, "white")
         self._add(BLACK_HEX, "black")
         for hexc in accents:
@@ -251,32 +266,201 @@ class _MaterialPalette:
         color = self._mesher.wrapper.FloatRGBAToColor(r, g, b, 1.0)
         self._pid_by_hex[key] = self._group.AddMaterial(Name=name, DisplayColor=color)
 
-    def apply(self, hex_color: str, name: str) -> int:
-        """Point **every** mesh added since the last call at this palette's colour.
+    def property_id(self, hex_color: str) -> int:
+        """lib3mf property id of ``hex_color`` — also its 1-based filament slot."""
+        return self._pid_by_hex[hex_color.lower()]
 
-        Works on the lib3mf model directly (the ``Mesher.model``/``.wrapper``/
-        ``.meshes`` handles build123d exposes) so the colour lands on the real
-        mesh objects rather than the throwaway copy ``add_shape`` colours
-        internally.
 
-        ``add_shape`` emits **one mesh per solid**, and a colour part is very
-        often more than one solid: the accent of any tile whose caption has a
-        closed counter (the ``R`` of ``RX``, the ``O``/``A``/``R`` of
-        ``CONTROL``/``TARGET``/``SWAP``) leaves that counter standing as an
-        island, a double piece's marker spans two disconnected faces, and a
-        multi-glyph cube side label (``RX``) is one solid per glyph. Colouring
-        only the *last* of them left every other one with no material assignment
-        — i.e. printed on slot 1 (white). Returns the number of meshes coloured,
-        which is the number of coloured objects this part contributes.
+# --------------------------------------------------------------------------- #
+# One 3MF object per *piece*, its colour parts as PrusaSlicer "volumes"
+# --------------------------------------------------------------------------- #
+#
+# PrusaSlicer only reads filament assignments out of its own project part,
+# ``Metadata/Slic3r_PE_model.config``: one ``<object>`` per logical piece, whose
+# parts are consecutive triangle ranges (``<volume firstid=… lastid=…>``) each
+# carrying ``<metadata type="volume" key="extruder" value="N"/>``. That shape is
+# only expressible if a piece is ONE mesh, so every writer here merges a piece's
+# solids into a single lib3mf mesh object and remembers where each part's
+# triangles start and end.
+#
+# Verified against PrusaSlicer 2.9.6 (``--export-3mf`` of a hand-built file,
+# re-exported and re-read): it *requires* the ``.config`` part to be named
+# exactly ``Metadata/Slic3r_PE_model.config`` and its ``<object id=…>`` to match
+# the ``<object id=…>`` in ``3D/3dmodel.model``; it *tolerates* a missing
+# ``[Content_Types].xml`` entry for the part (its own packages omit one too), a
+# missing ``slic3rpe:Version3mf`` metadata, lib3mf's production-extension
+# ``p:UUID`` attributes, and the ``source_file``/``mesh`` bookkeeping it writes
+# itself. No print/filament configuration is shipped, on purpose: the file must
+# open on the user's own printer and filament presets.
+
+#: The meshing tolerances ``Mesher.add_shape`` applies. Merging a piece's parts
+#: into one mesh means calling build123d's meshing helpers directly, so the
+#: defaults have to be repeated here — a different value would silently change
+#: every exported surface.
+_LINEAR_DEFLECTION = 0.001
+_ANGULAR_DEFLECTION = 0.1
+
+#: The 3MF part PrusaSlicer reads its per-part filament assignment from.
+MODEL_CONFIG_PART = "Metadata/Slic3r_PE_model.config"
+
+
+@dataclass(slots=True)
+class _Volume:
+    """One colour part of a piece: a triangle range plus its filament slot."""
+
+    name: str
+    extruder: int
+    first: int
+    last: int
+
+
+@dataclass(slots=True)
+class _ObjectConfig:
+    """One logical piece: its 3MF object id, its name and its parts."""
+
+    id: int
+    name: str
+    volumes: list[_Volume]
+
+
+class _ProjectMesher:
+    """Writes a 3MF that PrusaSlicer opens as a ready-made multi-material project.
+
+    One :meth:`add_piece` call per physical piece: its colour parts become the
+    parts ("volumes") of a single object, each pre-assigned to the filament slot
+    its colour holds in the shared :class:`_MaterialPalette`. The same colours
+    are written as per-triangle 3MF properties, so a slicer that never heard of
+    PrusaSlicer's project part still opens the piece in colour.
+    """
+
+    def __init__(self, accents: list[str], name_accent) -> None:
+        self._mesher = Mesher()
+        self._palette = _MaterialPalette(self._mesher, list(accents), name_accent)
+        self._objects: list[_ObjectConfig] = []
+
+    def add_piece(
+        self,
+        name: str,
+        parts: list[tuple[str, str, object]],
+        offset: tuple[float, float] = (0.0, 0.0),
+    ) -> int:
+        """Add one piece: ``parts`` is ``(part name, colour hex, solid)`` in print order.
+
+        A part is frequently *several* solids — the accent of a tile whose
+        caption has a closed counter (the ``R`` of ``RX``, the ``O`` of
+        ``CONTROL``) leaves that counter standing as an island, a double piece's
+        marker spans two faces, a multi-glyph cube side label is one solid per
+        glyph. All of them belong to one part, so all of them land in one
+        triangle range and print on one filament.
+
+        ``offset`` translates the whole piece onto its bed position. Returns the
+        number of parts actually written (a part that meshes to nothing — a
+        degenerate sliver — contributes no volume and is skipped rather than
+        emitting an empty triangle range PrusaSlicer would choke on).
         """
-        meshes = self._mesher.meshes
-        pid = self._pid_by_hex[hex_color.lower()]
-        fresh = meshes[self._coloured :]
-        for mesh_obj in fresh:
-            mesh_obj.SetObjectLevelProperty(self._resource_id, pid)
-            mesh_obj.SetName(name)
-        self._coloured = len(meshes)
-        return len(fresh)
+        dx, dy = offset
+        vertices: list = []
+        triangles: list = []
+        volumes: list[_Volume] = []
+        for part_name, hex_color, solid in parts:
+            shape = Pos(dx, dy, 0.0) * solid if (dx or dy) else solid
+            # build123d's own meshing path, called directly: add_shape would
+            # emit one *object* per solid, which is exactly what PrusaSlicer
+            # then hands to a different filament each.
+            ocp_vertices, ocp_triangles = Mesher._mesh_shape(
+                copy.deepcopy(shape), _LINEAR_DEFLECTION, _ANGULAR_DEFLECTION
+            )
+            if len(ocp_vertices) < 3 or not ocp_triangles:
+                continue
+            verts_3mf, tris_3mf = Mesher._create_3mf_mesh(ocp_vertices, ocp_triangles)
+            if not tris_3mf:
+                continue
+            base = len(vertices)
+            for tri in tris_3mf:  # re-index onto the merged vertex list
+                indices = tri.Indices
+                indices[0] += base
+                indices[1] += base
+                indices[2] += base
+            first = len(triangles)
+            vertices.extend(verts_3mf)
+            triangles.extend(tris_3mf)
+            volumes.append(
+                _Volume(
+                    name=part_name,
+                    extruder=self._palette.property_id(hex_color),
+                    first=first,
+                    last=len(triangles) - 1,
+                )
+            )
+        if not volumes:
+            return 0
+
+        mesh = self._mesher.model.AddMeshObject()
+        mesh.SetGeometry(vertices, triangles)
+        mesh.SetName(name)
+        if not mesh.IsValid():
+            raise RuntimeError("3mf mesh is invalid")
+        # The object-level property is the piece's first part (its white body):
+        # lib3mf then writes a per-triangle ``pid``/``p1`` only where a triangle
+        # differs from it, which keeps the file roughly the size it was.
+        rid = self._palette.resource_id
+        mesh.SetObjectLevelProperty(rid, volumes[0].extruder)
+        props = []
+        for vol in volumes:
+            prop = lib3mf.TriangleProperties(
+                rid, (ctypes.c_uint32 * 3)(vol.extruder, vol.extruder, vol.extruder)
+            )
+            props.extend([prop] * (vol.last - vol.first + 1))
+        mesh.SetAllTriangleProperties(props)
+        self._mesher.model.AddBuildItem(mesh, self._mesher.wrapper.GetIdentityTransform())
+        self._objects.append(
+            _ObjectConfig(id=mesh.GetResourceID(), name=name, volumes=volumes)
+        )
+        return len(volumes)
+
+    def write(self, path: Path) -> int:
+        """Write the 3MF and append PrusaSlicer's project part. Returns part count."""
+        _stamp_3mf(self._mesher, path.stem)
+        self._mesher.write(str(path))
+        _inject_model_config(path, self._objects)
+        return sum(len(obj.volumes) for obj in self._objects)
+
+
+def _inject_model_config(path: Path, objects: list[_ObjectConfig]) -> None:
+    """Append ``Metadata/Slic3r_PE_model.config`` to an already-written 3MF.
+
+    lib3mf has no notion of PrusaSlicer's project part, so it is added to the
+    finished package with :mod:`zipfile`. Volume matrices are the identity: the
+    parts are already in their object's coordinates (the bed offset is baked
+    into the geometry), so PrusaSlicer has nothing left to transform.
+    """
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>', "<config>"]
+    for obj in objects:
+        lines.append(f' <object id="{obj.id}" instances_count="1">')
+        lines.append(f'  <metadata type="object" key="name" value="{_attr(obj.name)}"/>')
+        for vol in obj.volumes:
+            lines.append(f'  <volume firstid="{vol.first}" lastid="{vol.last}">')
+            lines.append(
+                f'   <metadata type="volume" key="name" value="{_attr(vol.name)}"/>'
+            )
+            lines.append('   <metadata type="volume" key="volume_type" value="ModelPart"/>')
+            lines.append(
+                '   <metadata type="volume" key="matrix"'
+                ' value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>'
+            )
+            lines.append(
+                f'   <metadata type="volume" key="extruder" value="{vol.extruder}"/>'
+            )
+            lines.append("  </volume>")
+        lines.append(" </object>")
+    lines.append("</config>")
+    with zipfile.ZipFile(path, "a", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(MODEL_CONFIG_PART, "\n".join(lines) + "\n")
+
+
+def _attr(value: str) -> str:
+    """XML-escape a value for an attribute (part names carry ``+`` and ``&``)."""
+    return xml_escape(value, {'"': "&quot;"})
 
 
 def _hex_rgb01(hex_color: str) -> tuple[float, float, float]:
@@ -326,26 +510,27 @@ def export_tile_stls(parts: TileParts, out_dir: Path) -> list[Path]:
 def export_tile_3mf(parts: TileParts, out_dir: Path) -> Path | None:
     """Write a single coloured ``<slug>.3mf`` with each part on its gate colour.
 
-    Returns the path, or ``None`` if the 3MF backend is unavailable.
+    One object, one part per colour, each already on its filament slot. Returns
+    the path, or ``None`` if the 3MF backend is unavailable.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     slug = tile_slug(parts.layout.spec)
     path = out_dir / f"{slug}.3mf"
-    mesher = Mesher()
     try:
-        # One shared palette: white, black, then this tile's single accent. Its
-        # apply() sets the base-material colour directly on each mesh object,
-        # because build123d 0.11.1 drops a Solid's `.color` inside add_shape (it
-        # re-iterates the Solid into a fresh, colour-less copy).
-        palette = _MaterialPalette(mesher, [parts.layout.accent_hex], accent_color_name)
-        for role, color_name, solid in parts.named_parts():
-            mesher.add_shape(solid)
-            palette.apply(
-                _part_color_hex(role, parts.layout),
-                f"{slug}-{role}-{color_name}",
-            )
-        _stamp_3mf(mesher, slug)
-        mesher.write(str(path))
+        # One shared palette: white, black, then this tile's single accent.
+        writer = _ProjectMesher([parts.layout.accent_hex], accent_color_name)
+        writer.add_piece(
+            slug,
+            [
+                (
+                    f"{slug}-{role}-{color_name}",
+                    _part_color_hex(role, parts.layout),
+                    solid,
+                )
+                for role, color_name, solid in parts.named_parts()
+            ],
+        )
+        writer.write(path)
     except (RuntimeError, ValueError):
         # lib3mf rejects a mesh it considers non-manifold; the per-colour STLs
         # are still written, so 3MF is genuinely best-effort here.
@@ -368,15 +553,14 @@ def _write_piece_bw_3mf(
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{slug}-bw.3mf"
-    mesher = Mesher()
     try:
-        palette = _MaterialPalette(mesher, [], accent_color_name)
+        writer = _ProjectMesher([], accent_color_name)
+        parts = []
         for role, solid in roles:
             hexc, cname = bw_part_color(role)
-            mesher.add_shape(solid)
-            palette.apply(hexc, f"{slug}-{role}-{cname}")
-        _stamp_3mf(mesher, path.stem)
-        mesher.write(str(path))
+            parts.append((f"{slug}-{role}-{cname}", hexc, solid))
+        writer.add_piece(slug, parts)
+        writer.write(path)
     except (RuntimeError, ValueError):
         if path.exists():
             path.unlink()
@@ -426,16 +610,18 @@ def export_double_tile_3mf(parts: DoubleTileParts, out_dir: Path) -> Path | None
     out_dir.mkdir(parents=True, exist_ok=True)
     slug = double_slug(parts.layout_a.spec, parts.layout_b.spec)
     path = out_dir / f"{slug}.3mf"
-    mesher = Mesher()
     try:
         # White, black, then this piece's accents (1 same-family, 2 cross-family)
         # in named_parts order; double_color_name tells the two blues apart.
-        palette = _MaterialPalette(mesher, [h for h, _ in parts.accents], double_color_name)
-        for role, color_name, hexc, solid in parts.named_parts():
-            mesher.add_shape(solid)
-            palette.apply(hexc, f"{slug}-{role}-{color_name}")
-        _stamp_3mf(mesher, slug)
-        mesher.write(str(path))
+        writer = _ProjectMesher([h for h, _ in parts.accents], double_color_name)
+        writer.add_piece(
+            slug,
+            [
+                (f"{slug}-{role}-{color_name}", hexc, solid)
+                for role, color_name, hexc, solid in parts.named_parts()
+            ],
+        )
+        writer.write(path)
     except (RuntimeError, ValueError):
         if path.exists():
             path.unlink()
@@ -637,11 +823,12 @@ def write_plates_md(config: AssetsConfig, out_dir: Path) -> Path:
     lines.append("---")
     lines.append("")
     lines.append(
-        "Each tile's STL parts (`*-body-white.stl`, `*-marker-black.stl`, "
-        "`*-accent-<colour>.stl`) share one coordinate frame — in PrusaSlicer, "
-        "select them and *Right-click → Import as single object / parts*, then "
-        "assign each part to its slot above. The bundled `<tile>.3mf` already "
-        "carries these colours."
+        "The bundled `<tile>.3mf` needs no assignment at all: it opens as one "
+        "object whose parts are **already on the slots above** — load the "
+        "filaments in that order and slice. The STL route is the manual one: the "
+        "parts (`*-body-white.stl`, `*-marker-black.stl`, `*-accent-<colour>.stl`) "
+        "share one coordinate frame, so select them in PrusaSlicer, *Right-click "
+        "→ Import as single object / parts*, then assign each part to its slot."
     )
     lines.append("")
 
@@ -757,12 +944,13 @@ def write_double_plates_md(
     lines.append("---")
     lines.append("")
     lines.append(
-        "Each piece's STL parts (`*-body-white.stl`, `*-marker-black.stl`, and "
-        "one `*-accent-<colour>.stl` **per accent colour** — two for a "
-        "cross-family piece) share one coordinate frame. In PrusaSlicer select "
-        "them and *Right-click → Import as single object / parts*, then assign "
-        "each part to its slot above. The bundled `<a>+<b>.3mf` already carries "
-        "these colours."
+        "The bundled `<a>+<b>.3mf` needs no assignment at all: it opens as one "
+        "object whose parts are **already on the slots above**, both accents of a "
+        "cross-family piece included. The STL route is the manual one: the parts "
+        "(`*-body-white.stl`, `*-marker-black.stl`, and one "
+        "`*-accent-<colour>.stl` **per accent colour**) share one coordinate "
+        "frame, so select them in PrusaSlicer, *Right-click → Import as single "
+        "object / parts*, then assign each part to its slot."
     )
     lines.append("")
 
@@ -802,7 +990,7 @@ class BatchInfo:
     path: Path
     slugs: list[str]  # piece slug per placed piece, row-major
     positions: list[tuple[float, float]]  # bed centre point per piece
-    object_count: int  # coloured objects in the 3MF
+    object_count: int  # coloured parts in the 3MF (one object per piece)
     cols: int
     rows: int
 
@@ -916,28 +1104,23 @@ def _write_batch_3mf(
     """Write one batch: every piece's coloured parts translated onto the bed.
 
     Each piece is built with its footprint in the first quadrant (centre at
-    ``footprint/2``); it is translated so that centre lands on its bed position.
-    Every part points at the batch's one shared palette — white, black, then the
-    plate's ``accents`` (in plates.md order) so a colour keeps its slot across
-    every batch of the plate. Returns the number of coloured objects written —
-    one per *solid*, not per part, since a disconnected part (a caption counter,
-    a two-glyph cube side label, a double piece's two markers) becomes one 3MF
-    object per island.
+    ``footprint/2``); it is translated so that centre lands on its bed position,
+    and becomes **one** 3MF object whose parts are its colour parts. Every part
+    points at the batch's one shared palette — white, black, then the plate's
+    ``accents`` (in plates.md order) so a colour keeps its slot across every
+    batch of the plate. Returns the number of coloured parts written (one per
+    colour part, however many disconnected islands it is made of).
     """
-    mesher = Mesher()
-    palette = _MaterialPalette(
-        mesher, accents if accents is not None else _batch_accents(pieces), name_accent
+    writer = _ProjectMesher(
+        accents if accents is not None else _batch_accents(pieces), name_accent
     )
-    n_obj = 0
     for piece, (cx, cy) in zip(pieces, positions):
-        dx = cx - footprint / 2.0
-        dy = cy - footprint / 2.0
-        for part in piece.parts:
-            mesher.add_shape(Pos(dx, dy, 0.0) * part.solid)
-            n_obj += palette.apply(part.hex, part.name)
-    _stamp_3mf(mesher, path.stem)
-    mesher.write(str(path))
-    return n_obj
+        writer.add_piece(
+            piece.slug,
+            [(part.name, part.hex, part.solid) for part in piece.parts],
+            offset=(cx - footprint / 2.0, cy - footprint / 2.0),
+        )
+    return writer.write(path)
 
 
 def _cols_rows(bed: Bed, spacing: float) -> tuple[int, int]:
@@ -1442,8 +1625,9 @@ def write_batch_plates_md(
         f"**{FOOTPRINT:g} × {FOOTPRINT:g} mm** + **{spacing:g} mm** spacing → "
         f"**{cols} × {rows} = {cols * rows}** pieces per bed. Each filament plate "
         "above is split into numbered **batches**; every batch below is one "
-        "multi-piece coloured 3MF (open it, print the whole bed on that plate's "
-        f"filaments). {len(infos)} batch file(s), {total_pieces} pieces total.",
+        "multi-piece coloured 3MF — one object per piece, every part already on "
+        "the plate's slot above, so it opens ready to slice. "
+        f"{len(infos)} batch file(s), {total_pieces} pieces total.",
         "",
     ]
     if max_per_bed is not None and max_per_bed < cols * rows:
@@ -1472,7 +1656,7 @@ def write_batch_plates_md(
         )
         lines.append("")
         lines.append(
-            f"{len(info.slugs)} piece(s), {info.object_count} coloured objects: "
+            f"{len(info.slugs)} piece(s), {info.object_count} coloured parts: "
             + ", ".join(f"`{s}`" for s in info.slugs)
         )
         lines.append("")
@@ -1519,7 +1703,7 @@ def write_corner_plates_md(base_md: Path, infos: list[BatchInfo]) -> Path:
         lines.append(f"### `{info.path.name}` — board furniture, batch {info.batch}")
         lines.append("")
         lines.append(
-            f"{len(info.slugs)} block(s), {info.object_count} coloured objects: "
+            f"{len(info.slugs)} block(s), {info.object_count} coloured parts: "
             + ", ".join(f"`{s}`" for s in info.slugs)
         )
         lines.append("")
@@ -1605,10 +1789,11 @@ def write_bw_md(base_md: Path, *, faces: str) -> Path:
     """
     lines = ["", "---", "", _BW_HEADING, "", *_bw_intro_lines(faces)]
     lines += [
-        "Every piece ships a `<piece>-bw.3mf` next to its coloured `<piece>.3mf`. "
-        "The per-colour STL parts are **not** duplicated: the parts are identical "
-        "and only the palette differs, so if you assemble from STLs simply send "
-        "the accent part to the black slot.",
+        "Every piece ships a `<piece>-bw.3mf` next to its coloured `<piece>.3mf`, "
+        "with its parts already on slot 1 (white) and slot 2 (black). The "
+        "per-colour STL parts are **not** duplicated: the parts are identical and "
+        "only the palette differs, so if you assemble from STLs simply send the "
+        "accent part to the black slot.",
         "",
         "Run `plates --bw` for bed-ready `bw-batch*.3mf` files.",
         "",
@@ -1682,7 +1867,7 @@ def write_bw_batch_md(
         lines.append(f"### `{info.path.name}` — black + white, batch {info.batch}")
         lines.append("")
         lines.append(
-            f"{len(info.slugs)} piece(s), {info.object_count} coloured objects: "
+            f"{len(info.slugs)} piece(s), {info.object_count} coloured parts: "
             + ", ".join(f"`{s}`" for s in info.slugs)
         )
         lines.append("")

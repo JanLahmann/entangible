@@ -360,7 +360,7 @@ export function GuidePage() {
                 (60 mm, hollow, gate letters on all four sides so you can read a piece from across
                 the table), and <b>double-faced flip pieces</b>: two gates per piece, one flip
                 apart (flip H to get X; flip a rotation to get its inverse). Open a 3MF in your
-                slicer and map the pre-colored parts to filament slots. Use matte filament —
+                slicer — every part is already on its filament slot. Use matte filament —
                 glossy tops glare and hurt detection.
               </p>
               <img

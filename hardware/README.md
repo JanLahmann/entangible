@@ -59,7 +59,8 @@ Output per variant lands in `out/hardware/<variant>/`:
   — the three colour parts in one shared coordinate frame.
 - `cube` only: `<gate>-side-{front,right,back,left}-<colour>.stl` — the side-face
   gate name, same colour as the accent (see below).
-- `<gate>.3mf` — the same parts bundled with their gate colours baked in.
+- `<gate>.3mf` — the same parts as **one object with named parts**, each part
+  already on its filament slot (see [Filament slots](#filament-slots--plates)).
 - `--bw` only: `<gate>-bw.3mf` — the same parts on white + black alone.
 - `plates.md` — the MMU plate groupings (see below).
 
@@ -121,10 +122,11 @@ in-plane spin, so the upside-down half is exactly what rights itself.
 - **First layer:** the 0.4 mm bottom chamfer already relieves elephant-foot;
   keep a slightly reduced first-layer extrusion / correct Z-offset. Brim only if
   a cube tips.
-- **Import into PrusaSlicer:** either open `<gate>.3mf` directly (colours come
-  in), **or** select the three `*.stl` parts, right-click →
-  *Import as single object / parts*, and assign each part to its slot per
-  `plates.md`.
+- **Import into PrusaSlicer:** open `<gate>.3mf` directly — it arrives as one
+  object whose parts are **already on the right filament slot** (white 1,
+  black 2, accents 3+ in `plates.md` order); load the filaments in that order and
+  slice. **Or** select the three `*.stl` parts, right-click → *Import as single
+  object / parts*, and assign each part to its slot per `plates.md` by hand.
 
 ### Filament slots / plates
 
@@ -145,6 +147,26 @@ set uses **4** accent colours, so tiles split across **2 plates**:
 Hex values are read from `assets.toml` — they are exactly `@qamposer/react`'s
 `GATE_COLORS`, so a tile in hand matches its gate on screen.
 
+#### How the slot lands in the slicer
+
+Every 3MF is written **twice over**, because the two families of slicer read
+different things:
+
+- **PrusaSlicer** ignores a generic 3MF's base materials when it assigns
+  filaments — with an MMU profile loaded it simply cycles extruders 1…5 over the
+  objects. So each piece is written as **one object** whose colour parts are
+  consecutive triangle ranges, and the file carries
+  `Metadata/Slic3r_PE_model.config`, PrusaSlicer's own project part, where each
+  range names its extruder. Open it and the part tree is already correct;
+  nothing is assigned by hand. No print or filament configuration is shipped —
+  your own printer/filament presets stay untouched.
+- **Bambu Studio, OrcaSlicer, 3MF viewers** read the standard
+  `<basematerials>` group; the same parts point at it per triangle, so the piece
+  opens in its real colours there too.
+
+Load the filaments in slot order (white, black, then the plate's accents in the
+table above) and both readings agree.
+
 ### Bed-ready print plates
 
 `generate` writes one file **per piece**; `plates` instead writes one 3MF **per
@@ -164,11 +186,13 @@ It reuses the same filament-plate groupings above, then **packs** each plate ont
 the bed: 60 × 60 mm footprints on a grid with `--spacing` gaps, row-major and
 centred — `250 × 220` fits **3 × 3 = 9** pieces. A plate with more pieces than one
 bed holds is split into numbered batches: `plate1-batch1.3mf`, `plate1-batch2.3mf`,
-… Each batch 3MF holds **all** its pieces as separate colour objects at their bed
-positions (colours identical to the per-piece 3MFs, so it opens colour-correct in
-PrusaSlicer). `plates.md` gains a **Print jobs** section listing every batch file,
-its pieces, and a tiny ASCII bed sketch. Cubes pack the same 3 × 3 but are a tall,
-long print.
+… Each batch 3MF holds **all** its pieces at their bed positions — one object per
+piece, its colour parts pre-assigned to the plate's filament slots, so the whole
+bed opens ready to slice in PrusaSlicer (and colour-correct in Bambu Studio /
+OrcaSlicer, which read the same colours off the 3MF's base materials).
+`plates.md` gains a **Print jobs** section listing every batch file, its pieces,
+and a tiny ASCII bed sketch. Cubes pack the same 3 × 3 but are a tall, long
+print.
 
 ## Black and white (two filaments)
 
@@ -408,8 +432,9 @@ mixed pieces cover all six cross-family colour pairs, which cannot fit on two
 | 2 | red, dark blue, magenta | H\|X, H\|Y |
 | 3 | red, light blue | H\|Z |
 
-For a cross-family piece, load both its accent filaments on the same plate and
-assign each `…-accent-<colour>` part (or open the `.3mf`) to the matching slot.
+For a cross-family piece, load both its accent filaments on the same plate. The
+`.3mf` already has each `…-accent-<colour>` part on the matching slot; only the
+STL route needs the assignment done by hand.
 
 ### Print orientation (double-faced)
 

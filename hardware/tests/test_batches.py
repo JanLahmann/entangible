@@ -12,6 +12,7 @@ Two layers of test:
 
 from __future__ import annotations
 
+import prusa3mf
 import pytest
 from build123d import Mesher
 from qamposer_assets.config import load_config
@@ -186,32 +187,28 @@ def double_pieces(config):
 
 
 def _read_colored(path) -> list[tuple[str, str]]:
-    """Read back a 3MF → ``[(label, '#rrggbb'), ...]`` for every object.
+    """Read back a 3MF → ``[(part name, '#rrggbb'), ...]`` for every colour part.
 
-    ``Mesher.add_shape`` writes **one 3MF object per solid**, so a colour part
-    made of several islands (a caption counter, a double piece's two markers, a
-    two-glyph cube side label) becomes several objects — every one of which must
-    carry a colour. An un-coloured object would print on slot 1 (white); the
-    caller asserts none exists.
+    A piece is **one** object whose colour parts are triangle ranges (see
+    :mod:`prusa3mf`), so this walks the parts, not the objects: a part made of
+    several islands (a caption counter, a double piece's two markers, a two-glyph
+    cube side label) is one range on one filament, not one object per island.
+    ``part_colors`` reads the colour off the triangles themselves and fails if a
+    part's triangles disagree — an unassigned triangle would print white.
     """
-    out = []
-    for s in Mesher().read(str(path)):
-        assert s.color is not None, f"un-coloured object {s.label!r} in {path.name}"
-        r, g, b, _a = tuple(s.color)
-        hexc = "#%02x%02x%02x" % (round(r * 255), round(g * 255), round(b * 255))
-        out.append((s.label, hexc))
-    return out
+    return prusa3mf.read(path).part_colors()
 
 
 def test_single_batch_roundtrip(single_pieces, tmp_path):
-    """A 2-tile single batch → 6 coloured objects, colours survive round-trip."""
+    """A 2-tile single batch → 2 objects of 3 coloured parts, colours round-trip."""
     positions = pack_positions(len(single_pieces), BED, FOOTPRINT, SPACING)
     path = tmp_path / "plate1-batch1.3mf"
     n_obj = _write_batch_3mf(single_pieces, positions, path)
 
     assert n_obj == 6  # 2 tiles x (body, marker, accent)
+    assert len(prusa3mf.read(path).objects) == 2  # one object per *piece*
     back = _read_colored(path)
-    assert len(back) == 6  # object count round-trips
+    assert len(back) == 6  # part count round-trips
     hexes = {h for _lbl, h in back}
     assert "#ffffff" in hexes and "#000000" in hexes  # white body, black marker
     assert "#fa4d56" in hexes  # H = red
@@ -221,12 +218,13 @@ def test_single_batch_roundtrip(single_pieces, tmp_path):
 
 
 def test_double_batch_roundtrip(double_pieces, tmp_path):
-    """A same-family + a cross-family double piece: 3 + 4 parts, 19 objects.
+    """A same-family + a cross-family double piece: 3 + 4 parts, 2 objects.
 
-    Objects are counted per *solid*, not per part: the CNOT piece is 1 body +
-    2 markers (top/bottom faces) + 11 accent islands (two band rings, the
-    ``CONTROL``/``TARGET`` counters and the four quadrants inside the ``⊕``) =
-    14; ``h+x`` is 1 + 2 + 1 + 1 = 5. Every one of the 19 must be coloured.
+    The islands are the point: the CNOT piece is 1 body + 2 markers (top/bottom
+    faces) + 11 accent islands (two band rings, the ``CONTROL``/``TARGET``
+    counters and the four quadrants inside the ``⊕``) = 14 solids, ``h+x`` is
+    1 + 2 + 1 + 1 = 5. All 19 collapse into 7 *parts* on 2 objects — one
+    filament per part, whatever it is made of.
     """
     cnot, hx = double_pieces
     assert len(cnot.parts) == 3 and len(hx.parts) == 4
@@ -237,9 +235,11 @@ def test_double_batch_roundtrip(double_pieces, tmp_path):
     path = tmp_path / "plate1-batch1.3mf"
     n_obj = _write_batch_3mf(list(double_pieces), positions, path)
 
-    assert n_obj == 19
-    back = _read_colored(path)  # asserts every object carries a colour
-    assert len(back) == 19  # object count round-trips
+    assert n_obj == 7  # 3 + 4 coloured parts
+    model = prusa3mf.read(path)
+    assert [len(o.volumes) for o in model.objects] == [3, 4]
+    back = _read_colored(path)  # asserts every part carries one colour
+    assert len(back) == 7  # part count round-trips
     hexes = {h for _lbl, h in back}
     assert hexes == {"#ffffff", "#000000", "#002d9c", "#fa4d56"}
 
@@ -387,11 +387,11 @@ def test_batch_palette_carries_full_plate_and_keeps_slots(config, tmp_path):
 
 
 def test_cube_batch_keeps_the_tile_palette_and_adds_side_objects(config, tmp_path):
-    """Cube side names reuse the gate accent: same slots, four more objects each.
+    """Cube side names reuse the gate accent: same slots, four more parts each.
 
-    The 3MF palette (= the filament-slot list PrusaSlicer sees) must be
+    The 3MF palette (= the filament-slot list a slicer shows) must be
     *identical* to the flat tiles' — a cube adds geometry, never a filament. Only
-    the object count grows, by one per side-label solid.
+    the part count grows, by one per side label.
     """
     params = HardwareParams()
     positions = pack_positions(2, BED, FOOTPRINT, SPACING)
@@ -409,13 +409,14 @@ def test_cube_batch_keeps_the_tile_palette_and_adds_side_objects(config, tmp_pat
     assert _palette(cube_path) == _palette(tile_path)
     _assert_canonical(_palette(cube_path), accents)
 
-    # H and X are single-glyph labels → one solid per face → +4 objects per cube.
+    # H and X are single-glyph labels → one part per face → +4 parts per cube.
     assert [len(p.parts) for p in cubes] == [7, 7]  # 3 + four side names
     assert cube_n == tile_n + 2 * 4 == 14
-    back = _read_colored(cube_path)  # asserts every object carries a colour
+    assert [len(o.volumes) for o in prusa3mf.read(cube_path).objects] == [7, 7]
+    back = _read_colored(cube_path)  # asserts every part carries one colour
     assert len(back) == cube_n
     assert {lbl for lbl, _h in back} >= {"h-side-front-red", "x-side-left-blue"}
-    # every side-name object took its gate's accent hex, never a new colour
+    # every side-name part took its gate's accent hex, never a new colour
     sides = {h for lbl, h in back if "-side-" in lbl}
     assert sides == set(accents)
 

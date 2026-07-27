@@ -473,7 +473,7 @@ def _plates(
         total_bytes += nbytes
         print(
             f"    {info.path.name:24s} plate{info.plate} batch{info.batch}  "
-            f"{len(info.slugs)} pieces  {info.object_count} objs  "
+            f"{len(info.slugs)} pieces  {info.object_count} parts  "
             f"{nbytes/1024:7.1f} KiB"
         )
     for info in corner_infos:
@@ -481,7 +481,7 @@ def _plates(
         total_bytes += nbytes
         print(
             f"    {info.path.name:24s} furniture batch{info.batch}  "
-            f"{len(info.slugs)} pieces  {info.object_count} objs  "
+            f"{len(info.slugs)} pieces  {info.object_count} parts  "
             f"{nbytes/1024:7.1f} KiB"
         )
     for info in bw_infos:
@@ -489,7 +489,7 @@ def _plates(
         total_bytes += nbytes
         print(
             f"    {info.path.name:24s} black+white batch{info.batch}  "
-            f"{len(info.slugs)} pieces  {info.object_count} objs  "
+            f"{len(info.slugs)} pieces  {info.object_count} parts  "
             f"{nbytes/1024:7.1f} KiB"
         )
     for minfo in mono_infos:
