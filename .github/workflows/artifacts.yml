@@ -5,10 +5,11 @@
 #   https://github.com/JanLahmann/entangible/releases/latest/download/<asset>
 #
 # Assets:
-#   * entangible-3d-tiles.zip     — 3MFs + mono STLs + bed-ready plates (MMU
-#                                   and mono beds), all four variants (tile,
-#                                   cube, and their double-faced siblings),
-#                                   plus the UL/UR/LR/LL board-corner blocks
+#   * entangible-3d-tiles.zip     — 3MFs (colour + black-and-white) + mono STLs
+#                                   + bed-ready plates (MMU, b/w and mono beds),
+#                                   all four variants (tile, cube, and their
+#                                   double-faced siblings), plus the UL/UR/LR/LL
+#                                   board-corner blocks
 #   * entangible-laser-kit.zip    — red-cut / black-engrave SVGs for wood tiles
 #   * entangible-print-kit-A4.pdf — the one-file paper kit (tiles + board mat)
 #
@@ -100,8 +101,8 @@ jobs:
               corners=""
               [ "$faces" = single ] && corners="--corners"
               uv run --no-sync qamposer-hardware generate \
-                --faces "$faces" --variant "$variant" --gates all --mono $corners \
-                --out out/hardware > "buildlogs/gen-$name.log" 2>&1 &
+                --faces "$faces" --variant "$variant" --gates all --mono --bw \
+                $corners --out out/hardware > "buildlogs/gen-$name.log" 2>&1 &
               pids+=($!); names+=("$name")
             done
           done
@@ -128,7 +129,7 @@ jobs:
               corners=""
               [ "$faces" = single ] && corners="--corners"
               uv run --no-sync qamposer-hardware plates \
-                --faces "$faces" --variant "$variant" --mono $corners \
+                --faces "$faces" --variant "$variant" --mono --bw $corners \
                 --out out/hardware-plates > "buildlogs/plates-$name.log" 2>&1 &
               pids+=($!); names+=("$name")
             done
@@ -156,10 +157,11 @@ jobs:
           uv run --with pypdf python tools/make_print_kit.py
 
       # --- Package ----------------------------------------------------------
-      # The 3D zip ships the *deliverables* only: 3MFs (the colour form), mono
-      # STLs (the single-filament form) and the plate batches. The per-colour
-      # part STLs (body/marker/accent/side) are build intermediates already
-      # bundled inside each 3MF.
+      # The 3D zip ships the *deliverables* only: 3MFs (the colour form and the
+      # `-bw` two-filament form), mono STLs (the single-filament form) and the
+      # plate batches. The per-colour part STLs (body/marker/accent/side) are
+      # build intermediates already bundled inside each 3MF. The `*.3mf` globs
+      # below pick up `<piece>-bw.3mf` and `bw-batch*.3mf` with no change.
       - name: Package release assets
         run: |
           set -euo pipefail

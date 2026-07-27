@@ -1,17 +1,18 @@
 """``qamposer-hardware`` CLI — generate 3D-printable multi-colour gate tiles.
 
     qamposer-hardware generate [--variant tile|cube|all] [--gates H,X,...|all]
-                               [--magnets] [--mono] [--corners] [--out DIR]
-    qamposer-hardware plates   [--variant tile|cube] [--bed WxH] [--mono]
+                               [--magnets] [--mono] [--bw] [--corners] [--out DIR]
+    qamposer-hardware plates   [--variant tile|cube] [--bed WxH] [--mono] [--bw]
                                [--corners] [--out DIR]
 
 Writes, per variant, ``out/hardware/<variant>/`` containing per-colour STL
 parts and a coloured 3MF for every requested tile, plus a ``plates.md`` MMU
-guide. ``--mono`` adds the single-colour (no-MMU) forms and ``--corners`` the
-board-furniture family — the four corner blocks that replace the printed mat,
-the qubit-wire block that sets how many qubits the board plays and the
-measurement block that ends a wire — both opt-in, so the default kit is exactly
-what it was.
+guide. ``--mono`` adds the single-colour (no-MMU) forms, ``--bw`` the
+black + white ones (the same geometry on exactly two filaments) and
+``--corners`` the board-furniture family — the four corner blocks that replace
+the printed mat, the qubit-wire block that sets how many qubits the board plays
+and the measurement block that ends a wire — all opt-in, so the default kit is
+exactly what it was.
 """
 
 from __future__ import annotations
@@ -33,18 +34,23 @@ from .build import (
 )
 from .export import (
     double_slug,
+    export_bw_batches,
     export_corner_batches,
     export_double_batches,
     export_double_mono_stls,
     export_double_tile_3mf,
+    export_double_tile_bw_3mf,
     export_double_tile_stls,
     export_mono_batches,
     export_mono_stls,
     export_single_batches,
     export_tile_3mf,
+    export_tile_bw_3mf,
     export_tile_stls,
     tile_slug,
     write_batch_plates_md,
+    write_bw_batch_md,
+    write_bw_md,
     write_corner_plates_md,
     write_corners_md,
     write_double_plates_md,
@@ -183,6 +189,11 @@ def _emit_corner_blocks(
     ``corners.md``). Furniture is single-faced by nature (one marker face), so
     these are the same pieces whether the run is a single- or double-faced kit —
     only the body height follows the kit.
+
+    No ``--bw`` twin is emitted here on purpose: furniture carries no gate
+    colour (labels, wires and gauges are all the marker's black), so its
+    coloured 3MF **is** its black + white 3MF. ``plates.md``'s b/w section says
+    so, rather than shipping a byte-for-byte duplicate under a second name.
     """
     total_files = 0
     total_bytes = 0
@@ -229,6 +240,7 @@ def _generate(
     *,
     magnets: bool,
     mono: bool,
+    bw: bool = False,
     corners: bool = False,
 ) -> int:
     params = HardwareParams()
@@ -242,6 +254,7 @@ def _generate(
         vdir.mkdir(parents=True, exist_ok=True)
         print(f"[{variant}] height={height:g} mm -> {vdir}"
               + ("  (+mono)" if mono else "")
+              + ("  (+bw)" if bw else "")
               + ("  (+corners)" if corners else ""))
         for mid in ids:
             spec = MARKER_TABLE[mid]
@@ -252,9 +265,15 @@ def _generate(
             )
             stls = export_tile_stls(parts, vdir)
             tmf = export_tile_3mf(parts, vdir)
+            bwf = export_tile_bw_3mf(parts, vdir) if bw else None
             mono_stls = export_mono_stls(parts, vdir, params) if mono else []
             dt = time.time() - t0
-            files = list(stls) + ([tmf] if tmf else []) + list(mono_stls)
+            files = (
+                list(stls)
+                + ([tmf] if tmf else [])
+                + ([bwf] if bwf else [])
+                + list(mono_stls)
+            )
             nbytes = sum(p.stat().st_size for p in files)
             total_files += len(files)
             total_bytes += nbytes
@@ -268,7 +287,7 @@ def _generate(
             )
             total_files += n
             total_bytes += nb
-        write_plates_md(config, vdir)
+        plates_md = write_plates_md(config, vdir)
         total_files += 1
         if corners:
             write_corners_md(config, vdir)
@@ -276,6 +295,8 @@ def _generate(
         if mono:
             write_mono_md(vdir, faces="single", height=height, params=params)
             total_files += 1
+        if bw:
+            write_bw_md(plates_md, faces="single")
 
     dt = time.time() - grand_t0
     print(
@@ -292,6 +313,7 @@ def _generate_double(
     out_root: Path,
     *,
     mono: bool,
+    bw: bool = False,
     corners: bool = False,
 ) -> int:
     params = HardwareParams()
@@ -308,6 +330,7 @@ def _generate_double(
             f"[{variant}-double] height={height:g} mm  "
             f"{len(kit)} designs / {n_pieces} pieces -> {vdir}"
             + ("  (+mono)" if mono else "")
+            + ("  (+bw)" if bw else "")
             + ("  (+corners)" if corners else "")
         )
         for a, b, qty in kit:
@@ -319,9 +342,15 @@ def _generate_double(
             )
             stls = export_double_tile_stls(parts, vdir)
             tmf = export_double_tile_3mf(parts, vdir)
+            bwf = export_double_tile_bw_3mf(parts, vdir) if bw else None
             mono_stls = export_double_mono_stls(parts, vdir, params) if mono else []
             dt = time.time() - t0
-            files = list(stls) + ([tmf] if tmf else []) + list(mono_stls)
+            files = (
+                list(stls)
+                + ([tmf] if tmf else [])
+                + ([bwf] if bwf else [])
+                + list(mono_stls)
+            )
             nbytes = sum(p.stat().st_size for p in files)
             total_files += len(files)
             total_bytes += nbytes
@@ -333,7 +362,7 @@ def _generate_double(
             n, nb = _emit_corner_blocks(config, variant, height, vdir, params, mono=mono)
             total_files += n
             total_bytes += nb
-        write_double_plates_md(config, kit, vdir)
+        plates_md = write_double_plates_md(config, kit, vdir)
         total_files += 1
         if corners:
             write_corners_md(config, vdir)
@@ -341,6 +370,8 @@ def _generate_double(
         if mono:
             write_mono_md(vdir, faces="double", height=height, params=params)
             total_files += 1
+        if bw:
+            write_bw_md(plates_md, faces="double")
 
     dt = time.time() - grand_t0
     print(
@@ -360,6 +391,7 @@ def _plates(
     max_per_plate: int,
     out_root: Path,
     mono: bool = False,
+    bw: bool = False,
     corners: bool = False,
 ) -> int:
     """Generate bed-ready multi-piece batch 3MFs + a Print jobs plates.md."""
@@ -376,6 +408,7 @@ def _plates(
         f"[{subdir}] bed {bed.width:g}x{bed.height:g} mm  spacing {spacing:g} mm  "
         f"height {height:g} mm{cap_note} -> {vdir}"
         + ("  (+mono)" if mono else "")
+        + ("  (+bw)" if bw else "")
         + ("  (+corners)" if corners else "")
     )
 
@@ -405,6 +438,21 @@ def _plates(
         )
         write_corner_plates_md(base_md, corner_infos)
         write_corners_md(config, vdir)
+
+    bw_infos: list = []
+    if bw:
+        # After the coloured section so plates.md still opens on the MMU route,
+        # and with that route's job count in hand — the b/w section quotes it to
+        # back the "fewer print jobs" claim with the run's own numbers.
+        bw_infos = export_bw_batches(
+            config, faces=faces, variant=variant, height=height,
+            bed=bed, spacing=spacing, out_dir=vdir, max_per_bed=cap,
+            kit=DOUBLE_FACED_KIT if faces == "double" else None,
+        )
+        write_bw_batch_md(
+            base_md, bw_infos, bed=bed, spacing=spacing, faces=faces,
+            variant=variant, max_per_bed=cap, colored_jobs=len(infos),
+        )
 
     mono_infos: list = []
     if mono:
@@ -436,6 +484,14 @@ def _plates(
             f"{len(info.slugs)} pieces  {info.object_count} objs  "
             f"{nbytes/1024:7.1f} KiB"
         )
+    for info in bw_infos:
+        nbytes = info.path.stat().st_size
+        total_bytes += nbytes
+        print(
+            f"    {info.path.name:24s} black+white batch{info.batch}  "
+            f"{len(info.slugs)} pieces  {info.object_count} objs  "
+            f"{nbytes/1024:7.1f} KiB"
+        )
     for minfo in mono_infos:
         nbytes = minfo.path.stat().st_size
         total_bytes += nbytes
@@ -445,7 +501,7 @@ def _plates(
             f"{nbytes/1024:7.1f} KiB"
         )
 
-    n_files = len(infos) + len(corner_infos) + len(mono_infos)
+    n_files = len(infos) + len(corner_infos) + len(bw_infos) + len(mono_infos)
     dt = time.time() - t0
     print(
         f"\nDone: {n_files} batch 3MF(s) + plates.md, "
@@ -482,6 +538,12 @@ def main(argv: list[str] | None = None) -> int:
         "--mono", action="store_true",
         help="also emit single-colour STLs (recessed paint-wells + raised "
              "filament-swap) for printers without an MMU (default: off)",
+    )
+    gen.add_argument(
+        "--bw", action="store_true",
+        help="also emit the black + white 3MFs (`<piece>-bw.3mf`): the same "
+             "geometry with every accent mapped onto the marker black, so the "
+             "whole kit prints on exactly two filaments (default: off)",
     )
     gen.add_argument(
         "--corners", action="store_true",
@@ -525,6 +587,12 @@ def main(argv: list[str] | None = None) -> int:
              "beds, all-raised beds) for printers without an MMU (default: off)",
     )
     plates.add_argument(
+        "--bw", action="store_true",
+        help="also emit black + white batch 3MFs (`bw-batch*.3mf`) — the whole "
+             "kit on two filaments, packed straight onto beds because there are "
+             "no accent slots to group by (default: off)",
+    )
+    plates.add_argument(
         "--corners", action="store_true",
         help="also pack the board furniture — four corner blocks + "
              f"{QUBIT_WIRE_COPIES} qubit-wire blocks + {MEASURE_BLOCK_COPIES} "
@@ -543,13 +611,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.faces == "double":
             kit = _resolve_double_kit(args.gates)
             return _generate_double(
-                config, variants, kit, args.out, mono=args.mono,
+                config, variants, kit, args.out, mono=args.mono, bw=args.bw,
                 corners=args.corners,
             )
         ids = _resolve_gates(args.gates)
         return _generate(
             config, variants, ids, args.out, magnets=args.magnets, mono=args.mono,
-            corners=args.corners,
+            bw=args.bw, corners=args.corners,
         )
     if args.command == "plates":
         config = load_config()
@@ -562,6 +630,7 @@ def main(argv: list[str] | None = None) -> int:
             max_per_plate=args.max_per_plate,
             out_root=args.out,
             mono=args.mono,
+            bw=args.bw,
             corners=args.corners,
         )
     parser.error("unknown command")

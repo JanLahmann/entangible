@@ -203,4 +203,21 @@ describe('guide kit downloads (#88, #89)', () => {
     expect(screen.getByText(/-mono-raised\.stl/)).toBeTruthy();
     expect(screen.getByText(/Laser-cut wood tiles/)).toBeTruthy();
   });
+
+  /**
+   * The black + white kit (#103) is the third print route, and the one most
+   * easily lost: it ships no download of its own, it lives inside the 3D zip.
+   * Pin both filenames and the "no extra download" framing so the section
+   * cannot quietly become a fourth link or vanish in a rewrite.
+   */
+  it('offers the two-filament black + white route inside the same zip', () => {
+    render(<GuidePage />);
+
+    expect(screen.getByText(/Black and white only/)).toBeTruthy();
+    expect(screen.getByText(/\*-bw\.3mf/)).toBeTruthy();
+    expect(screen.getByText(/bw-batch\*\.3mf/)).toBeTruthy();
+    expect(screen.getByText(/The same zip carries the whole kit a third way/)).toBeTruthy();
+    // Still three kit downloads: the b/w kit is not a fourth asset.
+    expect(document.querySelectorAll('a.pk-guide-download').length).toBe(3);
+  });
 });

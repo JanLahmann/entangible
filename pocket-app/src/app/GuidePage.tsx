@@ -410,6 +410,21 @@ export function GuidePage() {
               </p>
             </section>
 
+            {/* Black and white — two filaments */}
+            <section className="pk-guide-sec">
+              <Label>Black and white only</Label>
+              <p>
+                Two filaments and no MMU? The same zip carries the whole kit a third way:{' '}
+                <b>*-bw.3mf</b> per piece and <b>bw-batch*.3mf</b> beds, every part in plain
+                white and black. The gate colors all collapse onto the marker's black, the band
+                caption stays legible because it is cut out of the band and stands white inside
+                it, and nothing the camera reads changes — it never looks at color. With no
+                accent slots to group by, the kit packs straight onto beds: one bed set instead
+                of one per color group. You lose color as a sorting cue; a dual-extruder printer
+                or an AMS with two spools loaded is all it takes.
+              </p>
+            </section>
+
             {/* Corner blocks */}
             <section className="pk-guide-sec">
               <Label>No mat? Corner blocks</Label>

@@ -53,8 +53,10 @@ __all__ = [
     "double_slug",
     "export_tile_stls",
     "export_tile_3mf",
+    "export_tile_bw_3mf",
     "export_double_tile_stls",
     "export_double_tile_3mf",
+    "export_double_tile_bw_3mf",
     "export_mono_stls",
     "export_double_mono_stls",
     "write_mono_md",
@@ -70,10 +72,14 @@ __all__ = [
     "export_corner_batches",
     "furniture_ids",
     "export_mono_batches",
+    "export_bw_batches",
     "write_batch_plates_md",
     "write_corner_plates_md",
     "write_corners_md",
     "write_mono_batch_md",
+    "write_bw_md",
+    "write_bw_batch_md",
+    "bw_part_color",
     "provenance",
 ]
 
@@ -286,6 +292,25 @@ def _part_color_hex(role: str, layout) -> str:
     return layout.accent_hex
 
 
+def bw_part_color(role: str) -> tuple[str, str]:
+    """``(hex, colour name)`` this part takes in the **black + white** kit.
+
+    The whole point of the b/w route: the geometry is the coloured kit's, but
+    only two filaments exist. The white body keeps slot 1 and *everything else*
+    — marker, frame, band, cube side letters, a double piece's second-face
+    accent — collapses onto the marker black in slot 2. That is exactly two
+    filaments, whatever the gate.
+
+    The band caption needs no rule of its own: its glyphs are **cut out** of the
+    accent and left standing in the white body (see :mod:`.build`), so mapping
+    the accent to black turns the white-on-colour caption into white-on-black
+    without touching a single solid.
+    """
+    if role == "body":
+        return WHITE_HEX, "white"
+    return BLACK_HEX, "black"
+
+
 def export_tile_stls(parts: TileParts, out_dir: Path) -> list[Path]:
     """Write ``<slug>-<role>-<colour>.stl`` for each colour part."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -328,6 +353,60 @@ def export_tile_3mf(parts: TileParts, out_dir: Path) -> Path | None:
             path.unlink()
         return None
     return path
+
+
+def _write_piece_bw_3mf(
+    slug: str, roles: list[tuple[str, object]], out_dir: Path
+) -> Path | None:
+    """Write ``<slug>-bw.3mf``: the same solids, on white + black only.
+
+    ``roles`` is ``(role, solid)`` in print order. The palette holds **no**
+    accent at all, so the 3MF a slicer opens has exactly two base materials and
+    the file can be printed on a two-filament machine with nothing switched off.
+    Returns ``None`` if lib3mf rejects the mesh, exactly like the coloured
+    writers — the b/w form is an extra file, never a reason for a run to fail.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{slug}-bw.3mf"
+    mesher = Mesher()
+    try:
+        palette = _MaterialPalette(mesher, [], accent_color_name)
+        for role, solid in roles:
+            hexc, cname = bw_part_color(role)
+            mesher.add_shape(solid)
+            palette.apply(hexc, f"{slug}-{role}-{cname}")
+        _stamp_3mf(mesher, path.stem)
+        mesher.write(str(path))
+    except (RuntimeError, ValueError):
+        if path.exists():
+            path.unlink()
+        return None
+    return path
+
+
+def export_tile_bw_3mf(parts: TileParts, out_dir: Path) -> Path | None:
+    """Write the black + white twin of a single-faced tile's coloured 3MF.
+
+    Same slug, same geometry, ``-bw`` suffix — the per-colour STLs are not
+    duplicated, because the *parts* are identical and only the palette differs.
+    """
+    slug = tile_slug(parts.layout.spec)
+    return _write_piece_bw_3mf(
+        slug, [(role, solid) for role, _cn, solid in parts.named_parts()], out_dir
+    )
+
+
+def export_double_tile_bw_3mf(parts: DoubleTileParts, out_dir: Path) -> Path | None:
+    """Write the black + white twin of a double-faced piece's coloured 3MF.
+
+    A cross-family double piece is the case that pays: its two accents (one per
+    face) both land on the same black, so the piece that needed *four* filaments
+    needs two.
+    """
+    slug = double_slug(parts.layout_a.spec, parts.layout_b.spec)
+    return _write_piece_bw_3mf(
+        slug, [(role, solid) for role, _cn, _hex, solid in parts.named_parts()], out_dir
+    )
 
 
 def export_double_tile_stls(parts: DoubleTileParts, out_dir: Path) -> list[Path]:
@@ -769,14 +848,20 @@ def double_plate_groups(
 
 
 def _single_piece(
-    mid: int, config: AssetsConfig, variant: str, height: float, params: HardwareParams
+    mid: int,
+    config: AssetsConfig,
+    variant: str,
+    height: float,
+    params: HardwareParams,
+    *,
+    bw: bool = False,
 ) -> _Piece:
     parts = build_tile(mid, config, variant=variant, height=height, params=params)
     slug = tile_slug(parts.layout.spec)
-    cp = [
-        _ColoredPart(_part_color_hex(role, parts.layout), f"{slug}-{role}-{cn}", solid)
-        for role, cn, solid in parts.named_parts()
-    ]
+    cp = []
+    for role, cn, solid in parts.named_parts():
+        hexc, cn = bw_part_color(role) if bw else (_part_color_hex(role, parts.layout), cn)
+        cp.append(_ColoredPart(hexc, f"{slug}-{role}-{cn}", solid))
     return _Piece(slug, cp)
 
 
@@ -787,14 +872,16 @@ def _double_piece(
     variant: str,
     height: float,
     params: HardwareParams,
+    *,
+    bw: bool = False,
 ) -> _Piece:
     parts = build_double_tile(a, b, config, variant=variant, height=height, params=params)
     mb = a if b is None else b
     slug = double_slug(MARKER_TABLE[a], MARKER_TABLE[mb])
-    cp = [
-        _ColoredPart(hexc, f"{slug}-{role}-{cn}", solid)
-        for role, cn, hexc, solid in parts.named_parts()
-    ]
+    cp = []
+    for role, cn, hexc, solid in parts.named_parts():
+        hexc, cn = bw_part_color(role) if bw else (hexc, cn)
+        cp.append(_ColoredPart(hexc, f"{slug}-{role}-{cn}", solid))
     return _Piece(slug, cp)
 
 
@@ -961,6 +1048,78 @@ def export_double_batches(
         plate_accents=[g["families"] for g in groups],
         name_accent=double_color_name,
         max_per_bed=max_per_bed,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Black + white plates — two filaments, so the bed is the only constraint
+# --------------------------------------------------------------------------- #
+#
+# The coloured kit splits into *filament* plates first (white + black + ≤3
+# accents per plate) and packs each plate onto beds second, so a plate holding a
+# single tile still costs a whole print job. The b/w kit has no accent slots to
+# compete over — every piece is the same two filaments — so the filament plate
+# stops existing and the pieces pack straight onto beds. That is where the
+# "fewer print jobs" comes from: nothing rounds up to a plate boundary any more.
+
+
+def _bw_members(
+    *,
+    faces: str,
+    kit: list[tuple[int, int | None, int]] | None,
+    ids: list[int] | None,
+) -> list:
+    """Every physical piece of the kit, in one flat list — no plate grouping.
+
+    Double quantities are expanded here (a ``qty`` of 4 is four pieces on the
+    beds), exactly as the mono beds do it.
+    """
+    if faces == "double":
+        source = kit if kit is not None else DOUBLE_FACED_KIT
+        return [(a, b) for a, b, qty in source for _ in range(qty)]
+    return [mid for mid, _spec in _gate_tiles()] if ids is None else list(ids)
+
+
+def export_bw_batches(
+    config: AssetsConfig,
+    *,
+    faces: str,
+    variant: str,
+    height: float,
+    bed: Bed,
+    spacing: float,
+    out_dir: Path,
+    params: HardwareParams | None = None,
+    max_per_bed: int | None = None,
+    kit: list[tuple[int, int | None, int]] | None = None,
+    ids: list[int] | None = None,
+) -> list[BatchInfo]:
+    """Write bed-ready ``bw-batch*.3mf`` — the whole kit on two filaments.
+
+    Every piece of the kit appears **exactly once**, packed purely by bed
+    capacity (and ``max_per_bed``, which still applies: a two-filament print
+    purges too, just far less than an MMU one). Board furniture is deliberately
+    absent — it is already white + black and ships on its own ``corners-batch*``
+    plate, so a b/w duplicate of it would be the same file under another name.
+    """
+    params = params or HardwareParams()
+    members = _bw_members(faces=faces, kit=kit, ids=ids)
+
+    def build(member):
+        if faces == "double":
+            a, b = member
+            return _double_piece(a, b, config, variant, height, params, bw=True)
+        return _single_piece(member, config, variant, height, params, bw=True)
+
+    return _export_batches(
+        build,
+        [members],
+        bed,
+        spacing,
+        out_dir,
+        plate_accents=[[]],
+        max_per_bed=max_per_bed,
+        stem_fmt="bw-batch{batch}",
     )
 
 
@@ -1361,6 +1520,169 @@ def write_corner_plates_md(base_md: Path, infos: list[BatchInfo]) -> Path:
         lines.append("")
         lines.append(
             f"{len(info.slugs)} block(s), {info.object_count} coloured objects: "
+            + ", ".join(f"`{s}`" for s in info.slugs)
+        )
+        lines.append("")
+        lines.extend(_ascii_layout(info))
+        lines.append("")
+    with base_md.open("a", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+    return base_md
+
+
+# --------------------------------------------------------------------------- #
+# plates.md — the black + white section
+# --------------------------------------------------------------------------- #
+
+#: One heading for both b/w writers, so `generate --bw` and `plates --bw`
+#: contribute to the *same* section of plates.md rather than two rival ones.
+_BW_HEADING = "## Black + white kit — two filaments"
+
+
+def _bw_intro_lines(faces: str) -> list[str]:
+    """The prose both ``--bw`` writers share: what it is, who it is for, the cost."""
+    piece = "double-faced piece" if faces == "double" else "tile"
+    accents = (
+        "a cross-family double piece needs two accent filaments on top of white "
+        "and black, and the kit as a whole needs every gate family's colour"
+        if faces == "double"
+        else "the coloured kit needs one accent filament per gate family on top "
+        "of white and black"
+    )
+    return [
+        "| Slot | Filament | Hex |",
+        "| ---- | -------- | --- |",
+        f"| 1 | white (bodies + band captions) | `{WHITE_HEX}` |",
+        f"| 2 | black (markers, frame, band, side letters) | `{BLACK_HEX}` |",
+        "",
+        f"Every `<piece>-bw.3mf` is the coloured {piece}'s **exact geometry** "
+        "with one palette change: the accent — frame, band, cube side letters, "
+        "and both faces of a double piece — is mapped onto the same black as the "
+        f"marker. Two filaments, whatever the gate, where {accents}.",
+        "",
+        "**The band caption still reads.** Its glyphs are cut *out* of the accent "
+        "and left standing in the white body, so mapping the accent to black "
+        "turns white-on-colour into **white-out-of-black** — no geometry changes, "
+        "and the gate name stays legible across the table.",
+        "",
+        "### Which printers this is for",
+        "",
+        "- **Two material slots is the whole requirement**: a dual-extruder or "
+        "IDEX machine, a toolchanger, or an MMU/AMS with just two filaments "
+        "loaded. You never need the 5-slot MMU, and you never buy the gate "
+        "palette's accent filaments to print one kit.",
+        "- **White and black share the top layers** (the marker sits next to the "
+        "white field, the caption stands inside the black band), so this is not a "
+        "single-filament route: a colour change at one Z cannot produce it. A "
+        "printer with one nozzle and one filament wants the mono forms in "
+        "`mono.md` instead — recessed paint wells, or raised art with a swap.",
+        "",
+        "### What it costs you",
+        "",
+        "Colour is one of the kit's two ways of telling gate families apart, and "
+        "the b/w kit spends it: H, X, Y, Z and the rotations all print in the "
+        "same black. What still distinguishes them is everything the camera uses "
+        "anyway — the **marker** (the detector never reads colour), the **band "
+        "caption**, the **cube side letters** and the rotation **notches**. So "
+        "sorting a heap of tiles by eye is slower, and the board reads exactly as "
+        "well.",
+        "",
+        "Board furniture is **not** duplicated here: the corner, qubit-wire and "
+        "measurement blocks are already white + black in the coloured kit (their "
+        "labels, wires and gauges print in marker black), so their existing files "
+        "are the b/w files — a `-bw` twin would be the same solid under a second "
+        "name.",
+        "",
+    ]
+
+
+def write_bw_md(base_md: Path, *, faces: str) -> Path:
+    """Append the **Black + white kit** section to a generated ``plates.md``.
+
+    The ``generate --bw`` half: it documents the per-piece ``<slug>-bw.3mf``
+    files that sit beside the coloured ones. No provenance stamp — the base
+    writer already put one under the H1.
+    """
+    lines = ["", "---", "", _BW_HEADING, "", *_bw_intro_lines(faces)]
+    lines += [
+        "Every piece ships a `<piece>-bw.3mf` next to its coloured `<piece>.3mf`. "
+        "The per-colour STL parts are **not** duplicated: the parts are identical "
+        "and only the palette differs, so if you assemble from STLs simply send "
+        "the accent part to the black slot.",
+        "",
+        "Run `plates --bw` for bed-ready `bw-batch*.3mf` files.",
+        "",
+    ]
+    with base_md.open("a", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+    return base_md
+
+
+def write_bw_batch_md(
+    base_md: Path,
+    infos: list[BatchInfo],
+    *,
+    bed: Bed,
+    spacing: float,
+    faces: str,
+    variant: str,
+    max_per_bed: int | None = None,
+    colored_jobs: int | None = None,
+) -> Path:
+    """Append the **Black + white kit** section, with its print jobs, to ``plates.md``.
+
+    The ``plates --bw`` half. ``colored_jobs`` is how many batch files the
+    coloured kit needed for the same pieces; when it is given (and larger) the
+    section says so with the actual numbers, because "fewer print jobs" is the
+    reason to choose this route and it should not be a claim the reader has to
+    count out by hand.
+    """
+    cols = infos[0].cols if infos else 0
+    rows = infos[0].rows if infos else 0
+    total_pieces = sum(len(i.slugs) for i in infos)
+    lines = ["", "---", "", _BW_HEADING, "", *_bw_intro_lines(faces)]
+    lines += [
+        "### Print jobs (black + white)",
+        "",
+        f"Bed **{bed.width:g} × {bed.height:g} mm**, piece footprint "
+        f"**{FOOTPRINT:g} × {FOOTPRINT:g} mm** + **{spacing:g} mm** spacing → "
+        f"**{cols} × {rows} = {cols * rows}** pieces per bed. There are no accent "
+        "slots to compete over, so the filament plates above do not apply: the "
+        f"kit packs straight onto beds. {len(infos)} job(s), {total_pieces} "
+        "pieces total.",
+        "",
+    ]
+    if colored_jobs is not None and colored_jobs > len(infos):
+        lines += [
+            f"> **Fewer jobs.** The same {total_pieces} pieces need "
+            f"**{colored_jobs}** coloured batch files but only **{len(infos)}** "
+            "here. A coloured filament plate is packed on its own, so a plate "
+            "holding one leftover tile still costs a whole print job; with two "
+            "filaments nothing rounds up to a plate boundary.",
+            "",
+        ]
+    if max_per_bed is not None and max_per_bed < cols * rows:
+        lines += [
+            f"> Beds are capped at **{max_per_bed}** pieces and anchored "
+            "front-left, matching the coloured plates. A two-filament print "
+            "purges far less than a 5-slot MMU one but still purges, so the free "
+            "rear/right corner is the tower's — raise the cap "
+            "(`--max-per-plate 0`) only if your machine wipes elsewhere.",
+            "",
+        ]
+    if variant == "cube":
+        lines += [
+            "> **Cube kit:** the side letters are black here rather than a gate "
+            "accent, so a b/w cube bed purges **one** colour boundary per layer "
+            "band instead of several — the variant where two filaments save the "
+            "most time and material.",
+            "",
+        ]
+    for info in infos:
+        lines.append(f"### `{info.path.name}` — black + white, batch {info.batch}")
+        lines.append("")
+        lines.append(
+            f"{len(info.slugs)} piece(s), {info.object_count} coloured objects: "
             + ", ".join(f"`{s}`" for s in info.slugs)
         )
         lines.append("")

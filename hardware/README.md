@@ -47,7 +47,8 @@ uv run qamposer-hardware generate --variant cube --gates H --magnets
 
 Options: `--variant tile|cube|all`, `--gates H,X,RX,CNOT,...|<marker-id>,...|all`,
 `--magnets`, `--mono` (single-colour STLs for non-MMU printers — see
-[No MMU?](#no-mmu-single-colour-routes)), `--corners` (the board furniture:
+[No MMU?](#no-mmu-single-colour-routes)), `--bw` (the two-filament black + white
+3MFs — see [Black and white](#black-and-white-two-filaments)), `--corners` (the board furniture:
 four corner blocks + the qubit-wire block — see [Corner
 blocks](#board-furniture--corner-qubit-wire-and-measurement-blocks-no-mat)), `--out DIR` (default `out/hardware`,
 git-ignored).
@@ -59,6 +60,7 @@ Output per variant lands in `out/hardware/<variant>/`:
 - `cube` only: `<gate>-side-{front,right,back,left}-<colour>.stl` — the side-face
   gate name, same colour as the accent (see below).
 - `<gate>.3mf` — the same parts bundled with their gate colours baked in.
+- `--bw` only: `<gate>-bw.3mf` — the same parts on white + black alone.
 - `plates.md` — the MMU plate groupings (see below).
 
 The band caption reads white on the gate colour because the glyphs are cut out of
@@ -155,7 +157,8 @@ uv run qamposer-hardware plates --bed 300x300 --spacing 6       # custom bed/gap
 ```
 
 Options: `--faces single|double`, `--variant tile|cube`, `--bed WIDTHxHEIGHT`
-(default `250x220`, Prusa Core One), `--spacing` mm (default `8`), `--out DIR`.
+(default `250x220`, Prusa Core One), `--spacing` mm (default `8`), `--mono`,
+`--bw`, `--corners`, `--out DIR`.
 
 It reuses the same filament-plate groupings above, then **packs** each plate onto
 the bed: 60 × 60 mm footprints on a grid with `--spacing` gaps, row-major and
@@ -166,6 +169,46 @@ positions (colours identical to the per-piece 3MFs, so it opens colour-correct i
 PrusaSlicer). `plates.md` gains a **Print jobs** section listing every batch file,
 its pieces, and a tiny ASCII bed sketch. Cubes pack the same 3 × 3 but are a tall,
 long print.
+
+## Black and white (two filaments)
+
+Between the six-colour MMU kit and the single-filament mono forms sits the
+cheapest kit that still prints as *one object*: `--bw`, on `generate` and
+`plates`. Same geometry, one palette change — the accent (frame, band, cube side
+letters, and **both** faces of a double piece) is mapped onto the marker's black,
+and the white body keeps slot 1. Exactly two filaments, whatever the gate.
+
+```bash
+uv run qamposer-hardware generate --variant tile --gates all --bw
+uv run qamposer-hardware plates --faces single --variant tile --bw
+```
+
+- `generate --bw` writes `<gate>-bw.3mf` beside each `<gate>.3mf`. The per-colour
+  part STLs are **not** duplicated: the parts are identical and only the palette
+  differs, so assembling from STLs just means sending the accent part to the
+  black slot.
+- `plates --bw` writes `bw-batch*.3mf`. With no accent slots to compete over the
+  filament-plate grouping stops applying and the kit packs straight onto beds, so
+  it needs **fewer print jobs** than the colour kit — for the single tile kit,
+  3 beds instead of 4 for the same 24 pieces (`--max-per-plate 8`).
+- **The band caption still reads.** Its glyphs are cut *out* of the accent and
+  left standing in the white body, so the accent going black turns the caption
+  from white-on-colour into **white-out-of-black** with no geometry change.
+- **Board furniture is not duplicated.** The corner, qubit-wire and measurement
+  blocks are already white + black in the colour kit (labels, wires and gauges
+  all print in the marker's black), so their existing files *are* the b/w files;
+  `plates.md` says so instead of shipping the same solid twice.
+
+Two material slots is the whole requirement: a dual-extruder or IDEX machine, a
+toolchanger, or an MMU/AMS with only two filaments loaded. It is **not** a
+single-filament route — white and black share the top layers (the marker sits
+next to the white field, the caption stands inside the black band), so no colour
+change at one Z can produce it; one nozzle and one filament wants `--mono` below.
+
+The trade is colour-coding: H, X, Y, Z and the rotations all come out black, so
+sorting a heap of tiles by eye is slower. Nothing the camera uses changes — the
+detector never reads colour — and the band caption, the cube side letters and the
+rotation notches still tell the gates apart on the table.
 
 ## No MMU? Single-colour routes
 
