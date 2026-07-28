@@ -213,8 +213,16 @@ uv run qamposer-hardware plates --faces single --variant tile --bw
   black slot.
 - `plates --bw` writes `bw-batch*.3mf`. With no accent slots to compete over the
   filament-plate grouping stops applying and the kit packs straight onto beds, so
-  it needs **fewer print jobs** than the colour kit — for the single tile kit,
-  3 beds instead of 4 for the same 24 pieces (`--max-per-plate 8`).
+  the same pieces need **fewer print jobs** than the colour kit.
+- **The b/w beds are a fixed quantity set**, not one of every design: 32 pieces
+  of 11 designs over 4 beds of 8 (`--max-per-plate 8`), with duplicates — `H` ×5,
+  `X` ×5, `●` ×4, `SWAP` ×4, everything else ×2. No `cnot-target`: a CNOT is the
+  generic control `●` with the target gate under it in the same column, so an `X`
+  below a `●` *is* the ⊕. No fixed-angle rotation tiles either: the `rx`/`ry`/`rz`
+  **dial** tiles already cover every angle. The quantities cover GHZ-5, the
+  five-qubit uniform superposition and Cascade; `plates.md` carries the table and
+  the reasoning. The per-piece `<gate>-bw.3mf` files still cover **every** design,
+  so print one whenever you want a tile the beds leave out.
 - **The band caption still reads.** Its glyphs are cut *out* of the accent and
   left standing in the white body, so the accent going black turns the caption
   from white-on-colour into **white-out-of-black** with no geometry change.

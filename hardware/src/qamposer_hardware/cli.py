@@ -588,8 +588,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     plates.add_argument(
         "--bw", action="store_true",
-        help="also emit black + white batch 3MFs (`bw-batch*.3mf`) — the whole "
-             "kit on two filaments, packed straight onto beds because there are "
+        help="also emit black + white batch 3MFs (`bw-batch*.3mf`) — a playable "
+             "kit on two filaments (a fixed quantity set with duplicates, not "
+             "one of every design), packed straight onto beds because there are "
              "no accent slots to group by (default: off)",
     )
     plates.add_argument(

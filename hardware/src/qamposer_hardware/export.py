@@ -80,6 +80,9 @@ __all__ = [
     "furniture_ids",
     "export_mono_batches",
     "export_bw_batches",
+    "BW_BEDS",
+    "bw_kit_quantities",
+    "bw_single_ids",
     "write_batch_plates_md",
     "write_corner_plates_md",
     "write_corners_md",
@@ -1244,6 +1247,74 @@ def export_double_batches(
 # compete over — every piece is the same two filaments — so the filament plate
 # stops existing and the pieces pack straight onto beds. That is where the
 # "fewer print jobs" comes from: nothing rounds up to a plate boundary any more.
+#
+# What lands on those beds is not one of every tile design either: the b/w kit
+# is a fixed quantity set (BW_BEDS below), so the two choices are independent —
+# the packing saves jobs per piece, the quantity set decides which pieces.
+
+
+#: The b/w kit's **fixed bed layout**: one entry per bed, each a tuple of
+#: ``(tile slug, quantity)`` in fill order. This is a playable quantity set, not
+#: one of every tile design — see :func:`bw_kit_quantities` for the rationale.
+#: Four beds of eight, which is exactly what the default 8-piece wipe-tower cap
+#: packs, so the flat packer below reproduces these beds verbatim.
+BW_BEDS: tuple[tuple[tuple[str, int], ...], ...] = (
+    (("h", 5), ("x", 3)),
+    (("x", 2), ("cnot-control", 4), ("swap", 2)),
+    (("y", 2), ("z", 2), ("s", 2), ("t", 2)),
+    (("rx", 2), ("ry", 2), ("rz", 2), ("swap", 2)),
+)
+
+
+def bw_kit_quantities() -> list[tuple[str, int]]:
+    """``(slug, total quantity)`` of the b/w kit, in first-appearance order.
+
+    Three design calls shrink 24 tile *designs* to 11, and then size those 11
+    for the demos the kit is built around:
+
+    * **no ``cnot-target``** — a CNOT is laid as the generic control ``●`` plus
+      the target gate underneath it in the same column (#51), so the ``x`` tile
+      under a ``cnot-control`` *is* the ⊕ and the dedicated target tile is dead
+      weight;
+    * **no fixed-angle rotations** — the ``rx``/``ry``/``rz`` dial tiles cover
+      every angle by turning the dial, so the twelve ``rx-pi4``-style tiles only
+      repeat what a dial already does;
+    * **SWAP in pairs** — a SWAP is only meaningful as two tiles on two wires,
+      so ``swap`` ships ×4 (two pairs).
+
+    The quantities cover GHZ-5 (``cnot-control`` ×4 with ``x`` ×4 as the
+    targets, plus one more ``x`` for the flipped variants), the five-qubit
+    uniform-superposition demo (``h`` ×5) and Cascade (2 ``h`` + 2
+    ``cnot-control``) — every other tile is the ×2 that lets it appear twice in
+    one circuit.
+    """
+    totals: dict[str, int] = {}
+    for bed in BW_BEDS:
+        for slug, qty in bed:
+            totals[slug] = totals.get(slug, 0) + qty
+    return list(totals.items())
+
+
+def bw_single_ids() -> list[int]:
+    """:data:`BW_BEDS` flattened to marker IDs, one entry per physical tile.
+
+    Raises ``ValueError`` for a slug the marker table no longer carries, so a
+    renamed or retired tile fails the run rather than silently dropping pieces
+    off the beds.
+    """
+    by_slug = {tile_slug(spec): mid for mid, spec in _gate_tiles()}
+    out: list[int] = []
+    for bed in BW_BEDS:
+        for slug, qty in bed:
+            try:
+                mid = by_slug[slug]
+            except KeyError:
+                raise ValueError(
+                    f"BW_BEDS names {slug!r}, which is not a gate tile — update "
+                    "BW_BEDS when a tile is renamed or retired"
+                ) from None
+            out.extend([mid] * qty)
+    return out
 
 
 def _bw_members(
@@ -1254,13 +1325,14 @@ def _bw_members(
 ) -> list:
     """Every physical piece of the kit, in one flat list — no plate grouping.
 
-    Double quantities are expanded here (a ``qty`` of 4 is four pieces on the
-    beds), exactly as the mono beds do it.
+    Quantities are expanded here (a ``qty`` of 4 is four pieces on the beds),
+    exactly as the mono beds do it: :data:`BW_BEDS` for the single-faced kit,
+    the double-faced kit's own ``qty`` column for the double one.
     """
     if faces == "double":
         source = kit if kit is not None else DOUBLE_FACED_KIT
         return [(a, b) for a, b, qty in source for _ in range(qty)]
-    return [mid for mid, _spec in _gate_tiles()] if ids is None else list(ids)
+    return bw_single_ids() if ids is None else list(ids)
 
 
 def export_bw_batches(
@@ -1277,11 +1349,19 @@ def export_bw_batches(
     kit: list[tuple[int, int | None, int]] | None = None,
     ids: list[int] | None = None,
 ) -> list[BatchInfo]:
-    """Write bed-ready ``bw-batch*.3mf`` — the whole kit on two filaments.
+    """Write bed-ready ``bw-batch*.3mf`` — a playable kit on two filaments.
 
-    Every piece of the kit appears **exactly once**, packed purely by bed
-    capacity (and ``max_per_bed``, which still applies: a two-filament print
-    purges too, just far less than an MMU one). Board furniture is deliberately
+    The single-faced beds are :data:`BW_BEDS`, a **fixed quantity set** (32
+    pieces of 11 tile designs, several of them duplicated) rather than one of
+    every tile: see :func:`bw_kit_quantities`. Duplicates are ordinary pieces —
+    one 3MF object each — so a bed holding ``h`` five times slices as five
+    objects. The double-faced beds keep expanding the double kit's ``qty``
+    column.
+
+    Members are laid out in that fill order and packed by bed capacity (and
+    ``max_per_bed``, which still applies: a two-filament print purges too, just
+    far less than an MMU one). At the default bed and the default cap of 8 that
+    reproduces :data:`BW_BEDS` bed for bed. Board furniture is deliberately
     absent — it is already white + black and ships on its own ``corners-batch*``
     plate, so a b/w duplicate of it would be the same file under another name.
     """
@@ -1780,6 +1860,73 @@ def _bw_intro_lines(faces: str) -> list[str]:
     ]
 
 
+#: Tile slug -> the label the quantity table shows next to it, so the table
+#: reads as gates rather than as filenames.
+_BW_TILE_LABELS: dict[str, str] = {
+    "h": "H",
+    "x": "X",
+    "y": "Y",
+    "z": "Z",
+    "s": "S",
+    "t": "T",
+    "swap": "SWAP",
+    "cnot-control": "CNOT control ●",
+    "rx": "RX dial",
+    "ry": "RY dial",
+    "rz": "RZ dial",
+}
+
+
+def _bw_kit_lines() -> list[str]:
+    """The quantity table + why the b/w kit is not one of every tile design."""
+    quantities = bw_kit_quantities()
+    total = sum(q for _slug, q in quantities)
+    lines = [
+        "### What is on the beds",
+        "",
+        f"The b/w beds are **not** one of each tile design: they are a fixed "
+        f"quantity set — **{total} pieces of {len(quantities)} designs**, several "
+        "of them duplicated — chosen so that one printed kit plays the circuits "
+        "the board is built around. Duplicates are ordinary objects on the bed, "
+        "so a bed holding `h` five times slices as five objects.",
+        "",
+        "| Tile | Slug | Qty |",
+        "| ---- | ---- | --- |",
+    ]
+    for slug, qty in quantities:
+        lines.append(f"| {_BW_TILE_LABELS.get(slug, slug)} | `{slug}` | {qty} |")
+    lines += [
+        "",
+        f"**Why these and not the other {len(_gate_tiles()) - len(quantities)} "
+        "designs:**",
+        "",
+        "- **No `cnot-target` (⊕).** A CNOT is laid as the generic control `●` "
+        "with the target gate directly under it in the same column, so an `X` "
+        "below a `●` *is* the ⊕. The dedicated target tile has nothing left to "
+        "do, and dropping it removes the one tile people place the wrong way up.",
+        "- **No fixed-angle rotation tiles.** The `rx` / `ry` / `rz` **dial** "
+        "tiles set any angle by turning the dial, so they already cover "
+        "everything the twelve fixed-angle tiles (`rx-pi4`, `rx-pi2`, `rx-pi`, "
+        "`rx-negpi2` and the `ry-*` / `rz-*` twins) could express — twelve prints "
+        "to say what three tiles say better.",
+        "- **SWAP only works in pairs.** A SWAP is two tiles on two wires or it "
+        "is nothing, so `swap` ships **×4** — two usable pairs, one pair per bed.",
+        "",
+        "**Why these quantities:**",
+        "",
+        "- **GHZ-5** needs `cnot-control` **×4** with an `X` under each as the "
+        "target — hence `●` ×4 and `X` ×4, plus one more `X` (×5) so the flipped "
+        "variants can be laid without stealing a target.",
+        "- **Five-qubit uniform superposition** needs an `H` on every wire — "
+        "hence `H` ×5.",
+        "- **Cascade** needs 2 `H` + 2 `●`, which the above already covers.",
+        "- Everything else is **×2**, the minimum that lets a gate appear twice "
+        "in one circuit.",
+        "",
+    ]
+    return lines
+
+
 def write_bw_md(base_md: Path, *, faces: str) -> Path:
     """Append the **Black + white kit** section to a generated ``plates.md``.
 
@@ -1795,7 +1942,10 @@ def write_bw_md(base_md: Path, *, faces: str) -> Path:
         "only the palette differs, so if you assemble from STLs simply send the "
         "accent part to the black slot.",
         "",
-        "Run `plates --bw` for bed-ready `bw-batch*.3mf` files.",
+        "Run `plates --bw` for bed-ready `bw-batch*.3mf` files. Those beds hold "
+        "a **fixed quantity set** — a playable kit with duplicates, not one of "
+        "every design — while the per-piece files here cover every design, so "
+        "print a piece file whenever you want one the beds leave out.",
         "",
     ]
     with base_md.open("a", encoding="utf-8") as fh:
@@ -1826,6 +1976,8 @@ def write_bw_batch_md(
     rows = infos[0].rows if infos else 0
     total_pieces = sum(len(i.slugs) for i in infos)
     lines = ["", "---", "", _BW_HEADING, "", *_bw_intro_lines(faces)]
+    if faces != "double":
+        lines += _bw_kit_lines()
     lines += [
         "### Print jobs (black + white)",
         "",
@@ -1839,11 +1991,11 @@ def write_bw_batch_md(
     ]
     if colored_jobs is not None and colored_jobs > len(infos):
         lines += [
-            f"> **Fewer jobs.** The same {total_pieces} pieces need "
-            f"**{colored_jobs}** coloured batch files but only **{len(infos)}** "
-            "here. A coloured filament plate is packed on its own, so a plate "
-            "holding one leftover tile still costs a whole print job; with two "
-            "filaments nothing rounds up to a plate boundary.",
+            f"> **Fewer jobs.** The coloured route above needs **{colored_jobs}** "
+            f"batch files; these {total_pieces} pieces take only "
+            f"**{len(infos)}**. A coloured filament plate is packed on its own, "
+            "so a plate holding one leftover tile still costs a whole print job; "
+            "with two filaments nothing rounds up to a plate boundary.",
             "",
         ]
     if max_per_bed is not None and max_per_bed < cols * rows:
@@ -1866,9 +2018,17 @@ def write_bw_batch_md(
     for info in infos:
         lines.append(f"### `{info.path.name}` — black + white, batch {info.batch}")
         lines.append("")
+        # Duplicates are the norm on a b/w bed, so the listing counts them
+        # (``h ×5``) rather than repeating the same slug five times.
+        counted: list[tuple[str, int]] = []
+        for slug in info.slugs:
+            if counted and counted[-1][0] == slug:
+                counted[-1] = (slug, counted[-1][1] + 1)
+            else:
+                counted.append((slug, 1))
         lines.append(
             f"{len(info.slugs)} piece(s), {info.object_count} coloured parts: "
-            + ", ".join(f"`{s}`" for s in info.slugs)
+            + ", ".join(f"`{s}`" + (f" ×{n}" if n > 1 else "") for s, n in counted)
         )
         lines.append("")
         lines.extend(_ascii_layout(info))

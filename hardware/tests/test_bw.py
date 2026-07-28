@@ -16,15 +16,20 @@ What this suite pins:
 * **totality of the file set** — every gate of a ``--bw`` run has a ``-bw``
   sibling, and board furniture has none (it is already white + black, so a
   duplicate would be the same solid under a second name);
-* the b/w beds cover every kit piece exactly once, respect the cap, are stamped
-  with their provenance, and that plates.md gains its b/w section — including
-  the "fewer print jobs" numbers, which are the reason to pick this route.
+* the b/w **beds are a fixed quantity set** (#106), not one of every design:
+  the exact multiset of every bed is pinned here, duplicates included, and so is
+  what the set deliberately leaves out (the ⊕ target tile, the twelve
+  fixed-angle rotations);
+* the beds respect the cap, are stamped with their provenance, and plates.md
+  gains its b/w section — including the quantity table and the rationale that
+  says why a design is missing.
 """
 
 from __future__ import annotations
 
 import re
 import zipfile
+from collections import Counter
 
 import prusa3mf
 import pytest
@@ -33,7 +38,10 @@ from qamposer_assets.config import load_config
 
 from qamposer_hardware.build import build_double_tile, build_tile
 from qamposer_hardware.export import (
+    BW_BEDS,
+    bw_kit_quantities,
     bw_part_color,
+    bw_single_ids,
     export_bw_batches,
     export_double_tile_bw_3mf,
     export_tile_3mf,
@@ -298,7 +306,8 @@ def bw_infos(config, tmp_path_factory):
     return out, infos
 
 
-def test_bw_beds_cover_every_piece_exactly_once(bw_infos):
+def test_bw_beds_place_every_requested_member(bw_infos):
+    """An explicit ``ids`` list is placed verbatim — one bed piece per entry."""
     _out, infos = bw_infos
     placed = [s for i in infos for s in i.slugs]
     assert sorted(placed) == ["h", "x", "y", "z"]
@@ -366,11 +375,14 @@ def test_bw_beds_expand_double_quantities(config, tmp_path):
 
 
 def test_bw_needs_fewer_beds_than_the_coloured_plates(config, tmp_path):
-    """The claim the route is sold on, over the real kit, in pieces not files.
+    """The packing claim the route is sold on, over the same pieces.
 
     A coloured *filament* plate is packed on its own, so a plate holding a
     single leftover tile still costs a whole print job. With two filaments there
-    are no plates to round up to, so the same pieces need fewer beds.
+    are no plates to round up to, so **the same pieces** need fewer beds. Stated
+    over the coloured kit's own piece count, which is what "the same pieces"
+    means — the b/w beds ship a different (fixed) quantity set, and that is a
+    separate decision from the packing.
     """
     from qamposer_hardware.pack import plan_batches
 
@@ -381,10 +393,112 @@ def test_bw_needs_fewer_beds_than_the_coloured_plates(config, tmp_path):
         for g in groups
     )
     total = sum(len(g["pieces"]) for g in groups)
-    bw_jobs = len(plan_batches(total, BED, FOOTPRINT, SPACING, max_per_bed=cap))
-    assert bw_jobs < colored_jobs
-    # And the b/w packing is the tightest a cap of 8 allows.
-    assert bw_jobs == -(-total // cap)
+    flat_jobs = len(plan_batches(total, BED, FOOTPRINT, SPACING, max_per_bed=cap))
+    assert flat_jobs < colored_jobs
+    # And the flat packing is the tightest a cap of 8 allows.
+    assert flat_jobs == -(-total // cap)
+
+
+# --------------------------------------------------------------------------- #
+# The fixed quantity set (#106): which pieces, how many, on which bed
+# --------------------------------------------------------------------------- #
+
+#: The kit as it must come off the beds — written out here rather than read from
+#: :data:`BW_BEDS` so this is an assertion and not a tautology. One entry per
+#: bed, in bed order; a bed is the exact multiset of slugs printed on it.
+EXPECTED_BEDS = [
+    {"h": 5, "x": 3},
+    {"x": 2, "cnot-control": 4, "swap": 2},
+    {"y": 2, "z": 2, "s": 2, "t": 2},
+    {"rx": 2, "ry": 2, "rz": 2, "swap": 2},
+]
+
+#: Designs the set deliberately drops: the ⊕ target tile (a CNOT is a generic
+#: control plus the target gate in the same column, #51) and every fixed-angle
+#: rotation (the dial tiles cover all angles).
+EXCLUDED_SLUGS = {"cnot-target"} | {
+    f"{axis}-{angle}"
+    for axis in ("rx", "ry", "rz")
+    for angle in ("pi4", "pi2", "pi", "negpi2")
+}
+
+
+@pytest.fixture(scope="module")
+def bw_kit(config, tmp_path_factory):
+    """The real default b/w run: no ``ids``, default bed, default 8-piece cap."""
+    out = tmp_path_factory.mktemp("bw-kit")
+    infos = export_bw_batches(
+        config,
+        faces="single",
+        variant="tile",
+        height=TILE_H,
+        bed=BED,
+        spacing=SPACING,
+        out_dir=out,
+        params=PARAMS,
+        max_per_bed=8,
+    )
+    return infos
+
+
+def test_bw_beds_are_the_fixed_quantity_set(bw_kit):
+    """Totality, bed by bed: exactly these slugs, in exactly these quantities.
+
+    Not "contains an H" and not "32 pieces somewhere" — every bed's full
+    multiset, so an extra tile, a missing duplicate or a piece that drifted to
+    the neighbouring bed all fail here.
+    """
+    assert [i.path.name for i in bw_kit] == [
+        "bw-batch1.3mf",
+        "bw-batch2.3mf",
+        "bw-batch3.3mf",
+        "bw-batch4.3mf",
+    ]
+    assert [dict(Counter(i.slugs)) for i in bw_kit] == EXPECTED_BEDS
+    assert sum(len(i.slugs) for i in bw_kit) == 32
+    for info in bw_kit:
+        assert len(info.slugs) == 8, info.path.name  # the wipe-tower cap, exactly
+        assert info.path.exists() and info.path.stat().st_size > 10_000
+
+
+def test_bw_kit_leaves_out_the_target_and_fixed_angle_tiles(bw_kit):
+    """The other half of totality: what is *not* on any bed, and why.
+
+    The ⊕ target tile and the twelve fixed-angle rotations are covered by the
+    generic control + the three dial tiles, so they must not appear anywhere.
+    """
+    placed = {s for i in bw_kit for s in i.slugs}
+    assert placed & EXCLUDED_SLUGS == set()
+    assert placed == {
+        "h", "x", "y", "z", "s", "t", "swap", "cnot-control", "rx", "ry", "rz",
+    }
+
+
+def test_bw_kit_quantities_agree_with_the_beds(bw_kit):
+    """The table plates.md prints is the beds, summed — never a second source."""
+    assert dict(bw_kit_quantities()) == dict(Counter(s for i in bw_kit for s in i.slugs))
+    assert dict(bw_kit_quantities()) == {
+        "h": 5, "x": 5, "cnot-control": 4, "swap": 4,
+        "y": 2, "z": 2, "s": 2, "t": 2, "rx": 2, "ry": 2, "rz": 2,
+    }
+    assert len(bw_single_ids()) == 32
+    assert len(BW_BEDS) == len(EXPECTED_BEDS)
+
+
+def test_bw_kit_beds_are_two_slot_prusa_projects(bw_kit):
+    """Duplicates must not cost the file its PrusaSlicer project or its palette.
+
+    Five copies of ``h`` on one bed are five objects, each with its own parts on
+    slot 1/2 — the file a slicer opens is still a two-filament project.
+    """
+    for info in bw_kit:
+        model = prusa3mf.read(info.path)
+        assert model.has_config, info.path.name
+        assert model.materials == [("white", "#ffffff"), ("black", "#000000")]
+        assert model.extruders() <= {1, 2}, (info.path.name, model.extruders())
+        assert len(model.objects) == len(info.slugs)  # one object per copy
+        assert [o.name for o in model.objects] == info.slugs
+        assert sum(len(o.volumes) for o in model.objects) == info.object_count
 
 
 # --------------------------------------------------------------------------- #
@@ -428,9 +542,57 @@ def test_plates_md_gains_a_black_and_white_section(bw_infos, config, tmp_path):
     for info in infos:
         assert f"`{info.path.name}`" in text
     # The "fewer print jobs" claim carries the run's own numbers.
-    assert f"**4** coloured batch files but only **{len(infos)}**" in text
+    assert f"**4** batch files; these 4 pieces take only **{len(infos)}**" in text
     # The base writer already stamped it; appending must not add a second.
     assert len(STAMP_RE.findall(text)) == 1
+
+
+def test_plates_md_documents_the_fixed_quantity_set(bw_infos, config, tmp_path):
+    """The b/w section must say *which* pieces and *why* — not just how they pack.
+
+    A reader who prints these beds gets no ⊕ tile and no fixed-angle rotations;
+    plates.md is the only place that explains that this is a decision.
+    """
+    _out, infos = bw_infos
+    base = write_plates_md(config, tmp_path)
+    write_bw_batch_md(
+        base, infos, bed=BED, spacing=SPACING, faces="single", variant="tile",
+        max_per_bed=8, colored_jobs=4,
+    )
+    text = base.read_text(encoding="utf-8")
+
+    assert "### What is on the beds" in text
+    assert "**32 pieces of 11 designs**" in text
+    # Every quantity is in the table, as a row, with its slug.
+    for slug, qty in bw_kit_quantities():
+        assert f"| `{slug}` | {qty} |" in text, slug
+    # And the three design calls are spelled out.
+    assert "No `cnot-target` (⊕)" in text
+    assert "No fixed-angle rotation tiles" in text
+    assert "SWAP only works in pairs" in text
+    assert "GHZ-5" in text and "Cascade" in text
+    # Nothing in the b/w section may still claim it holds one of every design.
+    section = text.split("## Black + white kit")[1]
+    assert "exactly once" not in section
+    for slug in EXCLUDED_SLUGS - {"cnot-target"}:
+        assert f"| `{slug}` |" not in section, slug
+
+
+def test_plates_md_counts_duplicates_instead_of_repeating_them(config, tmp_path):
+    """A bed listing `h` five times is unreadable — the section counts them."""
+    infos = export_bw_batches(
+        config, faces="single", variant="tile", height=TILE_H, bed=BED,
+        spacing=SPACING, out_dir=tmp_path, params=PARAMS, ids=[30, 30, 30, 35],
+    )
+    base = write_plates_md(config, tmp_path)
+    write_bw_batch_md(
+        base, infos, bed=BED, spacing=SPACING, faces="single", variant="tile",
+        max_per_bed=8,
+    )
+    text = base.read_text(encoding="utf-8")
+    assert "4 piece(s)" in text
+    assert "`h` ×3, `x`" in text
+    assert "`h`, `h`, `h`" not in text
 
 
 def test_generate_bw_section_documents_the_piece_files(config, tmp_path):
