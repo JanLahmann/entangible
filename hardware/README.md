@@ -194,6 +194,10 @@ OrcaSlicer, which read the same colours off the 3MF's base materials).
 and a tiny ASCII bed sketch. Cubes pack the same 3 × 3 but are a tall, long
 print.
 
+`--mono` writes the same kind of project file with a single slot — one object per
+piece, everything pinned to **filament 1** — so an MMU printer profile cannot
+cycle its loaded filaments across a bed that is meant to print in one.
+
 ## Black and white (two filaments)
 
 Between the six-colour MMU kit and the single-filament mono forms sits the

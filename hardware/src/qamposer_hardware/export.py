@@ -231,6 +231,20 @@ def double_slug(spec_a: GateSpec, spec_b: GateSpec) -> str:
     return f"{_face_slug(spec_a)}+{_face_slug(spec_b)}"
 
 
+#: The slots every *coloured* file opens with: white body = 1, marker black = 2,
+#: accents from 3 up. The b/w kit is the same list with no accents after it.
+BASE_SLOTS: tuple[tuple[str, str], ...] = ((WHITE_HEX, "white"), (BLACK_HEX, "black"))
+
+#: The one colour a **mono** bed declares. A mono piece has no colour parts — it
+#: is one solid printed in whatever filament happens to be loaded — so white is
+#: a neutral placeholder for the viewers that paint base materials, never a
+#: claim about the filament.
+MONO_HEX = WHITE_HEX
+
+#: The single slot of a mono bed: one entry, so every piece is pinned to slot 1.
+MONO_SLOTS: tuple[tuple[str, str], ...] = ((MONO_HEX, "mono"),)
+
+
 class _MaterialPalette:
     """The one shared base-material group of a 3MF, in canonical slot order.
 
@@ -251,13 +265,19 @@ class _MaterialPalette:
     properties that point back into it.
     """
 
-    def __init__(self, mesher: Mesher, accents: list[str], name_accent) -> None:
+    def __init__(
+        self,
+        mesher: Mesher,
+        accents: list[str],
+        name_accent,
+        base: tuple[tuple[str, str], ...] = BASE_SLOTS,
+    ) -> None:
         self._mesher = mesher
         self._group = mesher.model.AddBaseMaterialGroup()
         self.resource_id = self._group.GetResourceID()
         self._pid_by_hex: dict[str, int] = {}
-        self._add(WHITE_HEX, "white")
-        self._add(BLACK_HEX, "black")
+        for hexc, name in base:
+            self._add(hexc, name)
         for hexc in accents:
             self._add(hexc, name_accent(hexc))
 
@@ -336,9 +356,14 @@ class _ProjectMesher:
     PrusaSlicer's project part still opens the piece in colour.
     """
 
-    def __init__(self, accents: list[str], name_accent) -> None:
+    def __init__(
+        self,
+        accents: list[str],
+        name_accent,
+        base: tuple[tuple[str, str], ...] = BASE_SLOTS,
+    ) -> None:
         self._mesher = Mesher()
-        self._palette = _MaterialPalette(self._mesher, list(accents), name_accent)
+        self._palette = _MaterialPalette(self._mesher, list(accents), name_accent, base)
         self._objects: list[_ObjectConfig] = []
 
     def add_piece(
@@ -1488,6 +1513,11 @@ def export_corner_batches(
 # two-tone off a single filament swap at the top of the body — one swap for the
 # whole bed, which only works if every piece on it is the same form and height.
 # The two forms therefore never share a bed.
+#
+# One filament still has to be *said out loud*: a mono bed ships the same
+# ``Metadata/Slic3r_PE_model.config`` part as every other bed, declaring one
+# slot and pinning every piece to it, because PrusaSlicer otherwise hands its
+# loaded filaments to the objects in turn (see :class:`_ProjectMesher`).
 
 
 @dataclass(slots=True)
@@ -1526,27 +1556,32 @@ def _write_mono_batch_3mf(
     positions: list[tuple[float, float]],
     path: Path,
     *,
+    form: str,
     footprint: float = FOOTPRINT,
 ) -> int:
     """Write one mono bed: each piece's single solid translated onto the bed.
 
-    No material group at all — a mono piece carries no colour by construction
-    (that is the whole point of the form), and inventing one would put a
-    misleading filament assignment in the slicer. Meshes are named by slug so a
-    piece is still identifiable in the object list. Returns the mesh count.
+    A PrusaSlicer project like every other bed we ship (see
+    :class:`_ProjectMesher`), with the palette collapsed to a single slot: one
+    object per piece, one part covering all of its triangles, on the only slot
+    :data:`MONO_SLOTS` declares (1). Without that project part PrusaSlicer
+    ignores the 3MF's materials and cycles *its own* filaments over the objects,
+    so an MMU profile turned a one-filament bed into a multi-colour print — the
+    same bug the coloured beds were fixed for. Parts are named ``<slug>-mono-<form>``,
+    matching the mono STL filenames, so a piece stays identifiable in the
+    slicer's object list. Returns the part count (one per piece).
     """
-    mesher = Mesher()
+    writer = _ProjectMesher([], accent_color_name, MONO_SLOTS)
     n_obj = 0
     for (slug, solid), (cx, cy) in zip(pieces, positions):
         dx = cx - footprint / 2.0
         dy = cy - footprint / 2.0
-        before = len(mesher.meshes)
-        mesher.add_shape(Pos(dx, dy, 0.0) * solid)
-        for mesh_obj in mesher.meshes[before:]:
-            mesh_obj.SetName(slug)
-            n_obj += 1
-    _stamp_3mf(mesher, path.stem)
-    mesher.write(str(path))
+        n_obj += writer.add_piece(
+            slug,
+            [(f"{slug}-mono-{form}", MONO_HEX, solid)],
+            offset=(dx, dy),
+        )
+    writer.write(path)
     return n_obj
 
 
@@ -1637,7 +1672,10 @@ def export_mono_batches(
             idx += take
             path = out_dir / f"mono-{form}-batch{bi}.3mf"
             n_obj = _write_mono_batch_3mf(
-                [(slug, forms[form]) for slug, forms in chunk], positions, path
+                [(slug, forms[form]) for slug, forms in chunk],
+                positions,
+                path,
+                form=form,
             )
             infos.append(
                 MonoBatchInfo(
@@ -2270,6 +2308,9 @@ def write_mono_batch_md(
         f"**{cols} × {rows} = {cols * rows}** pieces per bed. The two forms "
         "**never share a bed**: each is packed onto its own numbered beds, so a "
         "whole bed is one recipe.",
+        "",
+        "Every piece on a mono bed is pinned to **filament 1**, so the beds open "
+        "as single-filament jobs even under a multi-material printer profile.",
         "",
         f"- `mono-recessed-batch*.3mf` — print in one filament, then paint the "
         f"{params.mono_pocket_depth:g} mm wells.",

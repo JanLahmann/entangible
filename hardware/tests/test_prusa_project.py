@@ -13,8 +13,9 @@ The fix has two halves and both are asserted here, on the shipped bytes:
 Coverage is the whole emitted matrix — single/double faces × tile/cube, per
 piece coloured + b/w, coloured batches, b/w batches, corner batches — with a
 two-gate kit per cell so the sweep is a sweep rather than a single sample. The
-mono beds are deliberately absent: a mono piece is one uncoloured solid printed
-on one filament, so it has no parts to assign and ships no project part.
+mono beds are covered by ``test_mono_plates.py`` instead, because their project
+part says something different: a mono piece is one uncoloured solid, so it is
+one object with one part, and the whole bed is pinned to the single slot 1.
 
 ``test_prusaslicer_round_trip`` is the acceptance test: it hands the file to the
 real PrusaSlicer CLI, re-exports it and reads the extruder back out of

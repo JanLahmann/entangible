@@ -12,6 +12,11 @@ The suite pins totality (every piece of the kit on the recessed beds exactly
 once, and again on the raised beds), the per-bed cap, the form separation, the
 opt-in board furniture, and the provenance stamps on both the 3MFs and the notes —
 including the swap Z the raised beds are printed at.
+
+It also pins the *one filament*: a mono bed ships PrusaSlicer's project part with
+a one-slot palette and every piece pinned to it, or PrusaSlicer's MMU profiles
+hand its loaded filaments to the objects in turn and the single-filament bed
+comes out multi-colour (the bug ``test_prusa_project.py`` locks down elsewhere).
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ from __future__ import annotations
 import re
 import zipfile
 
+import prusa3mf
 import pytest
 from build123d import Mesher
 from qamposer_assets.config import load_config
@@ -73,6 +79,30 @@ def single_infos(config, tmp_path_factory):
     return out, infos
 
 
+@pytest.fixture(scope="module")
+def mono_beds(config, single_infos, tmp_path_factory):
+    """Every family of mono bed there is, so the project-part checks are a sweep.
+
+    The four single tiles above, plus a double-faced kit split over two small
+    beds (duplicate pieces, two beds per form) and a bed carrying the opt-in
+    board furniture (the wire and measurement blocks, five of each).
+    """
+    _out, infos = single_infos
+    beds = list(infos)
+    out = tmp_path_factory.mktemp("mono-sweep")
+    beds += export_mono_batches(
+        config, faces="double", variant="tile", height=DOUBLE_H, bed=TINY,
+        spacing=SPACING, out_dir=out / "double", params=PARAMS,
+        kit=[(30, 35, 2), (17, 15, 1)],
+    )
+    beds += export_mono_batches(
+        config, faces="single", variant="tile", height=TILE_H, bed=BED,
+        spacing=SPACING, out_dir=out / "corners", params=PARAMS, ids=[30],
+        corners=True,
+    )
+    return beds
+
+
 # --------------------------------------------------------------------------- #
 # Totality + form separation
 # --------------------------------------------------------------------------- #
@@ -120,19 +150,77 @@ def test_pieces_are_placed_corner_anchored_inside_the_bed(single_infos):
             assert cy + FOOTPRINT / 2 <= BED.height + 1e-9
 
 
-def test_mono_pieces_are_one_uncoloured_solid_each(single_infos):
-    """A mono piece is a single merged solid and carries no filament colour.
+def test_mono_pieces_are_one_merged_solid_each(single_infos):
+    """A mono piece is a single merged solid, named by slug, on one placeholder colour.
 
-    Inventing a colour would put a misleading slot assignment in the slicer —
-    the whole point of the form is that it prints on one filament (plus, for the
-    raised form, one swap).
+    The single colour is the placeholder white of the one-slot mono palette, not
+    a claim about the filament: a mono bed prints in whatever is loaded, which is
+    exactly why every piece on it has to be pinned to that one slot.
     """
     _out, infos = single_infos
     for info in infos:
         shapes = Mesher().read(str(info.path))
         assert len(shapes) == len(info.slugs) == info.object_count
         assert [s.label for s in shapes] == info.slugs
-        assert all(s.color is None for s in shapes)
+        assert {tuple(s.color) for s in shapes} == {(1.0, 1.0, 1.0, 1.0)}
+
+
+# --------------------------------------------------------------------------- #
+# The PrusaSlicer project part — one filament, said out loud
+# --------------------------------------------------------------------------- #
+#
+# PrusaSlicer ignores a generic 3MF's <basematerials> and cycles its own loaded
+# filaments over the objects, so an MMU profile turned a one-filament mono bed
+# into a multi-colour print. A mono bed therefore ships the same project part as
+# every coloured bed, with a one-slot palette and every piece pinned to slot 1.
+
+
+def test_every_mono_bed_is_a_one_slot_prusa_project(mono_beds):
+    """The fix, on the shipped bytes: a project part, one slot, one piece per object."""
+    for info in mono_beds:
+        model = prusa3mf.read(info.path)
+        assert model.has_config, f"{info.path.name} ships no PrusaSlicer project part"
+        assert model.materials == [("mono", "#ffffff")], info.path.name
+        assert len(model.objects) == len(info.slugs)  # one object per piece
+        assert [o.name for o in model.objects] == info.slugs
+        assert len(model.build_items) == len(model.objects)
+        assert set(model.build_items) == {o.id for o in model.objects}
+
+
+def test_every_mono_part_prints_on_extruder_one(mono_beds):
+    """Nothing on a mono bed may point at a second filament — there is only one."""
+    for info in mono_beds:
+        model = prusa3mf.read(info.path)
+        assert model.extruders() == {1}, (info.path.name, model.extruders())
+        for obj in model.objects:
+            assert len(obj.volumes) == 1, (info.path.name, obj.name, obj.volumes)
+            assert obj.volumes[0].extruder == 1
+        assert sum(len(o.volumes) for o in model.objects) == info.object_count
+
+
+def test_mono_volume_ranges_partition_every_object(mono_beds):
+    """The one part covers *all* of its object's triangles — no gap, no overlap.
+
+    A gap would leave those triangles on PrusaSlicer's default filament, which is
+    the very cycling this file exists to stop.
+    """
+    for info in mono_beds:
+        model = prusa3mf.read(info.path)
+        for obj in model.objects:
+            vol = obj.volumes[0]
+            assert (vol.first, vol.last) == (0, obj.triangle_count - 1), (
+                info.path.name,
+                obj.name,
+            )
+            assert vol.count == obj.triangle_count > 0
+
+
+def test_mono_part_names_carry_the_slug_and_the_form(mono_beds):
+    """The slicer's part list still says which piece and which form it is."""
+    for info in mono_beds:
+        model = prusa3mf.read(info.path)
+        for obj in model.objects:
+            assert obj.volumes[0].name == f"{obj.name}-mono-{info.form}"
 
 
 def test_raised_bed_is_taller_than_the_recessed_one(single_infos):
@@ -292,6 +380,7 @@ def test_mono_md_gains_a_print_jobs_section_with_the_swap_height(
     assert "## Print jobs (mono)" in text
     assert f"Z = {TILE_H:.3f} mm" in text  # the swap height, spelled out
     assert "never share a bed" in text
+    assert "pinned to **filament 1**" in text  # what the beds themselves say
     for info in infos:
         assert f"`{info.path.name}`" in text
     # The base writer already stamped it; appending must not add a second.
