@@ -32,8 +32,9 @@ SCALE = 3.0  # px per mm → 2160x1500 for the 720x500 mat
 # 35 X, 12 Y, 13 Z, 17 ●, 15 ⊕, 20-23 RX(π/4, π/2, π, -π/2), 24-27 RY,
 # 28/29/10/31 RZ (RZ(π) is id 10), 40 S, 41 T,
 # 42/43/44 RX/RY/RZ dials, 45 SWAP ×. A placement is (id, row, col) or (id, row, col, rot)
-# — the optional 4th element is the tile's clockwise 90° turn (0-3), which for a
-# dial selects the angle ROTATION_ANGLES[rot].
+# — the optional 4th element is the tile's clockwise 45° turn (0-7), which for a
+# dial selects the angle DIAL_ANGLES[rot] (the angle IS the turn; rot=0 emits the
+# identity rather than nothing).
 SCENARIOS: dict[str, tuple[str, list[tuple[int, ...]]]] = {
     "01-empty": ("Empty board — corners only; expect an empty circuit", []),
     "02-single-h": ("H on q0 — superposition", [(30, 0, 0)]),
@@ -65,8 +66,8 @@ SCENARIOS: dict[str, tuple[str, list[tuple[int, ...]]]] = {
         [(30, 0, 0), (17, 1, 1)],
     ),
     "09-dials": (
-        "Dial tiles — RX/RY/RZ dials turned to r=0/1/2 → RX(π/4), RY(π/2), RZ(π)",
-        [(42, 0, 0, 0), (43, 1, 1, 1), (44, 2, 2, 2)],
+        "Dial tiles — RX/RY/RZ dials turned to r=0/1/4 → RX(0), RY(π/4), RZ(π)",
+        [(42, 0, 0, 0), (43, 1, 1, 1), (44, 2, 2, 4)],
     ),
     "10-swap": (
         "SWAP — H on q0 then two × tiles in a column swap q0/q1 (emitted as 3 CNOTs)",

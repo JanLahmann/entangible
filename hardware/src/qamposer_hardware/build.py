@@ -292,7 +292,7 @@ def _dial_text_sketch(label: str, font_size: float, theta: float):
 
 
 def _dial_accent_sketch(layout: FaceLayout):
-    """Dial accent as one face sketch: colour frame + edge labels + ▲ + caption.
+    """Dial accent as one face sketch: colour frame + angle labels + ▲ + caption.
 
     Unlike a classic tile (glyphs *cut out* of a colour band, reading
     white-on-colour), a dial's labels/pointer/caption are colour-**on-white**:
@@ -304,9 +304,7 @@ def _dial_accent_sketch(layout: FaceLayout):
     # Colour frame ring = full footprint minus the white inner square.
     sketch = _footprint(layout) - _white_field_sketch(layout)
     for lab in dial.labels:
-        glyph = Pos(lab.cx, lab.cy) * _dial_text_sketch(
-            lab.text, dial.label_font, lab.theta
-        )
+        glyph = Pos(lab.cx, lab.cy) * _dial_text_sketch(lab.text, lab.font, lab.theta)
         sketch = sketch + glyph
     sketch = sketch + Polygon(*dial.pointer, align=None)
     cap = Pos(*dial.caption_pos) * _dial_text_sketch(dial.caption, dial.caption_font, 0.0)

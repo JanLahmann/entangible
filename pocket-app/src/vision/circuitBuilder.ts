@@ -6,7 +6,7 @@
  * (`cell_conflict` / `lone_control` / `lone_target`), same ordering. The golden
  * fixtures in `tests/fixtures/circuits/*.json` pass through byte-identically.
  */
-import { MARKER_TABLE, ROTATION_ANGLES, type GateSpec } from './markers';
+import { DIAL_ANGLES, MARKER_TABLE, type GateSpec } from './markers';
 
 /**
  * The marker ID of a CNOT half, looked up by role in `MARKER_TABLE` — derived
@@ -43,8 +43,8 @@ export interface TilePlacement {
   readonly row: number;
   readonly col: number;
   /**
-   * Board-frame clockwise 90° step (0-3). Only meaningful for dial tiles
-   * (42/43/44), where it selects `ROTATION_ANGLES[rotation]`; every other tile
+   * Board-frame clockwise 45° step (0-7). Only meaningful for dial tiles
+   * (42/43/44), where it selects `DIAL_ANGLES[rotation]`; every other tile
    * is orientation-free and leaves it at the default 0.
    */
   readonly rotation?: number;
@@ -112,13 +112,15 @@ function singleQubitGate(
   col: number,
   rotation: number,
 ): CircuitGate {
-  // Dial tiles (42/43/44): the angle comes from the tile's board-frame rotation,
-  // ROTATION_ANGLES[rotation]. The emitted gate is byte-identical to a classic
+  // Dial tiles (42/43/44): the angle comes from the tile's board-frame rotation
+  // (0-7, 45° steps), DIAL_ANGLES[rotation] — the angle IS the physical turn, and
+  // r=0 emits the identity RX(0)/RY(0)/RZ(0) rather than nothing, so a dial on
+  // the board is always visible. The emitted gate is byte-identical to a classic
   // rotation tile of that axis/angle at the same cell (same id, type, parameter)
   // — indistinguishable downstream. The rotation is part of the stabilizer key.
   if (spec.dialAxis) {
     const axis = spec.dialAxis;
-    const angle = ROTATION_ANGLES[rotation % ROTATION_ANGLES.length];
+    const angle = DIAL_ANGLES[rotation % DIAL_ANGLES.length];
     return {
       id: `${axis.toLowerCase()}-${row}-${col}`,
       type: axis,

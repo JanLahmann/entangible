@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from qamposer_assets.config import load_config
@@ -106,7 +108,9 @@ def test_rotation_label_has_family_and_angle(marker_id):
 
 @pytest.mark.parametrize("marker_id,axis", [(42, "RX"), (43, "RY"), (44, "RZ")])
 def test_dial_tile_face(marker_id, axis):
-    from qamposer_vision.markers import ROTATION_ANGLES, pretty_angle
+    import re
+
+    from qamposer_vision.markers import DIAL_ANGLES, pretty_angle
 
     svg = tile_svg(marker_id, CFG)
     # Three semantic groups like every tile.
@@ -114,24 +118,58 @@ def test_dial_tile_face(marker_id, axis):
         assert group in svg
     # Family colour frame.
     assert CFG.colors.for_gate(axis) in svg
-    # All four angle labels present (one per edge / rotation).
-    for angle in ROTATION_ANGLES:
-        assert f">{pretty_angle(angle)}<" in svg
+    # ALL EIGHT angle labels present (one per 45° rotation), in r order — four
+    # edge midpoints, four corners. Totality, not a spot check.
+    texts = re.findall(r">([^<>]+)</text>", svg)
+    assert texts == [pretty_angle(a) for a in DIAL_ANGLES] + [f"{axis} dial"]
     # Axis name in the bottom band, and a ▲ pointer (polygon) for canonical top.
     assert f"{axis} dial" in svg
     assert "<polygon" in svg
 
 
 def test_dial_label_orientation_is_consistent_with_rotation():
-    # The label that reaches board-top at rotation r is ROTATION_ANGLES[r], drawn
-    # spun -90*r degrees so a clockwise r-turn brings it upright. Verify the two
-    # off-axis labels carry the expected rotate() transform.
+    # The label that reaches board-top at rotation r is DIAL_ANGLES[r], drawn
+    # spun -45*r degrees so a clockwise r-turn brings it upright. Every non-zero
+    # rotation must therefore carry its own rotate() transform.
+    import re
+
     svg = tile_svg(42, CFG)  # RX dial
-    # r=1 (left edge, π/2) is drawn rotated -90; r=3 (right edge, -π/2) rotated 90.
-    assert 'transform="rotate(-90' in svg
-    assert 'transform="rotate(90' in svg
-    # r=2 (bottom edge, π) is drawn upside down (±180).
-    assert 'transform="rotate(-180' in svg
+    spins = [float(v) for v in re.findall(r'transform="rotate\((-?[\d.]+)', svg)]
+    # r=0 is upright (no transform); r=1..7 are -45·r normalised to (-180, 180].
+    assert spins == [-45.0, -90.0, -135.0, -180.0, 135.0, 90.0, 45.0]
+
+
+def test_dial_label_slots_stay_inside_the_frame_and_clear_of_the_marker():
+    """Every one of the eight labels fits: inside the coloured frame, outside
+    the ArUco field's quiet zone. The corner labels are the tight ones — they
+    are spun 45°, so their box eats the tile diagonal from both ends."""
+    from qamposer_assets.tile_face import dial_label_slots
+
+    t = CFG.tile
+    s = t.size
+    marker_lo = (s - t.marker_size) / 2.0
+    marker_hi = s - marker_lo
+    for slot in dial_label_slots(s):
+        # Conservative glyph box: bold sans ≈ 0.62 em advance, ~1 em tall.
+        w = len(slot.text) * slot.font * 0.62
+        h = slot.font
+        half = (w + h) / 2.0
+        rad = math.radians(slot.theta)
+        ux, uy = math.cos(rad), math.sin(rad)
+        vx, vy = -math.sin(rad), math.cos(rad)
+        corners = [
+            (slot.x + su * w / 2 * ux + sv * h / 2 * vx,
+             slot.y + su * w / 2 * uy + sv * h / 2 * vy)
+            for su in (-1, 1)
+            for sv in (-1, 1)
+        ]
+        for x, y in corners:
+            assert t.frame_width <= x <= s - t.frame_width, slot
+            assert t.frame_width <= y <= s - t.frame_width, slot
+            # No label corner may land inside the marker field.
+            inside = marker_lo <= x <= marker_hi and marker_lo <= y <= marker_hi
+            assert not inside, slot
+        assert half > 0
 
 
 def test_non_gate_marker_rejected():

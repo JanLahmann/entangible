@@ -24,7 +24,7 @@ import {
   type BoardRect,
   type Point,
 } from './geometry';
-import { quadrantRotation } from './markers';
+import { octantRotation } from './markers';
 import type { DetectedMarker } from './detect';
 
 export type Mat3 = number[]; // row-major 3×3 (length 9)
@@ -418,18 +418,19 @@ export function fitBoard(
 }
 
 /**
- * The marker's rotation in the **board** frame (clockwise 90° steps, 0-3) — the
- * value that selects a dial tile's angle. Mirrors
+ * The marker's rotation in the **board** frame (clockwise 45° steps, 0-7) — the
+ * value that selects a dial tile's angle (`DIAL_ANGLES[r]`). Mirrors
  * `BoardResult.marker_rotation` in Python.
  *
  * The detector returns corners in image-geometric order (TL, TR, BR, BL) plus
- * `rotation`, the marker's clockwise turn in the *image*. The printed top-left
- * corner therefore sits at image-corner index `marker.rotation`; that corner is
- * mapped through the homography to board mm and classified into a quadrant about
- * the board-mm centroid, so the result is measured against the board's own axes
- * regardless of camera orientation. (In Python the cv2 corners are already
- * rotation-aware, so it uses `corners[0]` directly — the board-frame result is
- * the same.)
+ * `rotation`, the marker's quarter-turn in the *image* — necessarily 0-3, since
+ * it indexes that four-entry corner array. The printed top-left corner sits at
+ * image-corner index `marker.rotation`; that corner is mapped through the
+ * homography to board mm and classified into an OCTANT about the board-mm
+ * centroid, so the result is measured against the board's own axes regardless of
+ * camera orientation, and resolves half-turns of a dial. (In Python the cv2
+ * corners are already rotation-aware, so it uses `corners[0]` directly — the
+ * board-frame result is the same.)
  */
 export function boardFrameRotation(marker: DetectedMarker, board: BoardResult): number {
   const boardCorners = marker.corners.map((c) => board.imageToBoard(c));
@@ -442,7 +443,7 @@ export function boardFrameRotation(marker: DetectedMarker, board: BoardResult): 
   cx /= 4;
   cy /= 4;
   const [tlx, tly] = boardCorners[marker.rotation % 4];
-  return quadrantRotation(tlx - cx, tly - cy);
+  return octantRotation(tlx - cx, tly - cy);
 }
 
 export { BOARD };

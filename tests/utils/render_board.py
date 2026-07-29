@@ -12,6 +12,7 @@ whose golden ``Circuit`` JSON / QASM live in ``tests/fixtures/circuits/``.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 import cv2
@@ -37,19 +38,22 @@ from qamposer_vision.markers import (
 #   RY: pi/4=24 pi/2=25 pi=26 -pi/2=27
 #   RZ: pi/4=28 pi/2=29 pi=10 -pi/2=31   (pi took over the ID H vacated)
 #   S=40 (emitted as RZ(pi/2))   T=41 (emitted as RZ(pi/4))
-#   Dials: RX-dial=42 RY-dial=43 RZ-dial=44 (angle = ROTATION_ANGLES[rotation])
+#   Dials: RX-dial=42 RY-dial=43 RZ-dial=44 (angle = DIAL_ANGLES[rotation],
+#         eight 45° positions; r=0 is the identity and still emits)
 #   SWAP ×=45 (two in one column → a SWAP between their rows, emitted as 3 CNOTs)
 #
 # A placement is (marker_id, row, col) or (marker_id, row, col, rotation); the
-# optional 4th element is the tile's clockwise 90° turn (0-3, default 0), used by
-# the dial tiles to select their angle. The marker image is rotated by that many
-# 90° steps before it is pasted, so detection recovers the same rotation.
+# optional 4th element is the tile's clockwise 45° turn (0-7, default 0), used by
+# the dial tiles to select their angle. The marker image is physically rotated by
+# that many 45° steps before it is pasted, so detection recovers the same
+# rotation — odd steps included.
 
 
 @dataclass(frozen=True, slots=True)
 class Scenario:
     name: str
-    #: (marker_id, row, col) or (marker_id, row, col, rotation) placements.
+    #: (marker_id, row, col) or (marker_id, row, col, rotation) placements;
+    #: rotation is the clockwise 45° step index (0-7).
     placements: tuple[tuple[int, ...], ...]
 
 
@@ -73,9 +77,13 @@ SCENARIOS: list[Scenario] = [
     Scenario("warn_lone_control", ((30, 0, 0), (17, 1, 1))),
     # S and T tiles on q0: H then S (→ RZ(pi/2)) then T (→ RZ(pi/4)).
     Scenario("s_and_t", ((30, 0, 0), (40, 0, 1), (41, 0, 2))),
-    # Dial tiles at mixed rotations: RX-dial r=1 → RX(pi/2), RY-dial r=3 →
-    # RY(-pi/2), RZ-dial r=2 → RZ(pi). Emitted byte-identically to classic tiles.
-    Scenario("dials", ((42, 0, 0, 1), (43, 1, 1, 3), (44, 2, 2, 2))),
+    # Dial tiles at mixed rotations, ODD ones included (45° steps): RX-dial r=1
+    # → RX(pi/4), RY-dial r=5 → RY(-3pi/4), RZ-dial r=4 → RZ(pi). Emitted
+    # byte-identically to classic tiles.
+    Scenario("dials", ((42, 0, 0, 1), (43, 1, 1, 5), (44, 2, 2, 4))),
+    # A dial left at its canonical rotation r=0: the identity RX(0) is EMITTED,
+    # not dropped — a placed dial is always visible on screen.
+    Scenario("dial_identity", ((42, 0, 0, 0),)),
     # SWAP: H on q0, then two × tiles in column 1 (q0/q1) → a SWAP(0,1) emitted
     # as its 3-CNOT decomposition (cx(0,1), cx(1,0), cx(0,1)).
     Scenario("swap", ((30, 0, 0), (45, 0, 1), (45, 1, 1))),
@@ -154,11 +162,43 @@ def _paste_marker(
     size_px: int,
     rotation: int = 0,
 ) -> None:
+    """Paste a marker, physically turned clockwise by ``rotation`` 45° steps.
+
+    ``rotation`` is the dial convention (0-7, see ``markers.octant_rotation``).
+    Even steps are exact quarter turns (``np.rot90``, lossless). Odd steps are a
+    real 45° rotation: the marker is padded onto a white square large enough for
+    the √2 diagonal and warped, then pasted centred on the same cell centre — so
+    the corners are never clipped and the quiet zone stays white. At 36 mm the
+    turned bounding box is ~51 mm, still well inside the 70 mm cell pitch.
+    """
     marker = cv2.aruco.generateImageMarker(dictionary, marker_id, size_px)
-    # np.rot90 turns counter-clockwise; a positive tile rotation is clockwise, so
-    # rotate by -rotation (== 4-rotation) to physically turn the printed tile CW.
-    if rotation % 4:
-        marker = np.rot90(marker, k=-(rotation % 4))
+    steps = rotation % 8
+    if steps % 2 == 0:
+        # np.rot90 turns counter-clockwise; a positive tile rotation is
+        # clockwise, so rotate by -quarter_turns to physically turn the tile CW.
+        quarter = steps // 2
+        if quarter:
+            marker = np.rot90(marker, k=-quarter)
+    else:
+        big = int(math.ceil(size_px * math.sqrt(2.0))) + 2
+        pad = (big - size_px) // 2
+        padded = np.full((big, big), 255, dtype=np.uint8)
+        padded[pad : pad + size_px, pad : pad + size_px] = marker
+        # cv2 rotates counter-clockwise for a positive angle; negate for CW.
+        centre = ((big - 1) / 2.0, (big - 1) / 2.0)
+        matrix = cv2.getRotationMatrix2D(centre, -45.0 * steps, 1.0)
+        marker = cv2.warpAffine(
+            padded,
+            matrix,
+            (big, big),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=255,
+        )
+        # Re-centre the (larger) turned image on the original square's centre.
+        x0_px = int(round(x0_px + (size_px - big) / 2.0))
+        y0_px = int(round(y0_px + (size_px - big) / 2.0))
+        size_px = big
     marker_bgr = cv2.cvtColor(marker, cv2.COLOR_GRAY2BGR)
     canvas[y0_px : y0_px + size_px, x0_px : x0_px + size_px] = marker_bgr
 
@@ -220,7 +260,7 @@ def render_board(
         _paste_marker(canvas, dictionary, marker_id, x0, y0, corner_size_px)
 
     # Gate tiles at their cell centres. A placement may carry a 4th element, the
-    # clockwise 90° rotation (0-3) — used by dial tiles to select their angle.
+    # clockwise 45° rotation (0-7) — used by dial tiles to select their angle.
     grid = opt.grid or GridConfig.from_board_config(config)
     tile_size_px = int(round(config.tile_marker_size * ppm))
     for placement in placements:

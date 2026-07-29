@@ -59,6 +59,9 @@ export function formatParameter(value: number): string {
     [-pi / 2, '-pi/2'],
     [pi / 4, 'pi/4'],
     [-pi / 4, '-pi/4'],
+    // 3pi/4 reachable only from a dial tile (r=3 / r=5), see DIAL_ANGLES.
+    [(3 * pi) / 4, '3*pi/4'],
+    [(-3 * pi) / 4, '-3*pi/4'],
     [pi / 3, 'pi/3'],
     [-pi / 3, '-pi/3'],
     [(2 * pi) / 3, '2*pi/3'],

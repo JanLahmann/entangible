@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from qamposer_vision import markers
 from qamposer_vision.markers import (
     ARUCO_DICT_NAME,
     CORNER_IDS,
+    DIAL_ANGLES,
     DIAL_IDS,
     GATE_TYPES,
     MARKER_TABLE,
@@ -20,6 +23,7 @@ from qamposer_vision.markers import (
     RESERVED_IDS,
     ROTATION_ANGLES,
     GateSpec,
+    octant_rotation,
     pretty_angle,
     quadrant_rotation,
 )
@@ -201,6 +205,46 @@ def test_quadrant_rotation_maps_corner_offset_to_cw_steps() -> None:
     assert quadrant_rotation(-1, +1) == 3   # BL  (270°)
 
 
+def test_octant_rotation_maps_corner_offset_to_45_degree_steps() -> None:
+    # printed top-left corner offset (dx right, dy down) → clockwise 45° index.
+    # All eight directions, swept in full.
+    assert octant_rotation(-1, -1) == 0   # TL of centre  (canonical)
+    assert octant_rotation(0, -1) == 1    # straight up    (45° CW)
+    assert octant_rotation(+1, -1) == 2   # TR             (90°)
+    assert octant_rotation(+1, 0) == 3    # right          (135°)
+    assert octant_rotation(+1, +1) == 4   # BR             (180°)
+    assert octant_rotation(0, +1) == 5    # down           (225°)
+    assert octant_rotation(-1, +1) == 6   # BL             (270°)
+    assert octant_rotation(-1, 0) == 7    # left           (315°)
+
+
+def test_octant_rotation_agrees_with_quadrant_rotation_on_even_steps() -> None:
+    # The two are the same measurement at two resolutions: an exact quarter turn
+    # must read as 2·r in octants. Swept over every quadrant.
+    for quadrant, (dx, dy) in enumerate(((-1, -1), (+1, -1), (+1, +1), (-1, +1))):
+        assert quadrant_rotation(dx, dy) == quadrant
+        assert octant_rotation(dx, dy) == 2 * quadrant
+        assert octant_rotation(dx, dy) // 2 == quadrant_rotation(dx, dy)
+
+
+def test_dial_angles_are_the_physical_turn() -> None:
+    # Eight positions, 45° apart, wrapped to (-pi, pi]; the angle IS the
+    # clockwise turn. r=0 is the identity 0.0 — emitted, never dropped.
+    assert len(DIAL_ANGLES) == 8
+    assert DIAL_ANGLES[0] == 0.0
+    for r, angle in enumerate(DIAL_ANGLES):
+        expected = r * math.pi / 4.0
+        if expected > math.pi:
+            expected -= 2.0 * math.pi
+        assert angle == pytest.approx(expected), r
+        assert -math.pi < angle <= math.pi
+    # Distinct from the fixed-angle print set of the classic rotation tiles.
+    assert DIAL_ANGLES != ROTATION_ANGLES
+    # Every classic printed angle is still reachable by turning a dial.
+    for angle in ROTATION_ANGLES:
+        assert any(a == pytest.approx(angle) for a in DIAL_ANGLES)
+
+
 def test_s_and_t_tiles() -> None:
     s = MARKER_TABLE[40]
     t = MARKER_TABLE[41]
@@ -235,6 +279,15 @@ def test_pretty_angle() -> None:
     assert pretty_angle(math.pi) == "π"
     assert pretty_angle(-math.pi / 2) == "-π/2"
     assert pretty_angle(0) == "0"
+    assert pretty_angle(3 * math.pi / 4) == "3π/4"
+    assert pretty_angle(-3 * math.pi / 4) == "-3π/4"
+
+
+def test_every_dial_angle_has_a_crisp_label() -> None:
+    # No dial position may fall back to a 4-decimal radian value — all eight are
+    # printed on the tile face.
+    expected = ["0", "π/4", "π/2", "3π/4", "π", "-3π/4", "-π/2", "-π/4"]
+    assert [pretty_angle(a) for a in DIAL_ANGLES] == expected
 
 
 def test_param_label_matches_pretty_angle() -> None:

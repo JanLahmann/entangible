@@ -22,8 +22,8 @@ every ID is spelled out one by one in :func:`_build_marker_table`:
 * 40/41 S / T gates — emitted as their RZ equivalents (RZ(π/2) / RZ(π/4)),
   see :attr:`GateSpec.emit_as`
 * 42/43/44 RX/RY/RZ **dial** tiles — one tile per axis whose board-frame
-  rotation selects the angle (:attr:`GateSpec.dial_axis`); see
-  ``docs/design.md`` "Dial tiles"
+  rotation (eight 45° steps) selects the angle (:attr:`GateSpec.dial_axis`);
+  see ``docs/design.md`` "Dial tiles"
 * 45    SWAP tile ``×`` — two ``×`` tiles in one column pair into a SWAP between
   their rows; emitted as the 3-CNOT decomposition until ``@qamposer/react`` gains
   a native SWAP type (see ``circuit_builder.emit_swap``)
@@ -48,6 +48,7 @@ __all__ = [
     "CORNER_IDS",
     "CORNER_ROLES",
     "DETECTABLE_IDS",
+    "DIAL_ANGLES",
     "DIAL_IDS",
     "GATE_TYPES",
     "GateSpec",
@@ -57,6 +58,7 @@ __all__ = [
     "RESERVED_IDS",
     "ROTATION_ANGLES",
     "ROTATION_GATES",
+    "octant_rotation",
     "pretty_angle",
     "quadrant_rotation",
 ]
@@ -97,9 +99,29 @@ ROTATION_ANGLES: tuple[float, float, float, float] = (
     -math.pi / 2,
 )
 
+#: Dial-tile angles (radians), indexed by the tile's board-frame rotation ``r``
+#: (0-7, one per clockwise 45° step). The mapping is the natural one — **the
+#: angle IS the physical turn**, wrapped to ``(-π, π]``: turn the tile a quarter
+#: circle clockwise and you get ``π/2``; turn it back the other way and you get
+#: ``-π/2``. ``r = 0`` is the identity ``0.0``, which is deliberately still
+#: **emitted** as a gate (``RX(0)`` etc.) rather than dropped: a dial lying on
+#: the board is always visible on screen, so a player can see it before turning
+#: it. Distinct from :data:`ROTATION_ANGLES`, which is the fixed-angle *print
+#: set* of the classic four-per-family rotation tiles and must not change.
+DIAL_ANGLES: tuple[float, ...] = (
+    0.0,
+    math.pi / 4,
+    math.pi / 2,
+    3.0 * math.pi / 4,
+    math.pi,
+    -3.0 * math.pi / 4,
+    -math.pi / 2,
+    -math.pi / 4,
+)
+
 #: Dial-tile marker IDs -> the rotation-gate axis they parameterise. One tile
-#: per axis; the tile's board-frame rotation (0-3 clockwise 90° steps) selects
-#: the angle ``ROTATION_ANGLES[r]``. See :attr:`GateSpec.dial_axis`.
+#: per axis; the tile's board-frame rotation (0-7 clockwise 45° steps) selects
+#: the angle ``DIAL_ANGLES[r]``. See :attr:`GateSpec.dial_axis`.
 DIAL_IDS: dict[int, str] = {42: "RX", 43: "RY", 44: "RZ"}
 
 #: The qubit-wire block (#95): a board-furniture block, NOT a gate. Up to five
@@ -144,12 +166,35 @@ def quadrant_rotation(dx: float, dy: float) -> int:
     (``dx<0, dy<0``) -> ``0``; each clockwise 90° turn of the tile advances the
     corner one quadrant clockwise -> TL=0, TR=1, BR=2, BL=3.
 
-    Shared by the OpenCV detector (image frame) and the board port (board frame,
-    via the homography) and mirrored byte-for-byte in the TypeScript detector,
-    so a tile's rotation resolves to the same index everywhere.
+    Used for the coarse **image**-frame turn reported by the detector, and
+    mirrored byte-for-byte in the TypeScript detector. The *board*-frame
+    rotation that drives the dial tiles is the finer
+    :func:`octant_rotation` — see :data:`DIAL_ANGLES`.
     """
     angle = math.atan2(dy, dx)
     return int(round((angle + 3.0 * math.pi / 4.0) / (math.pi / 2.0))) % 4
+
+
+def octant_rotation(dx: float, dy: float) -> int:
+    """Clockwise 45° step index (0-7) of a marker's printed top-left corner.
+
+    The finer twin of :func:`quadrant_rotation`, and the value a **dial** tile
+    reads: ``(dx, dy)`` is the offset of the marker's canonical **top-left**
+    corner from the marker centre in a ``+x`` right / ``+y`` down frame. At
+    canonical orientation that corner sits top-left of centre (``dx<0, dy<0``)
+    -> ``0``; each clockwise 45° turn of the tile advances the index by one, so
+    ``r`` counts eighth-turns: 0 = TL corner, 1 = top edge, 2 = TR corner,
+    3 = right edge, 4 = BR corner, 5 = bottom edge, 6 = BL corner, 7 = left
+    edge. Even ``r`` therefore agrees with :func:`quadrant_rotation` as
+    ``r // 2``.
+
+    Used by :meth:`~qamposer_vision.board.BoardResult.marker_rotation` (board
+    frame, via the homography) and mirrored byte-for-byte in the TypeScript
+    detector, so a dial's rotation — and hence :data:`DIAL_ANGLES` — resolves
+    to the same index everywhere.
+    """
+    angle = math.atan2(dy, dx)
+    return int(round((angle + 3.0 * math.pi / 4.0) / (math.pi / 4.0))) % 8
 
 
 # ---------------------------------------------------------------------------
@@ -180,9 +225,10 @@ class GateSpec:
         dial_axis: For a **dial** tile (IDs 42/43/44), the rotation-gate axis
             (``"RX"``/``"RY"``/``"RZ"``) it parameterises. The angle is *not*
             fixed on the spec (``parameter is None``); it is chosen at detection
-            time from the tile's board-frame rotation ``r`` as
-            ``ROTATION_ANGLES[r]``, then emitted exactly like a classic rotation
-            tile. ``None`` for every non-dial tile.
+            time from the tile's board-frame rotation ``r`` (0-7, clockwise 45°
+            steps) as :data:`DIAL_ANGLES` ``[r]``, then emitted exactly like a
+            classic rotation tile — including at ``r = 0``, where the emitted
+            angle is ``0.0``. ``None`` for every non-dial tile.
     """
 
     kind: Literal["corner", "gate"]
@@ -319,9 +365,10 @@ def _build_marker_table() -> dict[int, GateSpec]:
     table[41] = GateSpec(kind="gate", gate="T", label="T", emit_as=("RZ", math.pi / 4))
 
     # 42/43/44: RX/RY/RZ dial tiles. One tile per axis; the printed tile face is
-    # a dial whose board-frame rotation r (0-3) selects ROTATION_ANGLES[r]. The
-    # spec's own ``parameter`` stays None — the angle is resolved from rotation
-    # at build time — while ``dial_axis`` names the axis emitted (RX/RY/RZ).
+    # a dial whose board-frame rotation r (0-7, clockwise 45° steps) selects
+    # DIAL_ANGLES[r]. The spec's own ``parameter`` stays None — the angle is
+    # resolved from rotation at build time — while ``dial_axis`` names the axis
+    # emitted (RX/RY/RZ).
     for marker_id, axis in DIAL_IDS.items():
         table[marker_id] = GateSpec(
             kind="gate",

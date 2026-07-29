@@ -14,9 +14,12 @@ object in a visitor's hand matches the gate on screen.
 
 from __future__ import annotations
 
+import math
+from dataclasses import dataclass
+
 from qamposer_vision.markers import (
+    DIAL_ANGLES,
     MARKER_TABLE,
-    ROTATION_ANGLES,
     GateSpec,
     pretty_angle,
 )
@@ -27,6 +30,12 @@ from .svgbase import esc, fmt, rect, svg_document
 from .symbols import control_dot, swap_cross, target_cross, text
 
 __all__ = [
+    "DIAL_CORNER_FONT",
+    "DIAL_CORNER_INSET",
+    "DIAL_EDGE_FONT",
+    "DIAL_EDGE_INSET",
+    "DialSlot",
+    "dial_label_slots",
     "gate_marker_ids",
     "tile_label",
     "tile_body",
@@ -198,25 +207,102 @@ def _rotated_text(
     return f'<g transform="rotate({fmt(theta)} {fmt(cx)} {fmt(cy)})">{label}</g>'
 
 
+# --- Dial label geometry (shared by the print, laser and 3D faces) ----------
+
+#: Font size (mm) of a dial's four **edge-midpoint** angle labels (even ``r``).
+DIAL_EDGE_FONT = 4.0
+#: Font size (mm) of a dial's four **corner** angle labels (odd ``r``). Smaller
+#: than the edge labels: a corner label is spun 45°, so its bounding box eats
+#: into the tile diagonal from both ends at once — the longest of them
+#: (``-3π/4``) only clears both the frame and the marker field at this size.
+DIAL_CORNER_FONT = 3.4
+#: Distance (mm) from a tile edge to the centre of an edge-midpoint label.
+DIAL_EDGE_INSET = 8.0
+#: Distance (mm) from each of the two adjacent edges to a corner label's centre
+#: (so the centre sits on the tile diagonal).
+DIAL_CORNER_INSET = 9.2
+
+
+@dataclass(frozen=True, slots=True)
+class DialSlot:
+    """One angle-label slot on a dial face, in **SVG** tile coords (y down).
+
+    Attributes:
+        r: The board-frame rotation index (0-7, clockwise 45° steps) this slot
+            belongs to. Turning the tile clockwise by ``r`` steps brings this
+            slot to board-top reading upright.
+        x, y: The label's centre.
+        theta: The SVG spin in degrees (clockwise-positive), normalised to
+            ``(-180, 180]`` — always ``-45·r`` modulo a full turn.
+        font: Font size (mm) — :data:`DIAL_EDGE_FONT` on edges (even ``r``),
+            :data:`DIAL_CORNER_FONT` in corners (odd ``r``).
+        text: The pretty angle label, ``pretty_angle(DIAL_ANGLES[r])``.
+    """
+
+    r: int
+    x: float
+    y: float
+    theta: float
+    font: float
+    text: str
+
+
+def dial_label_slots(size: float) -> tuple[DialSlot, ...]:
+    """The eight angle-label slots of a dial face, in ``r`` order (SVG coords).
+
+    A dial reads its angle from *where the tile points*: the label that ends up
+    at board-top after turning the tile clockwise by ``r`` 45° steps is
+    ``DIAL_ANGLES[r]``. That label therefore sits at printed direction
+    ``-90 - 45·r`` degrees from the tile centre, so the eight slots alternate
+    around the face:
+
+    * **even** ``r`` — the four edge midpoints: ``r=0`` top (``0``), ``r=2``
+      left (``π/2``), ``r=4`` bottom (``π``), ``r=6`` right (``−π/2``);
+    * **odd** ``r`` — the four corners, inset diagonally so they stay inside the
+      frame and clear of the marker field: ``r=1`` TL (``π/4``), ``r=3`` BL
+      (``3π/4``), ``r=5`` BR (``−3π/4``), ``r=7`` TR (``−π/4``).
+
+    Each slot's ``theta`` spins the label by ``-45·r`` so it reads upright at
+    exactly its own rotation — the ``r`` the detector recovers via
+    :func:`qamposer_vision.markers.octant_rotation` and
+    ``board.BoardResult.marker_rotation``.
+
+    Shared by the printed face (:func:`_dial_body`), the laser-cut face
+    (``laser._dial_symbol``) and the 3D face (``qamposer_hardware.face``), so
+    the three can never drift.
+    """
+    centre = size / 2.0
+    slots: list[DialSlot] = []
+    for r, angle in enumerate(DIAL_ANGLES):
+        phi = math.radians(-90.0 - 45.0 * r)
+        if r % 2 == 0:  # edge midpoint
+            radius = centre - DIAL_EDGE_INSET
+            font = DIAL_EDGE_FONT
+        else:  # corner, on the diagonal
+            radius = (centre - DIAL_CORNER_INSET) * math.sqrt(2.0)
+            font = DIAL_CORNER_FONT
+        slots.append(
+            DialSlot(
+                r=r,
+                x=centre + radius * math.cos(phi),
+                y=centre + radius * math.sin(phi),
+                theta=((-45.0 * r) + 180.0) % 360.0 - 180.0,
+                font=font,
+                text=pretty_angle(angle),
+            )
+        )
+    return tuple(slots)
+
+
 def _dial_body(marker_id: int, spec: GateSpec, config: AssetsConfig) -> str:
     """Inner SVG for a dial tile (IDs 42/43/44).
 
-    The dial's orientation on the board selects the angle: the printed edge that
-    ends up at board-top when the tile is turned clockwise by ``r`` 90° steps
-    carries the label ``ROTATION_ANGLES[r]`` and is oriented so it reads upright
-    at exactly that rotation. Concretely — with edges indexed by that ``r``:
-
-    * ``r=0`` printed **top** edge → ``π/4``  (drawn upright)
-    * ``r=1`` printed **left** edge → ``π/2`` (drawn turned 90° CCW)
-    * ``r=2`` printed **bottom** edge → ``π`` (drawn upside down)
-    * ``r=3`` printed **right** edge → ``−π/2`` (drawn turned 90° CW)
-
-    Each label is drawn spun ``θ = −90·r`` degrees so that after the physical
-    tile is turned clockwise by ``r·90°`` the label sits upright at board-top —
-    the exact ``r`` the detector recovers (see ``markers.quadrant_rotation`` and
-    ``board.BoardResult.marker_rotation``), which the render→detect tests pin.
-    A small ▲ marks the canonical top edge (``r=0``); the axis name sits in the
-    bottom band.
+    The dial's orientation on the board selects the angle: the printed position
+    that ends up at board-top when the tile is turned clockwise by ``r`` **45°**
+    steps carries the label ``DIAL_ANGLES[r]`` and is oriented so it reads
+    upright at exactly that rotation. See :func:`dial_label_slots` for the eight
+    positions; a small ▲ marks the canonical top edge (``r=0``, the identity
+    ``0``) and the axis name sits in the bottom band.
     """
     t = config.tile
     color = config.colors.for_gate(spec.gate)
@@ -252,29 +338,19 @@ def _dial_body(marker_id: int, spec: GateSpec, config: AssetsConfig) -> str:
         with_background=False,
     )
 
-    # --- #symbol: the four edge angle labels, pointer, and axis name --------
-    label_font = 4.0
-    inset = 8.0
+    # --- #symbol: the eight angle labels, pointer, and axis name ------------
     cx = cy = s / 2.0
-    # (edge midpoint x, y, rotation index r for that edge)
-    edges = (
-        (cx, inset, 0),          # top   → r=0
-        (inset, cy, 1),          # left  → r=1
-        (cx, s - inset, 2),      # bottom→ r=2
-        (s - inset, cy, 3),      # right → r=3
-    )
     parts: list[str] = ['<g id="symbol">']
-    for lx, ly, r in edges:
-        theta = ((-90 * r) + 180) % 360 - 180  # normalise to (-180, 180]
+    for slot in dial_label_slots(s):
         parts.append(
             _rotated_text(
-                lx,
-                ly,
-                pretty_angle(ROTATION_ANGLES[r]),
-                size=label_font,
+                slot.x,
+                slot.y,
+                slot.text,
+                size=slot.font,
                 color=color,
                 family=font_family,
-                theta=theta,
+                theta=slot.theta,
             )
         )
     # ▲ pointer marking the canonical (r=0) top edge, inside the frame.

@@ -557,8 +557,9 @@ class Pipeline:
                 )
                 continue
             row, col = cell
-            # Dial tiles carry their board-frame rotation in the stability key so
-            # turning one in place re-emits; every other tile pins rotation 0.
+            # Dial tiles carry their board-frame rotation (0-7, 45° steps) in the
+            # stability key so turning one in place re-emits; every other tile
+            # pins rotation 0.
             spec = MARKER_TABLE[marker.id]
             rot = board.marker_rotation(marker) if spec.dial_axis is not None else 0
             observations.add((marker.id, row, col, rot))

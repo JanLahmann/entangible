@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .markers import MARKER_TABLE, ROTATION_ANGLES, GateSpec
+from .markers import DIAL_ANGLES, MARKER_TABLE, GateSpec
 
 __all__ = [
     "TilePlacement",
@@ -64,10 +64,10 @@ _CONTROLLED_GATE: dict[str, str] = {"Y": "CY", "Z": "CZ", "H": "CH", "S": "CS", 
 class TilePlacement:
     """A detected gate tile resolved to a board cell.
 
-    ``rotation`` is the tile's board-frame clockwise 90° step index (0-3). It is
+    ``rotation`` is the tile's board-frame clockwise 45° step index (0-7). It is
     only meaningful for **dial** tiles (IDs 42/43/44), where it selects the
-    angle ``ROTATION_ANGLES[rotation]``; every other tile is orientation-free
-    and leaves it at the default ``0``.
+    angle ``DIAL_ANGLES[rotation]``; every other tile is orientation-free and
+    leaves it at the default ``0``.
     """
 
     marker_id: int
@@ -158,13 +158,16 @@ def _single_qubit_gate(
     spec: GateSpec, row: int, col: int, rotation: int
 ) -> dict[str, Any]:
     # Dial tiles (IDs 42/43/44): the angle comes from the tile's board-frame
-    # rotation, ROTATION_ANGLES[rotation]. The emitted gate is byte-identical to
-    # a classic rotation tile of that axis/angle at the same cell (same id
-    # "rx-0-0", same type, same parameter) — indistinguishable downstream. The
-    # rotation is part of the stabilizer key, so turning the dial re-emits.
+    # rotation, DIAL_ANGLES[rotation] — eight 45° positions, the angle being the
+    # physical turn itself. r=0 emits the identity RX(0)/RY(0)/RZ(0) rather than
+    # nothing, so a dial on the board is always visible on screen. The emitted
+    # gate is byte-identical to a classic rotation tile of that axis/angle at the
+    # same cell (same id "rx-0-0", same type, same parameter) — indistinguishable
+    # downstream. The rotation is part of the stabilizer key, so turning the dial
+    # re-emits.
     if spec.dial_axis is not None:
         axis = spec.dial_axis
-        angle = ROTATION_ANGLES[rotation % len(ROTATION_ANGLES)]
+        angle = DIAL_ANGLES[rotation % len(DIAL_ANGLES)]
         return {
             "id": f"{axis.lower()}-{row}-{col}",
             "type": axis,

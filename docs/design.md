@@ -125,11 +125,14 @@ Three NEW tiles, coexisting with the normal rotation tiles: marker IDs
 **42 = RX-dial, 43 = RY-dial, 44 = RZ-dial** (from the reserved range;
 RESERVED shrinks to 45–49). The tile's orientation ON THE BOARD selects the
 angle. Conventions: orientation is measured in the board frame (rectified via
-the homography, not the camera frame); rotation index r = clockwise 90° steps
-from canonical; **angle = ROTATION_ANGLES[r]** (π/4, π/2, π, −π/2). Face
-design: marker centered, the four angle labels on the four edges placed so the
-ACTIVE angle always reads upright at the top edge (board-top), with a small ▲
-pointer; family colors (RX/RY magenta, RZ light blue) as a full frame.
+the homography, not the camera frame); rotation index r = clockwise **45°**
+steps from canonical (0–7); **angle = DIAL_ANGLES[r]** — the angle IS the
+physical turn, wrapped to (−π, π]: 0, π/4, π/2, 3π/4, π, −3π/4, −π/2, −π/4.
+r = 0 emits the identity (parameter 0.0) rather than nothing, so a placed dial
+is always visible on screen. Face design: marker centered, the eight angle
+labels around it (four edge midpoints, four corners) placed so the ACTIVE angle
+always reads upright at the top edge (board-top), with a small ▲ pointer;
+family colors (RX/RY magenta, RZ light blue) as a full frame.
 Stabilizer/pipelines: for dial IDs the stability key includes the rotation —
 turning a tile in place must re-emit the circuit (with hysteresis, like any
 change). Emission stays `RZ/RX/RY(parameter)` — indistinguishable downstream

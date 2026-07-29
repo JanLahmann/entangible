@@ -30,7 +30,7 @@ import cv2
 import numpy as np
 
 from .detector import DetectedMarker
-from .markers import CORNER_IDS, CORNER_ROLES, quadrant_rotation
+from .markers import CORNER_IDS, CORNER_ROLES, octant_rotation
 
 __all__ = [
     "BOARD_MARGIN_MM",
@@ -248,20 +248,22 @@ class BoardResult:
         return mapped.reshape(-1, 2)
 
     def marker_rotation(self, marker: DetectedMarker) -> int:
-        """The marker's rotation in the **board** frame (clockwise 90° steps).
+        """The marker's rotation in the **board** frame (clockwise 45° steps, 0-7).
 
         The marker's four image-px corners are mapped through the homography
         into board mm, then the printed top-left corner (``corners[0]``) is
-        classified into a quadrant about the board-mm centroid — so the result
+        classified into an octant about the board-mm centroid — so the result
         is measured against the board's own axes, independent of how the camera
         is oriented. This is the ``r`` that selects a dial angle
-        (``ROTATION_ANGLES[r]``). See
-        :func:`~qamposer_vision.markers.quadrant_rotation`.
+        (``DIAL_ANGLES[r]``); nothing else consumes it semantically, so the
+        board frame is octant-valued throughout rather than carrying a second
+        dial-only field. See
+        :func:`~qamposer_vision.markers.octant_rotation`.
         """
         board_corners = self.image_to_board(marker.corners)
         centroid = board_corners.mean(axis=0)
         offset = board_corners[0] - centroid
-        return quadrant_rotation(float(offset[0]), float(offset[1]))
+        return octant_rotation(float(offset[0]), float(offset[1]))
 
 
 # ---------------------------------------------------------------------------

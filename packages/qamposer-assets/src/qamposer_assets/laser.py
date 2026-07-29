@@ -28,11 +28,7 @@ Two shapes of output (see :mod:`cli`):
 
 from __future__ import annotations
 
-from qamposer_vision.markers import (
-    MARKER_TABLE,
-    ROTATION_ANGLES,
-    pretty_angle,
-)
+from qamposer_vision.markers import MARKER_TABLE
 
 from .config import AssetsConfig
 from .corner_block import (
@@ -70,7 +66,13 @@ from .symbols import (
     target_cross,
     text,
 )
-from .tile_face import _CAP_TO_EM, _fit_font, _rotated_text, tile_label
+from .tile_face import (
+    _CAP_TO_EM,
+    _fit_font,
+    _rotated_text,
+    dial_label_slots,
+    tile_label,
+)
 
 __all__ = [
     "CUT_COLOR",
@@ -185,34 +187,29 @@ def _symbol(spec, cfg: AssetsConfig, band_cy: float) -> str:
 
 
 def _dial_symbol(spec, cfg: AssetsConfig) -> str:
-    """Black dial artwork: four edge angle labels, ▲ pointer, axis name."""
+    """Black dial artwork: the eight angle labels, ▲ pointer, axis name.
+
+    Same :func:`~qamposer_assets.tile_face.dial_label_slots` geometry as the
+    printed and 3D faces, only inked in the engrave colour.
+    """
     t = cfg.tile
     ink = ENGRAVE_COLOR
     family = cfg.typography.font_family
     s = t.size
     axis = spec.dial_axis or spec.gate
 
-    label_font = 4.0
-    inset = 8.0
     cx = cy = s / 2.0
-    edges = (
-        (cx, inset, 0),       # top    → r=0
-        (inset, cy, 1),       # left   → r=1
-        (cx, s - inset, 2),   # bottom → r=2
-        (s - inset, cy, 3),   # right  → r=3
-    )
     parts: list[str] = []
-    for lx, ly, r in edges:
-        theta = ((-90 * r) + 180) % 360 - 180
+    for slot in dial_label_slots(s):
         parts.append(
             _rotated_text(
-                lx,
-                ly,
-                pretty_angle(ROTATION_ANGLES[r]),
-                size=label_font,
+                slot.x,
+                slot.y,
+                slot.text,
+                size=slot.font,
                 color=ink,
                 family=family,
-                theta=theta,
+                theta=slot.theta,
             )
         )
     apex_y = t.frame_width + 0.9

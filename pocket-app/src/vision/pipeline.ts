@@ -429,8 +429,9 @@ export class PocketPipeline {
         });
         continue;
       }
-      // Dial tiles carry their board-frame rotation in the stability key so
-      // turning one in place re-emits; every other tile pins rotation 0.
+      // Dial tiles carry their board-frame rotation (0-7, 45° steps) in the
+      // stability key so turning one in place re-emits; every other tile pins
+      // rotation 0.
       const spec = MARKER_TABLE.get(marker.id)!;
       const rot = spec.dialAxis ? boardFrameRotation(marker, board) : 0;
       observations.push(tileKey(marker.id, cell.row, cell.col, rot));

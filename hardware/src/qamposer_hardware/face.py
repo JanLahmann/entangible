@@ -56,11 +56,11 @@ from qamposer_assets.qubit_wire_block import (
     qubit_wire_segments,
     qubit_wire_spec,
 )
+from qamposer_assets.tile_face import DIAL_EDGE_FONT, dial_label_slots
 from qamposer_vision.markers import (
     MARKER_TABLE,
     ROTATION_ANGLES,
     GateSpec,
-    pretty_angle,
 )
 
 __all__ = [
@@ -171,14 +171,17 @@ class ModuleCell:
 
 @dataclass(frozen=True, slots=True)
 class DialLabel:
-    """One per-edge angle label on a dial face, in 3D face coords (mm, y up).
+    """One angle label on a dial face, in 3D face coords (mm, y up).
 
     ``(cx, cy)`` is the label's centre; ``theta`` its CCW rotation (degrees) in
-    the 3D face frame; ``text`` the pretty angle (e.g. ``"π/2"``); ``r`` the
-    rotation index / edge it belongs to (0 top, 1 left, 2 bottom, 3 right at the
-    canonical orientation). ``theta = 90·r``: turning the physical tile clockwise
-    by ``r`` quarter-turns brings this edge to board-top reading upright — the
-    exact convention of the 2D ``tile_face._dial_body``.
+    the 3D face frame; ``font`` its size in mm; ``text`` the pretty angle (e.g.
+    ``"π/2"``); ``r`` the rotation index (0-7, clockwise 45° steps) whose slot
+    it occupies — **even** ``r`` on the edge midpoints (0 top, 2 left, 4 bottom,
+    6 right) and **odd** ``r`` in the corners (1 TL, 3 BL, 5 BR, 7 TR) at the
+    canonical orientation. ``theta = 45·r``: turning the physical tile clockwise
+    by ``r`` eighth-turns brings this label to board-top reading upright — the
+    exact convention of :func:`qamposer_assets.tile_face.dial_label_slots`,
+    whose SVG spin ``-45·r`` this is the y-flipped twin of.
     """
 
     cx: float
@@ -186,6 +189,7 @@ class DialLabel:
     theta: float
     text: str
     r: int
+    font: float = 4.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,12 +202,12 @@ class DialFace:
     3D face are indistinguishable to a camera and a human.
     """
 
-    labels: tuple[DialLabel, ...]  # the four per-edge angle labels
+    labels: tuple[DialLabel, ...]  # the eight angle labels, one per rotation r
     pointer: tuple[tuple[float, float], ...]  # ▲ solid at canonical top: 3 (x, y)
     caption: str  # axis caption in the bottom band (e.g. "RX dial")
     caption_pos: tuple[float, float]  # caption centre (x, y)
     caption_font: float  # caption font size (mm)
-    label_font: float  # edge-label font size (mm)
+    label_font: float  # edge-label font size (mm); corners use DialLabel.font
 
 
 @dataclass(frozen=True, slots=True)
@@ -754,8 +758,9 @@ def _dial_layout(marker_id: int, spec: GateSpec, config: AssetsConfig) -> FaceLa
     * the ArUco marker is centred in that square (not pushed up under a band);
     * there are no tactile notches (the *orientation*, not a notch count, sets
       the angle); and
-    * the accent carries a :class:`DialFace`: four per-edge angle labels, a ▲
-      pointer at the canonical top edge, and the axis caption in the bottom band.
+    * the accent carries a :class:`DialFace`: eight angle labels (four on the
+      edge midpoints, four in the corners), a ▲ pointer at the canonical top
+      edge, and the axis caption in the bottom band.
 
     Every position is the vertical flip (``Y = size − y_svg``) of the exact SVG
     coordinate the 2D face uses, so a camera looking down ``−Z`` sees the SVG.
@@ -801,26 +806,21 @@ def _dial_layout(marker_id: int, spec: GateSpec, config: AssetsConfig) -> FaceLa
                 )
             )
 
-    # Four per-edge angle labels. SVG edge midpoints (x, y_svg, r) exactly as in
-    # _dial_body; flip y to 3D. theta = 90·r (CCW) is the 3D equivalent of the
-    # SVG spin θ_svg = ((-90·r)+180) mod 360 − 180 under the y-flip.
-    label_font = 4.0
-    inset = 8.0
-    svg_edges = (
-        (centre, inset, 0),          # top    → r=0 (π/4, upright)
-        (inset, centre, 1),          # left   → r=1 (π/2)
-        (centre, size - inset, 2),   # bottom → r=2 (π)
-        (size - inset, centre, 3),   # right  → r=3 (−π/2)
-    )
+    # The eight angle labels, taken verbatim from the shared 2D slot geometry
+    # (four edge midpoints + four corners) and flipped into 3D. theta = 45·r
+    # (CCW) is the y-flipped twin of the SVG spin −45·r.
+    slots = dial_label_slots(size)
+    label_font = DIAL_EDGE_FONT
     labels = tuple(
         DialLabel(
-            cx=lx,
-            cy=_flip_y(size, ly_svg),
-            theta=(90.0 * r) % 360.0,
-            text=pretty_angle(ROTATION_ANGLES[r]),
-            r=r,
+            cx=slot.x,
+            cy=_flip_y(size, slot.y),
+            theta=(45.0 * slot.r) % 360.0,
+            text=slot.text,
+            r=slot.r,
+            font=slot.font,
         )
-        for lx, ly_svg, r in svg_edges
+        for slot in slots
     )
 
     # ▲ pointer at the canonical (r=0) top edge, inside the frame.

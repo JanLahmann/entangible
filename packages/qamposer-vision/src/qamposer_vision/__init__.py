@@ -15,6 +15,7 @@ from .markers import (
     ARUCO_DICT_NAME,
     CORNER_IDS,
     CORNER_ROLES,
+    DIAL_ANGLES,
     DIAL_IDS,
     GATE_TYPES,
     MARKER_TABLE,
@@ -23,6 +24,7 @@ from .markers import (
     RESERVED_IDS,
     ROTATION_ANGLES,
     GateSpec,
+    octant_rotation,
     pretty_angle,
     quadrant_rotation,
 )
@@ -31,6 +33,7 @@ __all__ = [
     "ARUCO_DICT_NAME",
     "CORNER_IDS",
     "CORNER_ROLES",
+    "DIAL_ANGLES",
     "DIAL_IDS",
     "GATE_TYPES",
     "GateSpec",
@@ -39,6 +42,7 @@ __all__ = [
     "QUBIT_WIRE_ID",
     "RESERVED_IDS",
     "ROTATION_ANGLES",
+    "octant_rotation",
     "pretty_angle",
     "quadrant_rotation",
 ]

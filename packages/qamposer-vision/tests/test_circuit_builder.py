@@ -7,7 +7,7 @@ import math
 import pytest
 
 from qamposer_vision.circuit_builder import TilePlacement, build_circuit
-from qamposer_vision.markers import ROTATION_ANGLES
+from qamposer_vision.markers import DIAL_ANGLES
 
 QUBITS = 5
 
@@ -96,9 +96,10 @@ def test_s_and_real_rz_coexist_without_collision() -> None:
     assert result.warnings == []
 
 
-@pytest.mark.parametrize("rotation,angle", list(enumerate(ROTATION_ANGLES)))
+@pytest.mark.parametrize("rotation,angle", list(enumerate(DIAL_ANGLES)))
 def test_dial_angle_from_rotation(rotation, angle) -> None:
-    # An RX dial at (2, 3) turned to rotation r emits RX(ROTATION_ANGLES[r]).
+    # An RX dial at (2, 3) turned to rotation r emits RX(DIAL_ANGLES[r]) — all
+    # EIGHT positions swept, not sampled.
     (gate,) = build_circuit(
         [TilePlacement(RX_DIAL, 2, 3, rotation=rotation)], QUBITS
     ).circuit["gates"]
@@ -108,19 +109,53 @@ def test_dial_angle_from_rotation(rotation, angle) -> None:
     assert abs(gate["parameter"] - angle) < 1e-12
 
 
+@pytest.mark.parametrize("dial_id,axis", [(42, "RX"), (43, "RY"), (44, "RZ")])
+@pytest.mark.parametrize("rotation", range(8))
+def test_every_dial_axis_and_position_emits_exactly_one_gate(
+    dial_id, axis, rotation
+) -> None:
+    # Totality: 3 axes x 8 positions, every one a single gate of that axis with
+    # the angle that IS the physical turn. Nothing is ever dropped or warned.
+    result = build_circuit([TilePlacement(dial_id, 0, 0, rotation=rotation)], QUBITS)
+    (gate,) = result.circuit["gates"]
+    assert gate["type"] == axis
+    assert gate["id"] == f"{axis.lower()}-0-0"
+    assert gate["parameter"] == pytest.approx(DIAL_ANGLES[rotation])
+    assert result.warnings == []
+
+
+def test_dial_at_rotation_zero_emits_the_identity() -> None:
+    # r=0 is the identity, and it is EMITTED (parameter 0.0), not dropped: a dial
+    # lying on the board must always show up on screen.
+    for dial_id, axis in ((42, "RX"), (43, "RY"), (44, "RZ")):
+        result = build_circuit([TilePlacement(dial_id, 1, 2, rotation=0)], QUBITS)
+        (gate,) = result.circuit["gates"]
+        assert gate["type"] == axis
+        assert gate["parameter"] == 0.0
+        assert result.warnings == []
+
+
 def test_dial_is_byte_identical_to_classic_rotation_tile() -> None:
-    # RX dial at rotation 1 → RX(pi/2): the emitted gate must equal the classic
+    # RX dial at rotation 2 → RX(pi/2): the emitted gate must equal the classic
     # RX(pi/2) tile (id 21) at the same cell — indistinguishable downstream.
-    dial = build_circuit([TilePlacement(RX_DIAL, 0, 0, rotation=1)], QUBITS).circuit
+    dial = build_circuit([TilePlacement(RX_DIAL, 0, 0, rotation=2)], QUBITS).circuit
     classic = build_circuit([TilePlacement(RX_HALF_PI, 0, 0)], QUBITS).circuit
     assert dial == classic
 
 
 def test_dial_default_rotation_is_zero() -> None:
-    # No rotation given → r=0 → ROTATION_ANGLES[0] = pi/4.
+    # No rotation given → r=0 → DIAL_ANGLES[0] = 0.0 (the identity).
     (gate,) = build_circuit([TilePlacement(RZ_DIAL, 1, 1)], QUBITS).circuit["gates"]
     assert gate["type"] == "RZ"
-    assert abs(gate["parameter"] - math.pi / 4) < 1e-12
+    assert gate["parameter"] == 0.0
+
+
+def test_dial_rotation_wraps_past_a_full_turn() -> None:
+    # r is taken modulo 8, so a full extra turn is the same angle.
+    for r in range(8):
+        base = build_circuit([TilePlacement(RX_DIAL, 0, 0, rotation=r)], QUBITS)
+        wrapped = build_circuit([TilePlacement(RX_DIAL, 0, 0, rotation=r + 8)], QUBITS)
+        assert base.circuit == wrapped.circuit
 
 
 def test_deterministic_ids_and_ordering() -> None:

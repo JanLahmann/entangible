@@ -1,0 +1,6 @@
+{
+  "qubits": 5,
+  "gates": [
+    { "id": "rx-0-0", "type": "RX", "qubit": 0, "position": 0, "parameter": 0.0 }
+  ]
+}

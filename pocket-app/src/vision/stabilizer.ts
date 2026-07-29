@@ -11,10 +11,10 @@
 
 /**
  * A grid-resolved tile observation `(markerId, row, col, rotation)`, packed as a
- * string key. `rotation` is the board-frame 90° step (0-3); it is 0 for every
+ * string key. `rotation` is the board-frame 45° step (0-7); it is 0 for every
  * orientation-free tile and only varies for dial tiles, whose angle is chosen by
  * how they are turned — so turning a dial in place changes the key (a real
- * change under the same hysteresis) while a within-quadrant wiggle keeps it.
+ * change under the same hysteresis) while a within-octant wiggle keeps it.
  */
 export type Tile = string;
 

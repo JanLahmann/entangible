@@ -176,7 +176,8 @@ def detect_circuit(
             )
             continue
         row, col = cell
-        # Dial tiles (42/43/44) select their angle from the board-frame rotation.
+        # Dial tiles (42/43/44) select their angle from the board-frame rotation
+        # (0-7, clockwise 45° steps → DIAL_ANGLES).
         spec = MARKER_TABLE[marker.id]
         rotation = board.marker_rotation(marker) if spec.dial_axis is not None else 0
         placements.append(

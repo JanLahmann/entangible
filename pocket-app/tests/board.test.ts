@@ -101,7 +101,23 @@ describe('boardFrameRotation', () => {
     [360 - half, 250 + half], // BL
   ];
 
-  it('recovers each of the four rotations in the board frame', () => {
+  /**
+   * The tile's four board-mm corners after an r×45° CLOCKWISE turn about its
+   * centre. Board mm has y down, so the standard rotation matrix for +theta is
+   * already the clockwise one; entry 0 stays the printed top-left throughout.
+   */
+  function turnedSquare(r: number): Array<[number, number]> {
+    const theta = (Math.PI / 4) * r;
+    const cos = Math.cos(theta);
+    const sin = Math.sin(theta);
+    return boardSquare.map(([x, y]) => {
+      const dx = x - 360;
+      const dy = y - 250;
+      return [360 + dx * cos - dy * sin, 250 + dx * sin + dy * cos] as [number, number];
+    });
+  }
+
+  it('recovers each of the four quarter turns in the board frame', () => {
     const board = fitBoard([0, 1, 2, 3].map(fakeCorner))!;
     const corners = boardSquare.map(([x, y]) => project(H_TRUE, x, y)) as unknown as [
       Corner,
@@ -111,8 +127,32 @@ describe('boardFrameRotation', () => {
     ];
     const cx = corners.reduce((s, c) => s + c[0], 0) / 4;
     const cy = corners.reduce((s, c) => s + c[1], 0) / 4;
+    // A square marker only ever presents four corner slots, so `marker.rotation`
+    // (the dictionary match) selects which one is the printed top-left; a
+    // quarter turn must read back as the matching EVEN octant, 2·r.
     for (let r = 0; r < 4; r++) {
       const marker: DetectedMarker = { id: 42, rotation: r, corners, center: [cx, cy] };
+      expect(boardFrameRotation(marker, board)).toBe(2 * r);
+    }
+  });
+
+  it('recovers all eight 45° dial positions in the board frame', () => {
+    const board = fitBoard([0, 1, 2, 3].map(fakeCorner))!;
+    for (let r = 0; r < 8; r++) {
+      // Physically turn the tile by r×45°, then project. `turnedSquare` keeps
+      // the printed top-left at entry 0, so the dictionary rotation the detector
+      // would report for this corner array is 0 — the turn has to be recovered
+      // from the geometry alone, which is the whole point of the octant.
+      const turned = turnedSquare(r);
+      const corners = turned.map(([x, y]) => project(H_TRUE, x, y)) as unknown as [
+        Corner,
+        Corner,
+        Corner,
+        Corner,
+      ];
+      const cx = corners.reduce((s, c) => s + c[0], 0) / 4;
+      const cy = corners.reduce((s, c) => s + c[1], 0) / 4;
+      const marker: DetectedMarker = { id: 42, rotation: 0, corners, center: [cx, cy] };
       expect(boardFrameRotation(marker, board)).toBe(r);
     }
   });

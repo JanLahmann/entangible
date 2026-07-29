@@ -111,22 +111,26 @@ compatibility path**: anything already printed on the old IDs must be reprinted.
 
 **RX-dial (42)**, **RY-dial (43)** and **RZ-dial (44)** are a single tile per
 rotation axis whose **orientation on the board selects the angle** — "turn the
-tile to turn the knob". The tile face is a dial: the four angle labels
-(`π/4`, `π/2`, `π`, `−π/2`) sit on the four edges, the active one reading upright
-at board-top, with a `▲` marking the canonical (unturned) top edge and the axis
-name in the bottom band; the frame is the family colour (RX/RY `#9f1853`, RZ
-`#33b1ff`).
+tile to turn the knob". The tile face is a dial with **eight** angle labels 45°
+apart: `0` `π/4` `π/2` `3π/4` `π` `−3π/4` `−π/2` `−π/4`, four on the edge
+midpoints and four in the corners, the active one reading upright at board-top,
+with a `▲` marking the canonical (unturned) top edge and the axis name in the
+bottom band; the frame is the family colour (RX/RY `#9f1853`, RZ `#33b1ff`).
 
-Conventions (see `docs/design.md` "Dial tiles" and `markers.quadrant_rotation`):
+Conventions (see `docs/design.md` "Dial tiles" and `markers.octant_rotation`):
 
 - Orientation is measured in the **board frame** (rectified through the corner
   homography, not the camera frame): the marker's printed top-left corner is
-  mapped to board mm and classified into a quadrant about the marker centroid.
-- `r` = clockwise 90° steps from canonical (TL=0, TR=1, BR=2, BL=3).
-- **angle = `ROTATION_ANGLES[r]`** → `π/4, π/2, π, −π/2` for `r = 0, 1, 2, 3`.
+  mapped to board mm and classified into an octant about the marker centroid.
+- `r` = clockwise 45° steps from canonical (TL corner = 0, top edge = 1, TR = 2,
+  right = 3, BR = 4, bottom = 5, BL = 6, left = 7).
+- **angle = `DIAL_ANGLES[r]`**, and the angle simply *is* the physical turn,
+  wrapped to `(−π, π]`: `0, π/4, π/2, 3π/4, π, −3π/4, −π/2, −π/4`.
+- `r = 0` is the identity and is still **emitted** (`parameter: 0.0`), never
+  dropped — a dial lying on the board is always visible on screen.
 
 The dial is emitted **exactly like a classic rotation tile**: an RX-dial at
-rotation `r` produces `{type: "RX", parameter: ROTATION_ANGLES[r]}` with id
+rotation `r` produces `{type: "RX", parameter: DIAL_ANGLES[r]}` with id
 `rx-<row>-<col>` — byte-identical to the fixed RX tile of that angle, so the
 circuit JSON / QASM / simulation are indistinguishable downstream. The tile's
 `GateSpec.dial_axis` names the axis; `GateSpec.parameter` stays `None` because

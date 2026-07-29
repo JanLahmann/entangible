@@ -35,8 +35,11 @@ class DetectedMarker:
         rotation: The marker's rotation in the **image** frame as a clockwise
             90° step index (0-3), derived from ``corners[0]`` relative to
             ``center`` via :func:`~qamposer_vision.markers.quadrant_rotation`.
-            This is the camera-frame turn; the *board*-frame rotation used to
-            pick a dial angle is computed from the homography by
+            Deliberately coarse: it is the camera-frame turn, informational
+            only (it mirrors the TypeScript detector's ``rotation``, which is an
+            index into a four-entry corner array and so cannot be finer). The
+            *board*-frame rotation used to pick a dial angle is the eighth-turn
+            index (0-7) computed from the homography by
             :meth:`~qamposer_vision.board.BoardResult.marker_rotation` (a
             straight image rotation only equals the board rotation when the
             camera is square to the mat).

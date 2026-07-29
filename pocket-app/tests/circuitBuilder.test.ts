@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { buildCircuit, type TilePlacement } from '../src/vision/circuitBuilder';
+import { DIAL_ANGLES } from '../src/vision/markers';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = resolve(here, '../../tests/fixtures/circuits');
@@ -77,14 +78,19 @@ const SCENARIOS: Record<string, Array<[number, number, number]>> = {
 };
 
 // The `dials` fixture: dial tiles at mixed rotations (markerId, row, col,
-// rotation) — RX-dial r=1 → RX(π/2), RY-dial r=3 → RY(−π/2), RZ-dial r=2 → RZ(π).
-// Mirrors tests/utils/render_board.py's `dials` scenario; the golden is shared
-// with the Python builder so the circuits are byte-identical.
+// rotation), ODD 45° steps included — RX-dial r=1 → RX(π/4), RY-dial r=5 →
+// RY(−3π/4), RZ-dial r=4 → RZ(π). Mirrors tests/utils/render_board.py's `dials`
+// scenario; the golden is shared with the Python builder so the circuits are
+// byte-identical.
 const DIAL_PLACEMENTS: Array<[number, number, number, number]> = [
   [42, 0, 0, 1],
-  [43, 1, 1, 3],
-  [44, 2, 2, 2],
+  [43, 1, 1, 5],
+  [44, 2, 2, 4],
 ];
+
+// The `dial_identity` fixture: one dial left at its canonical r=0. The identity
+// RX(0) is EMITTED, not dropped — a placed dial is always visible on screen.
+const DIAL_IDENTITY_PLACEMENTS: Array<[number, number, number, number]> = [[42, 0, 0, 0]];
 
 const QUBITS = 5;
 
@@ -135,11 +141,52 @@ describe('buildCircuit golden fixtures (byte-identical to the Python builder)', 
     expect(result.warnings).toEqual([]);
   });
 
+  it('a dial left at r=0 emits the identity, matching the shared golden', () => {
+    const result = buildCircuit(
+      DIAL_IDENTITY_PLACEMENTS.map(([markerId, row, col, rotation]) => ({
+        markerId,
+        row,
+        col,
+        rotation,
+      })),
+      QUBITS,
+    );
+    expect(result.circuit).toEqual(golden('dial_identity'));
+    expect(result.circuit.gates[0].parameter).toBe(0);
+    expect(result.warnings).toEqual([]);
+  });
+
   it('a dial is byte-identical to the classic rotation tile of the same angle', () => {
-    // RX-dial at rotation 1 (→ RX(π/2)) must equal the fixed RX(π/2) tile (id 21).
-    const dial = buildCircuit([{ markerId: 42, row: 0, col: 0, rotation: 1 }], QUBITS);
+    // RX-dial at rotation 2 (→ RX(π/2)) must equal the fixed RX(π/2) tile (id 21).
+    const dial = buildCircuit([{ markerId: 42, row: 0, col: 0, rotation: 2 }], QUBITS);
     const classic = buildCircuit([{ markerId: 21, row: 0, col: 0 }], QUBITS);
     expect(dial.circuit).toEqual(classic.circuit);
+  });
+
+  it('emits every dial axis at every one of the eight positions', () => {
+    // Totality: 3 axes x 8 positions, each a single gate whose parameter IS the
+    // physical turn, and never a warning.
+    for (const [markerId, axis] of [
+      [42, 'RX'],
+      [43, 'RY'],
+      [44, 'RZ'],
+    ] as Array<[number, string]>) {
+      for (let r = 0; r < 8; r++) {
+        const result = buildCircuit([{ markerId, row: 0, col: 0, rotation: r }], QUBITS);
+        expect(result.circuit.gates).toHaveLength(1);
+        const gate = result.circuit.gates[0];
+        expect(gate.type).toBe(axis);
+        expect(gate.id).toBe(`${axis.toLowerCase()}-0-0`);
+        expect(gate.parameter).toBeCloseTo(DIAL_ANGLES[r], 12);
+        expect(result.warnings).toEqual([]);
+        // r wraps past a full turn.
+        const wrapped = buildCircuit(
+          [{ markerId, row: 0, col: 0, rotation: r + 8 }],
+          QUBITS,
+        );
+        expect(wrapped.circuit).toEqual(result.circuit);
+      }
+    }
   });
 
   it('two × tiles in a column emit a 3-CNOT SWAP in order (matches the golden)', () => {

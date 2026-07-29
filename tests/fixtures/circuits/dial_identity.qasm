@@ -4,6 +4,4 @@ include "qelib1.inc";
 qreg q[5];
 creg c[5];
 
-rx(pi/4) q[0];
-ry(-3*pi/4) q[1];
-rz(pi) q[2];
+rx(0) q[0];
