@@ -2,12 +2,13 @@
 
 A dial tile has no fixed angle: its board-frame rotation selects it. The face is
 therefore built differently from a classic tile — a full colour frame, a white
-inner square, a *centred* ArUco marker, four per-edge angle labels each spun so
-the selected angle reads upright at board-top, a ▲ pointer at the canonical top
-edge and the axis caption in the bottom band. This suite pins that the 3D dial
-face reproduces :func:`qamposer_assets.tile_face._dial_body` region-for-region
-(so print and object are indistinguishable) and that the dials slot into the
-single-faced kit's plate grouping without adding an accent colour.
+inner square, a *centred* ArUco marker, **eight** angle labels (four on the edge
+midpoints, four in the corners, 45° apart) each spun so the selected angle reads
+upright at board-top, a ▲ pointer at the canonical top edge and the axis caption
+in the bottom band. This suite pins that the 3D dial face reproduces
+:func:`qamposer_assets.tile_face._dial_body` region-for-region (so print and
+object are indistinguishable) and that the dials slot into the single-faced
+kit's plate grouping without adding an accent colour.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from __future__ import annotations
 import pytest
 from build123d import Align, Axis, Box, Pos
 from qamposer_assets.config import load_config
-from qamposer_vision.markers import MARKER_TABLE, ROTATION_ANGLES, pretty_angle
+from qamposer_vision.markers import DIAL_ANGLES, MARKER_TABLE, pretty_angle
 
 from qamposer_hardware.build import build_tile, footprint_area
 from qamposer_hardware.export import single_plate_groups
@@ -63,25 +64,42 @@ def test_dial_layout_is_full_square_and_centred(config, mid):
 
 @pytest.mark.parametrize("mid", DIAL_IDS)
 def test_dial_labels_match_2d_convention(config, mid):
-    """Per-edge label text/edge/rotation == ``tile_face._dial_body`` exactly.
+    """Label text/slot/rotation == ``tile_face.dial_label_slots`` exactly.
 
-    Edge order at canonical orientation: r=0 top (π/4, θ=0), r=1 left (π/2,
-    θ=90), r=2 bottom (π, θ=180), r=3 right (−π/2, θ=270). θ=90·r means turning
-    the tile clockwise by r quarter-turns brings that edge to board-top upright.
+    Eight positions at canonical orientation, 45° apart: even r on the edge
+    midpoints (r=0 top ``0``, r=2 left ``π/2``, r=4 bottom ``π``, r=6 right
+    ``−π/2``), odd r in the corners (r=1 TL ``π/4``, r=3 BL ``3π/4``, r=5 BR
+    ``−3π/4``, r=7 TR ``−π/4``). θ=45·r means turning the tile clockwise by r
+    eighth-turns brings that label to board-top upright.
     """
     layout = face_layout(mid, config)
     s = layout.size
     labels = {lab.r: lab for lab in layout.dial.labels}
-    assert set(labels) == {0, 1, 2, 3}
-    # text is the pretty angle for that rotation index
+    assert set(labels) == set(range(8))
+    # text is the pretty angle for that rotation index; θ = 45·r
     for r, lab in labels.items():
-        assert lab.text == pretty_angle(ROTATION_ANGLES[r])
-        assert lab.theta == pytest.approx((90.0 * r) % 360.0)
+        assert lab.text == pretty_angle(DIAL_ANGLES[r])
+        assert lab.theta == pytest.approx((45.0 * r) % 360.0)
     # edge midpoints (3D, y up): top high-Y, bottom low-Y, left low-X, right high-X
     assert labels[0].cx == pytest.approx(s / 2) and labels[0].cy > s / 2  # top
-    assert labels[2].cx == pytest.approx(s / 2) and labels[2].cy < s / 2  # bottom
-    assert labels[1].cy == pytest.approx(s / 2) and labels[1].cx < s / 2  # left
-    assert labels[3].cy == pytest.approx(s / 2) and labels[3].cx > s / 2  # right
+    assert labels[4].cx == pytest.approx(s / 2) and labels[4].cy < s / 2  # bottom
+    assert labels[2].cy == pytest.approx(s / 2) and labels[2].cx < s / 2  # left
+    assert labels[6].cy == pytest.approx(s / 2) and labels[6].cx > s / 2  # right
+    # corners sit off both axes, on the diagonals, and print smaller than the
+    # edge labels so a spun "-3π/4" still clears the frame and the marker field.
+    for r, (want_x_hi, want_y_hi) in {
+        1: (False, True),   # TL  → low X, high Y (3D y up)
+        3: (False, False),  # BL
+        5: (True, False),   # BR
+        7: (True, True),    # TR
+    }.items():
+        lab = labels[r]
+        assert (lab.cx > s / 2) is want_x_hi, r
+        assert (lab.cy > s / 2) is want_y_hi, r
+        assert abs(lab.cx - s / 2) == pytest.approx(abs(lab.cy - s / 2))
+        assert lab.font < layout.dial.label_font
+    for r in (0, 2, 4, 6):
+        assert labels[r].font == pytest.approx(layout.dial.label_font)
 
 
 # --------------------------------------------------------------------------- #
@@ -154,20 +172,67 @@ def _probe(solid, cx, cy, w, h, z):
 
 @pytest.mark.parametrize("mid", DIAL_IDS)
 def test_edge_labels_present_and_oriented(tiles, mid):
-    """Each edge label is accent material at its edge; left/right labels are
-    rotated (taller than wide), the top label is upright (wider than tall)."""
+    """All EIGHT labels are accent material at their slot; the left/right edge
+    labels are rotated (taller than wide) and the top/bottom ones upright."""
     p = tiles[mid]
     z = TILE_H - FACE_DEPTH / 2.0
     labels = {lab.r: lab for lab in p.layout.dial.labels}
-    # Tight probe boxes (exclude the ▲ pointer above / caption below / marker).
+    assert set(labels) == set(range(8))
+    # Tight probe boxes (exclude the ▲ pointer above / caption below / marker);
+    # corner labels are spun 45°, so they need a square probe.
     for r, lab in labels.items():
-        inter = _probe(p.accent, lab.cx, lab.cy, 6.8, 4.2, z)
+        w, h = (6.8, 4.2) if r % 2 == 0 else (6.0, 6.0)
+        inter = _probe(p.accent, lab.cx, lab.cy, w, h, z)
         assert inter is not None, f"label r={r} {lab.text!r} missing from accent"
         bb = inter.bounding_box()
-        if r in (1, 3):  # left / right — spun 90°/270°, so taller than wide
+        if r in (2, 6):  # left / right — spun 90°/270°, so taller than wide
             assert bb.size.Y > bb.size.X, f"label r={r} not rotated"
-        if r == 0:  # top π/4 — upright, wider than tall
-            assert bb.size.X > bb.size.Y, "top label not upright"
+        if r % 2 == 1:  # corners — spun 45°, so the box is close to square
+            lo, hi = sorted((bb.size.X, bb.size.Y))
+            assert lo / hi > 0.6, f"label r={r} not spun to the diagonal"
+        if r in (0, 4):  # top "0" / bottom "π" — single glyphs, centred on x
+            assert (bb.min.X + bb.max.X) / 2 == pytest.approx(30.0, abs=0.2)
+
+
+@pytest.mark.parametrize("mid", DIAL_IDS)
+def test_every_label_carries_its_own_spin(config, mid):
+    """θ = 45·r is really applied to the glyph sketch, for all eight labels.
+
+    Compared against the same text drawn upright: a quarter turn swaps the
+    bounding box, a half turn leaves it, a 45° turn lands between the two.
+    """
+    from qamposer_hardware.build import _dial_text_sketch
+
+    for lab in face_layout(mid, config).dial.labels:
+        upright = _dial_text_sketch(lab.text, lab.font, 0.0).bounding_box()
+        spun = _dial_text_sketch(lab.text, lab.font, lab.theta).bounding_box()
+        if lab.r in (0, 4):  # 0° / 180° — same box
+            assert spun.size.X == pytest.approx(upright.size.X, abs=1e-6)
+            assert spun.size.Y == pytest.approx(upright.size.Y, abs=1e-6)
+        elif lab.r in (2, 6):  # 90° / 270° — swapped box
+            assert spun.size.X == pytest.approx(upright.size.Y, abs=1e-6)
+            assert spun.size.Y == pytest.approx(upright.size.X, abs=1e-6)
+        else:  # 45° family — the box squares up: the narrow side grows most
+            up_lo, up_hi = sorted((upright.size.X, upright.size.Y))
+            sp_lo, sp_hi = sorted((spun.size.X, spun.size.Y))
+            assert sp_lo > up_lo, lab
+            assert sp_lo / sp_hi > up_lo / up_hi, lab
+
+
+@pytest.mark.parametrize("mid", DIAL_IDS)
+def test_labels_never_touch_the_marker_or_the_frame(tiles, mid):
+    """The accent's label ink must stay clear of the ArUco field and inside the
+    tile: the spun corner labels are the tight ones. Checked as a real solid
+    intersection, not an estimate."""
+    p = tiles[mid]
+    z = TILE_H - FACE_DEPTH / 2.0
+    # The centred 36 mm marker field: no accent material may reach into it.
+    field = _probe(p.accent, 30.0, 30.0, 36.0, 36.0, z)
+    assert field is None, "dial accent ink enters the ArUco marker field"
+    # Everything stays on the tile.
+    bb = p.accent.bounding_box()
+    assert bb.min.X >= 0.0 - 1e-6 and bb.max.X <= 60.0 + 1e-6
+    assert bb.min.Y >= 0.0 - 1e-6 and bb.max.Y <= 60.0 + 1e-6
 
 
 @pytest.mark.parametrize("mid", DIAL_IDS)
