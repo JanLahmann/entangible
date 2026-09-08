@@ -1,5 +1,7 @@
 # Entangible
 
+[![Qiskit Ecosystem](https://qisk.it/e-265ddc43)](https://qisk.it/e)
+
 **Entangible** — the QAMPoser physical quantum circuit composer. Visitors at
 events, fairs, and booths build real quantum circuits on a table from printed
 gate tiles laid out on a printed board mat; a camera recognizes the layout
