@@ -6,6 +6,7 @@
   "description": "Entangible Pocket — standalone iPad-first browser demo (camera → in-browser marker detection → circuit → simulation → celebrations)",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/fetch-family.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
