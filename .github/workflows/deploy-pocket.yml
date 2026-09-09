@@ -1,13 +1,17 @@
 # Deploys the Entangible Pocket demo (pocket-app/dist) to GitHub Pages.
 #
-# Trigger is MANUAL (workflow_dispatch) for now — run it from the Actions tab
-# after enabling Pages (Settings → Pages → Source: "GitHub Actions").
-# Switch to a push trigger once the demo is stable, e.g.:
-#   push: { branches: [main], paths: ["pocket-app/**", "shared/**"] }
+# Triggers: every push to main that touches the app, a manual run, and the
+# `family-updated` event JanLahmann/Fun-with-Quantum fires when the family
+# roster changes (the prebuild step fetches the fresh manifest).
 name: deploy-pocket
 
 on:
+  push:
+    branches: [main]
+    paths: ["pocket-app/**", "shared/**", ".github/workflows/deploy-pocket.yml"]
   workflow_dispatch:
+  repository_dispatch:
+    types: [family-updated]
 
 permissions:
   contents: read
