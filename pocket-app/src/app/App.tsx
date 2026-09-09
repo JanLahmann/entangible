@@ -44,6 +44,7 @@ import type { Rect } from '@shared/capture/matRoi';
 import { MessageStrip, type StripMessage } from './MessageStrip';
 import { courseElapsed, tickCourseTimer } from '@shared/display/courseTimer';
 import { Celebrations, LOW_POWER_PARTICLES, type CelebrationRequest } from './Celebrations';
+import { trackGame } from './analytics';
 import { ResultsHistogram, noiseSeries } from './ResultsHistogram';
 import { QasmPanel } from './QasmPanel';
 import { StatePanel } from '@shared/display/StatePanel';
@@ -557,6 +558,7 @@ export function App() {
         // on restart, so playing again can earn it again.
         if (step.justCompleted && !completedRef.current) {
           completedRef.current = true;
+          trackGame('golf', 'finish', { round: 'complete', course: step.state.course, scope: String(step.state.scope) });
           const timing = tickCourseTimer(step.state, Date.now());
           // Scored against the SCOPE's par (#102): finishing the easy round is
           // measured against 25, not against the full course's 101.
@@ -577,6 +579,7 @@ export function App() {
         }
         if (!step.state.complete) completedRef.current = false;
         if (step.justHoledIn && step.scoreName) {
+          trackGame('golf', 'finish', { qubits: step.hole.qubits, score: step.scoreName, course: step.state.course });
           // Random bests are session-only — a generated hole 7 is a different
           // hole on every seed, so writing it would corrupt the device's card.
           if (persistsBest(step.state)) saveBest(storage, step.state.best);
