@@ -696,7 +696,14 @@ export function GuidePage() {
                 {FAMILY.map((f, i) => (
                   <span key={f.name}>
                     {i > 0 && ' · '}
-                    <a href={f.url} target="_blank" rel="noopener noreferrer" title={f.short}>
+                    <a
+                      href={f.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={f.short}
+                      data-umami-event="family-footer"
+                      data-umami-event-to={f.id}
+                    >
                       {f.name}
                     </a>
                   </span>
