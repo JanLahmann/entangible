@@ -27,6 +27,7 @@ import { TEST_BOARDS } from './testBoards';
 import { reduceViewer, CLOSED, type ViewerAction } from './viewer';
 import kitPdf from '../../../examples/print/entangible-print-kit-A4.pdf?url';
 import cubeFamily from '../../../examples/renders/cube-family.png';
+import fwqFamily from '../data/fwq-family.json';
 
 const REPO_URL = 'https://github.com/JanLahmann/entangible';
 const ISSUES_URL = 'https://github.com/JanLahmann/entangible/issues';
@@ -49,14 +50,14 @@ const LASER_KIT_URL = `${RELEASE_BASE}/entangible-laser-kit.zip`;
 const QAMPOSER_URL = 'https://qamposer.org';
 const FAMILY_URL = 'https://fun-with-quantum.org';
 
-/** Fun-with-Quantum sibling projects — same list and order as the family READMEs. */
-const FAMILY = [
-  { name: 'RasQberry Two', url: 'https://rasqberry.org' },
-  { name: 'RasQberry One', url: 'https://rasqberry.one' },
-  { name: 'Quantego', url: 'https://quantego.org' },
-  { name: 'Qutie', url: 'https://qutie.org' },
-  { name: 'Qoffee-Maker', url: 'https://qoffee-maker.org' },
-] as const;
+/**
+ * Fun-with-Quantum sibling projects, from the family manifest (family.json in
+ * JanLahmann/Fun-with-Quantum). The vendored copy in src/data/fwq-family.json is refreshed by an
+ * automated PR whenever the roster changes — do not edit it by hand. Members hidden from footers
+ * (`footer: false`) and Entangible itself are left out; the family home comes via FAMILY_URL.
+ */
+const FAMILY = (fwqFamily.members as { id: string; name: string; url: string; short?: string; footer: boolean }[])
+  .filter((m) => m.footer && m.id !== 'entangible' && m.id !== fwqFamily.brand.id);
 
 /**
  * The guide's sections, in nav order. `nav` is the chip label (kept short — the
@@ -695,7 +696,7 @@ export function GuidePage() {
                 {FAMILY.map((f, i) => (
                   <span key={f.name}>
                     {i > 0 && ' · '}
-                    <a href={f.url} target="_blank" rel="noopener noreferrer">
+                    <a href={f.url} target="_blank" rel="noopener noreferrer" title={f.short}>
                       {f.name}
                     </a>
                   </span>
