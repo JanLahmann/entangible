@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cryptoRng, type Rng } from '@shared/menu/sample';
+import { trackGame } from './analytics';
 import {
   GATE_BUTTONS,
   initRunner,
@@ -93,6 +94,21 @@ export function RunnerGame({
   }, []);
 
   const playing = state.status === 'playing';
+
+  // Umami `game` events: a run starts when the status enters 'playing' (also on mount — a new
+  // RunnerGame starts playing right away) and finishes when it leaves it. Level/score are read
+  // through a ref so the effect only reacts to status changes.
+  const latestRef = useRef(state);
+  latestRef.current = state;
+  const prevStatusRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = state.status;
+    if (prev === state.status) return;
+    const { level, score } = latestRef.current;
+    if (state.status === 'playing') trackGame('runner', 'start', { level });
+    else if (prev === 'playing') trackGame('runner', 'finish', { level, score: Math.round(score) });
+  }, [state.status]);
 
   // rAF tick loop — the ONLY timing source (the engine is pure). Runs while a
   // level is being played; a restart re-enters 'playing' and the effect restarts.
