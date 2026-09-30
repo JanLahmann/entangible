@@ -28,6 +28,7 @@ import { reduceViewer, CLOSED, type ViewerAction } from './viewer';
 import kitPdf from '../../../examples/print/entangible-print-kit-A4.pdf?url';
 import cubeFamily from '../../../examples/renders/cube-family.png';
 import fwqFamily from '../data/fwq-family.json';
+import { eventName } from './analytics';
 
 const REPO_URL = 'https://github.com/JanLahmann/entangible';
 const ISSUES_URL = 'https://github.com/JanLahmann/entangible/issues';
@@ -58,6 +59,9 @@ const FAMILY_URL = 'https://fun-with-quantum.org';
  */
 const FAMILY = (fwqFamily.members as { id: string; name: string; url: string; short?: string; footer: boolean }[])
   .filter((m) => m.footer && m.id !== 'entangible' && m.id !== fwqFamily.brand.id);
+
+/** Umami v2 name for a family-link click (`Entangible: family footer click`, label from the manifest). */
+const FAMILY_FOOTER_EVENT = eventName('family footer click');
 
 /**
  * The guide's sections, in nav order. `nav` is the chip label (kept short — the
@@ -701,7 +705,7 @@ export function GuidePage() {
                       target="_blank"
                       rel="noopener noreferrer"
                       title={f.short}
-                      data-umami-event="family-footer"
+                      data-umami-event={FAMILY_FOOTER_EVENT}
                       data-umami-event-to={f.id}
                     >
                       {f.name}

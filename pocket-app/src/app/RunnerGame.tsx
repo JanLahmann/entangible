@@ -95,7 +95,7 @@ export function RunnerGame({
 
   const playing = state.status === 'playing';
 
-  // Umami `game` events: a run starts when the status enters 'playing' (also on mount — a new
+  // Umami `Entangible: runner start` / `runner finish` events: a run starts when the status enters 'playing' (also on mount — a new
   // RunnerGame starts playing right away) and finishes when it leaves it. Level/score are read
   // through a ref so the effect only reacts to status changes.
   const latestRef = useRef(state);
@@ -106,8 +106,8 @@ export function RunnerGame({
     prevStatusRef.current = state.status;
     if (prev === state.status) return;
     const { level, score } = latestRef.current;
-    if (state.status === 'playing') trackGame('runner', 'start', { level });
-    else if (prev === 'playing') trackGame('runner', 'finish', { level, score: Math.round(score) });
+    if (state.status === 'playing') trackGame('runner start', { level });
+    else if (prev === 'playing') trackGame('runner finish', { level, score: Math.round(score) });
   }, [state.status]);
 
   // rAF tick loop — the ONLY timing source (the engine is pure). Runs while a
