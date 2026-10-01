@@ -2,19 +2,40 @@
 
 The mat is a ``rows x cols`` lattice of cells whose centres are laid out from
 ``grid_offset_{x,y}`` at a fixed ``pitch`` (all in board mm, from
-``assets.toml``). A tile is assigned to a cell only when its marker centre
-falls inside that cell's acceptance window; anything landing in the gutter
-between cells, or off the board entirely, is **rejected** rather than misfiled
-(design.md: "Cell mapping rejects off-grid tiles instead of misfiling").
+``assets.toml``). The two axes are mapped differently (#109):
+
+* **Rows** are a lattice (or wire, #95/#97) question: a tile takes the nearest
+  row only when its marker centre lies within half a cell height of it;
+  anything between two rows is **rejected** rather than misfiled (design.md:
+  "Cell mapping rejects off-grid tiles instead of misfiling" — rows only now).
+* **Columns** are derived from the tiles themselves: :func:`cluster_columns`
+  groups the tiles' actual x positions (tiles closer than
+  :data:`COLUMN_GAP_MM` are one column) and spaces the groups by the pitch. No
+  x position is ever rejected, so a tile pushed off its mat cell still lands
+  in the column it visibly belongs to.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+from typing import Sequence
 
 from .board import BoardConfig
 
-__all__ = ["GridConfig", "GridMapper"]
+__all__ = [
+    "COLUMN_GAP_MM",
+    "GridConfig",
+    "GridMapper",
+    "cluster_columns",
+    "round_half_up",
+]
+
+#: Largest x distance (board mm) between neighbouring tile centres that still
+#: counts as ONE column (#109): half a 60 mm tile. Centres closer than this would
+#: physically overlap, so they cannot be side by side in two columns — and a
+#: CNOT pair (● over ⊕) placed by hand slightly out of line stays inside it.
+COLUMN_GAP_MM = 30.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +111,11 @@ class GridConfig:
                 return y0 + (y1 - y0) * (x_mm - x0) / (x1 - x0)
         return self.wire_ys[row]
 
+    @property
+    def first_center_x(self) -> float:
+        """Board-mm x of lattice column 0's centre — :func:`cluster_columns`'s anchor."""
+        return self.grid_offset_x + self.cell_size / 2.0
+
     def cell_center(self, row: int, col: int) -> tuple[float, float]:
         """Board-mm coordinates of the centre of cell ``(row, col)``."""
         cx = self.grid_offset_x + self.cell_size / 2.0 + self.pitch * col
@@ -100,34 +126,33 @@ class GridConfig:
 
 
 class GridMapper:
-    """Maps board-mm points to cells with a tolerant, gutter-rejecting window.
+    """Maps a board-mm point to its ROW, with a tolerant, gap-rejecting window.
 
-    ``tolerance`` scales the half-cell acceptance window on each axis. With the
-    default of ``1.0`` a marker is accepted only if it lands within the cell's
-    own footprint (``+/- cell_size/2`` of the centre); the ``pitch - cell_size``
-    gutter between cells is a dead zone, so off-grid tiles are rejected.
+    Only the row is a lattice question any more (#109): columns are not read
+    off a fixed x-lattice but clustered from where the tiles actually lie
+    (:func:`cluster_columns`), so there is no x-window and no x gutter. On the
+    y axis ``tolerance`` scales the half-cell acceptance window: with the
+    default of ``1.0`` a marker is accepted only within ``+/- y_cell/2`` of its
+    row's wire or lattice line, so a tile between two rows is rejected rather
+    than misfiled.
     """
 
     def __init__(self, config: GridConfig, tolerance: float = 1.0) -> None:
         self.config = config
         self.tolerance = tolerance
 
-    def assign(self, x_mm: float, y_mm: float) -> tuple[int, int] | None:
-        """Return the ``(row, col)`` a board-mm point belongs to, or ``None``.
+    def assign_row(self, x_mm: float, y_mm: float) -> int | None:
+        """Return the row a board-mm point belongs to, or ``None``.
 
-        ``None`` means the point is outside the lattice or lies in the gutter
-        beyond the tolerance window — an off-grid tile that must be rejected.
+        The nearest explicit wire when qubit-wire blocks declare them (#95),
+        else the nearest y-lattice row. "Nearest" is measured to the wire AT
+        THIS TILE'S x, so a wire tilted by its measurement block (#97) is
+        followed rather than judged by where it started — that is the only use
+        of ``x_mm``. ``None`` means the point is on no row: between two wires
+        or rows beyond the tolerance window, or outside the lattice's rows.
         """
         cfg = self.config
-        half_window = (cfg.cell_size / 2.0) * self.tolerance
         half_window_y = (cfg.y_cell / 2.0) * self.tolerance
-
-        # Nearest column by the lattice spacing.
-        col = round((x_mm - (cfg.grid_offset_x + cfg.cell_size / 2.0)) / cfg.pitch)
-        # Nearest row: an explicit wire when qubit-wire blocks declare them
-        # (#95), else the y lattice. "Nearest" is measured to the wire AT THIS
-        # TILE'S x, so a wire tilted by its measurement block (#97) is followed
-        # rather than judged by where it started.
         if cfg.wire_ys is not None:
             if not cfg.wire_ys:
                 return None
@@ -135,12 +160,78 @@ class GridMapper:
                 range(len(cfg.wire_ys)),
                 key=lambda i: abs(y_mm - cfg.wire_y_at(i, x_mm)),
             )
+            line_y = cfg.wire_y_at(row, x_mm)
         else:
-            row = round((y_mm - (cfg.grid_offset_y + cfg.y_cell / 2.0)) / cfg.y_pitch)
-        if not (0 <= col < cfg.cols and 0 <= row < cfg.rows):
-            return None
-
-        cx, cy = cfg.cell_center(row, col)
-        if abs(x_mm - cx) <= half_window and abs(y_mm - cy) <= half_window_y:
-            return int(row), int(col)
+            row = round_half_up(
+                (y_mm - (cfg.grid_offset_y + cfg.y_cell / 2.0)) / cfg.y_pitch
+            )
+            if not 0 <= row < cfg.rows:
+                return None
+            line_y = cfg.grid_offset_y + cfg.y_cell / 2.0 + cfg.y_pitch * row
+        if abs(y_mm - line_y) <= half_window_y:
+            return int(row)
         return None
+
+
+def round_half_up(value: float) -> int:
+    """``floor(value + 0.5)`` — JavaScript ``Math.round`` semantics.
+
+    Python's built-in :func:`round` rounds halves to even, ``Math.round``
+    rounds them up; the pocket app mirrors this module exactly, so both sides
+    use this one rule and stay numerically identical at the halves.
+    """
+    return int(math.floor(value + 0.5))
+
+
+def cluster_columns(
+    xs: Sequence[float],
+    pitch: float,
+    first_center_x: float,
+    gap: float = COLUMN_GAP_MM,
+) -> list[int]:
+    """Column index for each tile x, derived from the tiles themselves (#109).
+
+    Single-linkage 1-D clustering: sort the x positions; wherever two
+    neighbours are more than ``gap`` apart a new column starts. Each cluster's
+    centroid then gets an index — the first ``max(0, round((x0 -
+    first_center_x) / pitch))``, every next one the previous plus ``max(1,
+    round(dx / pitch))`` of the centroid step — so the *spacing* still comes
+    from the pitch (an empty column between two tiles is kept) while the
+    columns themselves follow where the tiles really are.
+
+    Tiles placed exactly at mat lattice cell centres get exactly their lattice
+    column indices, for any subset of columns.
+
+    Args:
+        xs: board-mm x of each tile, in any order.
+        pitch: the lattice's x spacing (board mm).
+        first_center_x: x of lattice column 0's centre
+            (``grid_offset_x + cell_size / 2``).
+        gap: largest neighbour distance still inside one column.
+
+    Returns:
+        The column of each input x, in input order.
+    """
+    if not xs:
+        return []
+    order = sorted(range(len(xs)), key=lambda i: xs[i])
+    clusters: list[list[int]] = [[order[0]]]
+    for prev, cur in zip(order, order[1:]):
+        if xs[cur] - xs[prev] > gap:
+            clusters.append([cur])
+        else:
+            clusters[-1].append(cur)
+
+    cols = [0] * len(xs)
+    prev_centroid = 0.0
+    col = 0
+    for k, members in enumerate(clusters):
+        centroid = sum(xs[i] for i in members) / len(members)
+        if k == 0:
+            col = max(0, round_half_up((centroid - first_center_x) / pitch))
+        else:
+            col += max(1, round_half_up((centroid - prev_centroid) / pitch))
+        prev_centroid = centroid
+        for i in members:
+            cols[i] = col
+    return cols

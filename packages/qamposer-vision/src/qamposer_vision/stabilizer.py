@@ -1,7 +1,11 @@
 """Temporal stabilization — asymmetric hysteresis so hands don't cause flicker.
 
-A tile is a ``(marker_id, row, col, rotation)`` observation already resolved to
-a grid cell. ``rotation`` is the tile's board-frame 45° step (0-7); it is ``0``
+A tile is a ``(marker_id, row, x_bucket, rotation)`` observation: ``row`` is
+the qubit row it was resolved to, ``x_bucket`` its ABSOLUTE x position in
+:data:`~.pipeline.X_BUCKET_MM` steps (#109) — not a column. Columns are
+clustered from the whole stable set afterwards, so a key must not depend on
+any other tile: inserting one tile then leaves every other key untouched
+instead of renumbering the board through the hysteresis. ``rotation`` is the tile's board-frame 45° step (0-7); it is ``0``
 for every orientation-free tile and only varies for **dial** tiles, whose angle
 is chosen by how they are turned — so turning a dial in place changes the key
 and is treated as a real change (re-emitted, subject to the same hysteresis),
@@ -35,9 +39,10 @@ from typing import Iterable
 
 __all__ = ["Tile", "StabilizerResult", "TileStabilizer"]
 
-#: A grid-resolved tile observation: ``(marker_id, row, col, rotation)``.
-#: ``rotation`` is the board-frame 45° step (0-7): 0 for orientation-free
-#: tiles, and only dial tiles vary it.
+#: A tile observation: ``(marker_id, row, x_bucket, rotation)``. ``x_bucket``
+#: is the absolute x position in 10 mm buckets (#109; columns are clustered
+#: from the stable set, never keyed). ``rotation`` is the board-frame 45° step
+#: (0-7): 0 for orientation-free tiles, and only dial tiles vary it.
 Tile = tuple[int, int, int, int]
 
 
@@ -87,7 +92,8 @@ class TileStabilizer:
         """Advance one frame with the tiles observed on it.
 
         Args:
-            observed: the ``(marker_id, row, col)`` tiles seen this frame
+            observed: the ``(marker_id, row, x_bucket, rotation)`` tiles seen
+                this frame
                 (order irrelevant; duplicates collapse).
         """
         obs: frozenset[Tile] = frozenset(observed)

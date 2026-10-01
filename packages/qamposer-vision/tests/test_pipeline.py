@@ -10,7 +10,14 @@ import pytest
 
 from qamposer_vision.board import BoardConfig, fit_board
 from qamposer_vision.detector import ArucoDetector
-from qamposer_vision.pipeline import CircuitEvent, DetectionEvent, Pipeline
+from qamposer_vision.grid import GridConfig
+from qamposer_vision.pipeline import (
+    X_BUCKET_MM,
+    CircuitEvent,
+    DetectionEvent,
+    Pipeline,
+    x_bucket,
+)
 from qamposer_vision.sources import PushFrameSource, ReplaySource
 
 from tests.utils.make_recording import OUTPUT_DIR, make_recording
@@ -30,24 +37,95 @@ def _gate_types(circuit: dict) -> list[str]:
 
 def test_pipeline_maps_dial_rotation_into_stability_key() -> None:
     # A dial tile's board-frame rotation must reach the stabilizer observation
-    # tuple as (id, row, col, rot); a plain tile pins rot=0.
+    # tuple as (id, row, x_bucket, rot); a plain tile pins rot=0. The x is the
+    # absolute 10 mm bucket of the tile centre (#109), not a column.
     config = BoardConfig.from_toml()
     detector = ArucoDetector()
     pipeline = Pipeline(PushFrameSource(), board_config=config)
+    bucket = x_bucket(GridConfig.from_board_config(config).cell_center(0, 0)[0])
 
     for rotation in range(4):
         img = render_board(((42, 0, 0, rotation),), config, RenderOptions())
         markers = detector.detect(img)
         board = fit_board(markers, config)
         observations, _obs, _warn, _stray = pipeline._map_markers(markers, board)
-        assert observations == {(42, 0, 0, rotation)}
+        assert observations == {(42, 0, bucket, rotation)}
 
     # A non-dial tile always carries rotation 0, whatever way it is turned.
     img = render_board(((30, 0, 0, 2),), config, RenderOptions())
     markers = detector.detect(img)
     board = fit_board(markers, config)
     observations, _obs, _warn, _stray = pipeline._map_markers(markers, board)
-    assert observations == {(30, 0, 0, 0)}
+    assert observations == {(30, 0, bucket, 0)}
+
+
+class _ScriptedDetector:
+    """Stands in for ArucoDetector: each frame's markers were detected once."""
+
+    def __init__(self, scenes: dict[int, list]) -> None:
+        self._scenes = scenes
+
+    def detect(self, frame):
+        return self._scenes[id(frame)]
+
+
+def test_inserting_a_tile_left_of_all_others_never_drops_another() -> None:
+    """Insertion invariance (#109): only the new tile's key ever changes.
+
+    A stable Bell pair starts in lattice column 0. Then an X tile is placed
+    LEFT of everything — left of the lattice's first column, so it clamps to
+    column 0 and every existing gate's circuit column shifts right by one. The
+    hand placing it flickers it in and out for a few frames. Because tiles are
+    stabilized by absolute x bucket, not by column, no existing tile may leave
+    the stable set on any frame, every emitted circuit keeps the whole Bell
+    pair, and exactly one new circuit is emitted for the insertion.
+    """
+    config = BoardConfig.from_toml()
+    grid = GridConfig.from_board_config(config)
+    detector = ArucoDetector()
+    bell = ((30, 0, 0), (17, 0, 1), (15, 1, 1))
+    cx0, cy2 = grid.cell_center(2, 0)
+    left_x = cx0 - grid.pitch  # one pitch left of column 0's centre
+    frame_a = render_board(bell, config, RenderOptions())
+    frame_b = render_board(bell, config, RenderOptions(extra_mm=((35, left_x, cy2),)))
+    scenes = {id(frame_a): detector.detect(frame_a), id(frame_b): detector.detect(frame_b)}
+
+    events: list[CircuitEvent] = []
+    source = PushFrameSource()
+    pipeline = Pipeline(source, board_config=config, on_circuit=events.append)
+    pipeline._detector = _ScriptedDetector(scenes)  # type: ignore[assignment]
+
+    for _ in range(15):
+        pipeline._process_frame(frame_a, source)
+    settled = pipeline._stabilizer.stable
+    assert len(settled) == 3
+    assert {(mid, row) for (mid, row, _b, _r) in settled} == {(30, 0), (17, 0), (15, 1)}
+    before = len(events)
+    assert _gate_types(events[-1].circuit) == ["H", "CNOT"]
+
+    flicker = [frame_b, frame_a, frame_b, frame_b, frame_a, frame_b, frame_a, frame_b]
+    script = flicker + [frame_b] * 20
+    for frame in script:
+        pipeline._process_frame(frame, source)
+        # Every Bell tile keeps its exact key through the whole transition.
+        assert settled <= pipeline._stabilizer.stable
+
+    new_events = events[before:]
+    assert len(new_events) == 1
+    final = new_events[0].circuit
+    for evt in events[before - 1 :]:
+        gates = {(g["type"], g.get("qubit"), g.get("control"), g.get("target"))
+                 for g in evt.circuit["gates"]}
+        assert ("H", 0, None, None) in gates
+        assert ("CNOT", None, 0, 1) in gates
+    # The X took column 0; the Bell pair moved right as a block.
+    assert sorted(
+        (g["type"], g["position"]) for g in final["gates"]
+    ) == [("CNOT", 2), ("H", 1), ("X", 0)]
+    # ... and its key is its own absolute bucket (measured x within a bucket).
+    ((mid, row, bucket, rot),) = pipeline._stabilizer.stable - settled
+    assert (mid, row, rot) == (35, 2, 0)
+    assert abs(bucket * X_BUCKET_MM - left_x) <= X_BUCKET_MM
 
 
 def test_pipeline_emits_empty_then_h_then_bell(recording_dir) -> None:

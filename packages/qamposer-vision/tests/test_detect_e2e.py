@@ -73,15 +73,16 @@ def test_s_and_t_detect_to_rz_equivalents(config, detector) -> None:
     assert "S" not in types and "T" not in types
 
 
-def test_off_grid_tile_is_rejected(config, detector) -> None:
+def test_tile_between_rows_is_rejected(config, detector) -> None:
     from qamposer_vision.grid import GridConfig
 
     grid = GridConfig.from_board_config(config)
     cx, cy = grid.cell_center(0, 0)
-    # Drop an H tile deep in the gutter between cells 0 and 1 (off any footprint).
-    gutter_x = cx + config.cell_size / 2.0 + (config.pitch - config.cell_size) / 2.0
+    # Drop an H tile deep in the gap between rows 0 and 1 (off any row's
+    # half-cell window). Only rows reject since #109.
+    gap_y = cy + config.cell_size / 2.0 + (config.pitch - config.cell_size) / 2.0
     img = render_board(
-        (), config, RenderOptions(extra_mm=((30, gutter_x, cy),))
+        (), config, RenderOptions(extra_mm=((30, cx, gap_y),))
     )
     result = detect_circuit(img, config, detector=detector)
     assert result.circuit == {"qubits": 5, "gates": []}
@@ -89,6 +90,28 @@ def test_off_grid_tile_is_rejected(config, detector) -> None:
     off_grid = [w for w in result.warnings if w.kind == "off_grid"]
     assert len(off_grid) == 1
     assert off_grid[0].marker_ids == (30,)
+
+
+def test_tile_in_the_old_column_gutter_is_accepted(config, detector) -> None:
+    """#109: the x gutter between two mat cells no longer rejects a tile.
+
+    This tile used to be the off_grid example (outside column 0's half-cell
+    footprint); columns are now clustered from the tiles, so it is column 0.
+    """
+    from qamposer_vision.grid import GridConfig
+
+    grid = GridConfig.from_board_config(config)
+    cx, cy = grid.cell_center(0, 0)
+    gutter_x = cx + config.cell_size / 2.0 + 2.0
+    img = render_board(
+        (), config, RenderOptions(extra_mm=((30, gutter_x, cy),))
+    )
+    result = detect_circuit(img, config, detector=detector)
+    assert [w for w in result.warnings if w.kind == "off_grid"] == []
+    assert [(p.marker_id, p.row, p.col) for p in result.placements] == [(30, 0, 0)]
+    assert [(g["type"], g["qubit"], g["position"]) for g in result.circuit["gates"]] == [
+        ("H", 0, 0)
+    ]
 
 
 def test_no_board_when_corners_missing(config, detector) -> None:

@@ -188,21 +188,15 @@ describe('a paired wire is the segment through both block centres', () => {
     const onTheTilt = wireYAt(tilted.grid, 0, cx);
     expect(onTheTilt).toBeGreaterThan(200);
 
-    expect(new GridMapper(tilted.grid).assign(cx, onTheTilt)).toEqual({
-      row: 0,
-      col: last,
-    });
+    expect(new GridMapper(tilted.grid).assignRow(cx, onTheTilt)).toBe(0);
     // Without the span the same tile is not on wire 0 at all.
-    expect(new GridMapper(flat.grid).assign(cx, onTheTilt)).not.toEqual({
-      row: 0,
-      col: last,
-    });
+    expect(new GridMapper(flat.grid).assignRow(cx, onTheTilt)).not.toBe(0);
   });
 
   it('still rejects a tile that is on no wire', () => {
     const model = matBoardModel([150, 350], BOARD, [[30, 150, 700, 190], null]);
     const [cx] = new GridMapper(model.grid).cellCenter(0, 0);
-    expect(new GridMapper(model.grid).assign(cx, 260)).toBeNull();
+    expect(new GridMapper(model.grid).assignRow(cx, 260)).toBeNull();
   });
 
   it('drops a mismatched span list rather than misapplying it', () => {
@@ -600,20 +594,46 @@ describe('PocketPipeline ignores what is not on the board', () => {
     expect(result.circuit.gates.map((g) => [g.type, g.position])).toEqual([['H', 0]]);
   });
 
-  it('still warns off_grid for a tile inside the board but between cells', () => {
+  it('still warns off_grid for a tile inside the board but between rows', () => {
+    // Since #109 only the row can miss: a tile between two columns is
+    // clustered into one (next test), so the misplaced tile sits squarely
+    // between rows 2 and 3.
     const model = buildBoardModel(MAT_RECT_OF_BOARD, 'grid');
     const mapper = new GridMapper(model.grid);
     const [cx3, cy2] = mapper.cellCenter(2, 3);
-    const [cx4] = mapper.cellCenter(2, 4);
+    const [, cy3] = mapper.cellCenter(3, 3);
     const frame = renderBoard(model, [[30, 0, 0]], [], 2.0, {
-      loose: [[35, (cx3 + cx4) / 2, cy2]],
+      loose: [[35, cx3, (cy2 + cy3) / 2]],
     });
     const result = settle(new PocketPipeline({ boardLayout: 'grid' }), frame);
 
-    expect(result.warnings.filter((w) => w.kind === 'off_grid')).toHaveLength(1);
+    const offGrid = result.warnings.filter((w) => w.kind === 'off_grid');
+    expect(offGrid).toHaveLength(1);
+    expect(offGrid[0].marker_ids).toEqual([35]);
+    expect(offGrid[0].message).toContain('on no qubit wire');
     expect(result.warnings.filter((w) => w.kind === 'stray_tiles')).toEqual([]);
     expect(result.strayTiles).toBe(0);
     expect(result.circuit.gates.map((g) => [g.type, g.position])).toEqual([['H', 0]]);
+  });
+
+  it('files a tile between two columns into one (#109)', () => {
+    // 33 mm right of column 3's centre: outside its 31 mm half-cell, so it
+    // used to warn off_grid. Columns are now clustered from the tiles.
+    const model = buildBoardModel(MAT_RECT_OF_BOARD, 'grid');
+    const mapper = new GridMapper(model.grid);
+    const [cx3, cy2] = mapper.cellCenter(2, 3);
+    const frame = renderBoard(model, [[30, 0, 0]], [], 2.0, {
+      loose: [[35, cx3 + 33, cy2]],
+    });
+    const result = settle(new PocketPipeline({ boardLayout: 'grid' }), frame);
+
+    expect(result.warnings.filter((w) => w.kind === 'off_grid')).toEqual([]);
+    expect(
+      result.circuit.gates.map((g) => [g.type, g.qubit, g.position]).sort(),
+    ).toEqual([
+      ['H', 0, 0],
+      ['X', 2, 3],
+    ]);
   });
 
   it('shrugs off five spare tiles heaped beside the board, frame after frame', () => {

@@ -18,7 +18,7 @@ import {
 } from '../src/vision/detect';
 import { fitBoard } from '../src/vision/board';
 import { guidedRedetect } from '../src/vision/guided';
-import { GridMapper } from '../src/vision/grid';
+import { GridMapper, clusterColumns, firstCenterX } from '../src/vision/grid';
 import { BOARD, TILE, cornerMarkerSquare } from '../src/vision/geometry';
 import dictionary from '../src/vision/dictionary.json';
 
@@ -162,6 +162,7 @@ describe('grid-guided redetection', () => {
     const rescuedH = rescued.find((m) => m.id === 30);
     expect(rescuedH).toBeDefined();
     const [bx, by] = board!.imageToBoard(rescuedH!.center);
-    expect(grid.assign(bx, by)).toEqual({ row: 0, col: 0 });
+    expect(grid.assignRow(bx, by)).toBe(0);
+    expect(clusterColumns([bx], BOARD.pitch, firstCenterX(BOARD))).toEqual([0]);
   });
 });

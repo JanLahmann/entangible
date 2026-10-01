@@ -42,8 +42,9 @@ from .circuit_builder import (
     stray_tiles_warning,
 )
 from .detector import ArucoDetector, DetectedMarker
-from .grid import GridMapper
+from .grid import GridMapper, cluster_columns
 from .markers import CORNER_IDS, MARKER_TABLE, MEASURE_BLOCK_ID
+from .pipeline import off_grid_warning
 from .qasm import circuit_to_qasm
 from .wires import (
     measure_points,
@@ -150,38 +151,41 @@ def detect_circuit(
     ]
     warnings += stray_furniture_warnings(strays)
     stray_tiles = 0
+    # (marker id, row, x, rotation) of every tile on a row; columns are
+    # clustered from all of them at once below (#109).
+    on_rows: list[tuple[int, int, float, int]] = []
     for marker in markers:
         if marker.id in CORNER_IDS or marker.id not in MARKER_TABLE:
             continue  # corner fiducial or unknown ID -> not a gate tile
         board_xy = board.image_to_board(marker.center)[0]
         # Off the board entirely (the kit heaped on the table beside it) is not
         # a misplacement: drop it silently and only count it. On the board but
-        # off a cell keeps its off_grid warning below.
+        # on no row keeps its off_grid warning below.
         if not on_board(float(board_xy[0]), float(board_xy[1]), base.rect):
             stray_tiles += 1
             continue
-        cell = grid.assign(float(board_xy[0]), float(board_xy[1]))
-        if cell is None:
-            warnings.append(
-                BuildWarning(
-                    kind="off_grid",
-                    message=(
-                        f"Tile marker {marker.id} "
-                        f"({MARKER_TABLE[marker.id].label}) at board "
-                        f"({board_xy[0]:.0f}, {board_xy[1]:.0f}) mm does not fall "
-                        "on any cell; excluded."
-                    ),
-                    marker_ids=(marker.id,),
-                )
-            )
+        x_mm, y_mm = float(board_xy[0]), float(board_xy[1])
+        row = grid.assign_row(x_mm, y_mm)
+        if row is None:
+            warnings.append(off_grid_warning(marker.id, x_mm, y_mm))
             continue
-        row, col = cell
         # Dial tiles (42/43/44) select their angle from the board-frame rotation
         # (0-7, clockwise 45° steps → DIAL_ANGLES).
         spec = MARKER_TABLE[marker.id]
         rotation = board.marker_rotation(marker) if spec.dial_axis is not None else 0
+        on_rows.append((marker.id, row, x_mm, rotation))
+
+    # One still frame needs no stabilizer, so the tiles' measured x positions
+    # are clustered directly — the same columns the live pipeline derives from
+    # its stable set.
+    cols = cluster_columns(
+        [x for _mid, _row, x, _rot in on_rows],
+        model.grid.pitch,
+        model.grid.first_center_x,
+    )
+    for (mid, row, _x, rotation), col in zip(on_rows, cols):
         placements.append(
-            TilePlacement(marker_id=marker.id, row=row, col=col, rotation=rotation)
+            TilePlacement(marker_id=mid, row=row, col=col, rotation=rotation)
         )
 
     if stray_tiles:

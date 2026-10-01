@@ -20,7 +20,7 @@ import {
   type BoardResult,
 } from './board';
 import { guidedRedetect } from './guided';
-import { GridMapper } from './grid';
+import { GridMapper, clusterColumns, firstCenterX, roundHalfUp } from './grid';
 import {
   BOARD,
   CORNER_IDS,
@@ -71,6 +71,46 @@ import {
  * the user's business, hence a loose bound rather than a tight one.
  */
 export const SPAN_MIN_FRACTION = 0.5;
+
+/**
+ * Width (board mm) of the absolute x buckets a tile is stabilized under (#109).
+ * Mirrors `pipeline.X_BUCKET_MM`.
+ *
+ * Columns are clustered from the tiles' actual x positions, so a column index is
+ * a property of the whole board, not of one tile — inserting a tile left of all
+ * others renumbers every column to its right. Had the stabilizer keyed tiles by
+ * that per-frame column, one inserted tile would change EVERY key at once and
+ * flap the whole board through the hysteresis. Keys must be insertion-invariant,
+ * so a tile is keyed by `round(x / X_BUCKET_MM)` — an absolute position no other
+ * tile can move — and columns are clustered only from the STABLE set, at
+ * emission. 10 mm is far below the 30 mm cluster gap (`COLUMN_GAP_MM`), so
+ * bucketing never merges or splits a column; it only absorbs sub-bucket jitter.
+ */
+export const X_BUCKET_MM = 10.0;
+
+/** The absolute x bucket of a tile centre — its stability-key x (#109). */
+export function xBucket(xMm: number): number {
+  return roundHalfUp(xMm / X_BUCKET_MM);
+}
+
+/**
+ * The `off_grid` warning for a tile on the board but on no row. Since #109 only
+ * the row can miss: columns are clustered from wherever the tiles lie, so "off
+ * grid" now means between two qubit wires / lattice rows. Mirrors
+ * `pipeline.off_grid_warning`.
+ */
+export function offGridWarning(markerId: number, xMm: number, yMm: number): BuildWarning {
+  return {
+    kind: 'off_grid',
+    message:
+      `Tile marker ${markerId} (${MARKER_TABLE.get(markerId)!.label}) at board ` +
+      `(${xMm.toFixed(0)}, ${yMm.toFixed(0)}) mm is on the board but on no qubit ` +
+      'wire; excluded.',
+    row: null,
+    col: null,
+    marker_ids: [markerId],
+  };
+}
 
 export interface MarkerObs {
   readonly id: number;
@@ -178,7 +218,7 @@ export function strayFurnitureWarnings(strays: readonly StrayBlock[]): BuildWarn
 /**
  * One warning for a frame's off-board gate tiles — again, just the count.
  *
- * Distinct from `off_grid`: those tiles ARE on the board and missed a cell,
+ * Distinct from `off_grid`: those tiles ARE on the board and missed a row,
  * which is a mistake worth pointing at. These are simply not in play, which at a
  * booth is what most of the kit is doing at any moment. Mirrors
  * `circuit_builder.stray_tiles_warning`.
@@ -374,7 +414,12 @@ export class PocketPipeline {
   }
 
   /**
-   * Map gate tiles onto cells; also count the ones that are off the board.
+   * Map gate tiles onto rows + x buckets; also count the ones off the board.
+   *
+   * Each accepted tile is observed as `(markerId, row, xBucket, rotation)` — an
+   * absolute x bucket, not a column (see `X_BUCKET_MM` for why the key must be
+   * insertion-invariant). The columns in the `MarkerObs` debug rows are
+   * clustered from this frame's accepted tiles alone and are display-only.
    *
    * Two different failures, deliberately told apart (#97 follow-up):
    *
@@ -383,9 +428,10 @@ export class PocketPipeline {
    *   nothing in the stabilizer. That is the booth case: the unused kit lies on
    *   the table right next to the board, and it must not spam warnings or wobble
    *   the hysteresis. Only the count leaves this method.
-   * - a tile **on the board** that lands on no cell keeps its `off_grid` warning
-   *   and its debug-table row. That one is a real "you misplaced a tile" signal
-   *   and is worth the noise.
+   * - a tile **on the board** that lands on no row (between two wires or
+   *   lattice rows) keeps its `off_grid` warning and its debug-table row. That
+   *   one is a real "you misplaced a tile" signal and is worth the noise. No x
+   *   position is rejected: columns are clustered (#109).
    *
    * Mirrors `pipeline._map_markers`.
    */
@@ -404,6 +450,9 @@ export class PocketPipeline {
     const markerObs: MarkerObs[] = [];
     const offGridWarnings: BuildWarning[] = [];
     let strayTiles = 0;
+    // [index into markerObs, marker id, row, x] of each accepted tile, so the
+    // debug rows can get this frame's clustered columns afterwards.
+    const accepted: Array<[number, number, number, number]> = [];
 
     for (const marker of markers) {
       if (String(marker.id) in CORNER_IDS || !MARKER_TABLE.has(marker.id)) continue;
@@ -416,17 +465,10 @@ export class PocketPipeline {
         strayTiles += 1;
         continue;
       }
-      const cell = grid.assign(bx, by);
-      if (cell === null) {
+      const row = grid.assignRow(bx, by);
+      if (row === null) {
         markerObs.push({ id: marker.id, row: null, col: null, offGrid: true });
-        // Mirrors pipeline.py's `off_grid` warning.
-        offGridWarnings.push({
-          kind: 'off_grid',
-          message: `Tile marker ${marker.id} (${MARKER_TABLE.get(marker.id)!.label}) at board (${bx.toFixed(0)}, ${by.toFixed(0)}) mm does not fall on any cell; excluded.`,
-          row: null,
-          col: null,
-          marker_ids: [marker.id],
-        });
+        offGridWarnings.push(offGridWarning(marker.id, bx, by));
         continue;
       }
       // Dial tiles carry their board-frame rotation (0-7, 45° steps) in the
@@ -434,11 +476,48 @@ export class PocketPipeline {
       // rotation 0.
       const spec = MARKER_TABLE.get(marker.id)!;
       const rot = spec.dialAxis ? boardFrameRotation(marker, board) : 0;
-      observations.push(tileKey(marker.id, cell.row, cell.col, rot));
-      markerObs.push({ id: marker.id, row: cell.row, col: cell.col, offGrid: false });
+      observations.push(tileKey(marker.id, row, xBucket(bx), rot));
+      accepted.push([markerObs.length, marker.id, row, bx]);
+      markerObs.push({ id: marker.id, row, col: null, offGrid: false });
     }
 
+    const cols = clusterColumns(
+      accepted.map(([, , , x]) => x),
+      grid.config.pitch,
+      firstCenterX(grid.config),
+    );
+    accepted.forEach(([i, id, row], k) => {
+      markerObs[i] = { id, row, col: cols[k], offGrid: false };
+    });
+
     return { observations, markerObs, offGridWarnings, strayTiles };
+  }
+
+  /**
+   * Resolve the stable `(id, row, xBucket, rot)` set into placements. Mirrors
+   * `pipeline._stable_placements`.
+   *
+   * Columns are clustered from the stable tiles' bucket centres (#109), so they
+   * follow the whole stable board and nothing else. Two keys of one tile that
+   * straddle a bucket boundary land in the same column and collapse to one
+   * placement, exactly as a single key did before.
+   */
+  private stablePlacements(stable: ReadonlySet<Tile>): TilePlacement[] {
+    const tiles = [...stable].map(parseTile).sort(compareTuples);
+    const cfg = this.model.grid;
+    const cols = clusterColumns(
+      tiles.map(([, , bucket]) => bucket * X_BUCKET_MM),
+      cfg.pitch,
+      firstCenterX(cfg),
+    );
+    const unique = new Map<string, [number, number, number, number]>();
+    tiles.forEach(([markerId, row, , rotation], k) => {
+      const t: [number, number, number, number] = [markerId, row, cols[k], rotation];
+      unique.set(t.join(','), t);
+    });
+    return [...unique.values()]
+      .sort(compareTuples)
+      .map(([markerId, row, col, rotation]) => ({ markerId, row, col, rotation }));
   }
 
   /**
@@ -535,10 +614,7 @@ export class PocketPipeline {
   }
 
   private rebuild(stable: ReadonlySet<Tile>): boolean {
-    const placements: TilePlacement[] = [...stable].map((t) => {
-      const [markerId, row, col, rotation] = parseTile(t);
-      return { markerId, row, col, rotation };
-    });
+    const placements = this.stablePlacements(stable);
     // Qubit count follows the active model: the mat's five rows, the rows
     // derived from the board height, or one per qubit-wire block (#95).
     const build = buildCircuit(placements, this.model.rows);
@@ -565,6 +641,14 @@ export class PocketPipeline {
     });
     return combined;
   }
+}
+
+/** Lexicographic order on number tuples — Python's tuple ordering. */
+function compareTuples(a: readonly number[], b: readonly number[]): number {
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return a.length - b.length;
 }
 
 function circuitsEqual(

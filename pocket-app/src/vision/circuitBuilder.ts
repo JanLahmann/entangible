@@ -66,7 +66,7 @@ export type WarningKind =
   // Pieces seen OFF the board and dropped before they could reach cell mapping
   // or the stabilizers — at a booth the unused kit lies on the table right next
   // to the board. One counted line per frame, never one per piece, and never
-  // `off_grid`: those tiles ARE on the board and missed a cell.
+  // `off_grid`: those tiles ARE on the board and missed a row.
   | 'stray_furniture'
   | 'stray_tiles';
 

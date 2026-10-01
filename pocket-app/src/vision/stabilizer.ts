@@ -10,16 +10,19 @@
  */
 
 /**
- * A grid-resolved tile observation `(markerId, row, col, rotation)`, packed as a
- * string key. `rotation` is the board-frame 45° step (0-7); it is 0 for every
+ * A tile observation `(markerId, row, xBucket, rotation)`, packed as a string
+ * key. `xBucket` is the tile's ABSOLUTE x position in `X_BUCKET_MM` steps
+ * (#109) — not a column: columns are clustered from the whole stable set
+ * afterwards, so a key must not depend on any other tile (inserting one tile
+ * then leaves every other key untouched). `rotation` is the board-frame 45° step (0-7); it is 0 for every
  * orientation-free tile and only varies for dial tiles, whose angle is chosen by
  * how they are turned — so turning a dial in place changes the key (a real
  * change under the same hysteresis) while a within-octant wiggle keeps it.
  */
 export type Tile = string;
 
-export function tileKey(markerId: number, row: number, col: number, rotation = 0): Tile {
-  return `${markerId},${row},${col},${rotation}`;
+export function tileKey(markerId: number, row: number, xBucket: number, rotation = 0): Tile {
+  return `${markerId},${row},${xBucket},${rotation}`;
 }
 
 export function parseTile(tile: Tile): [number, number, number, number] {

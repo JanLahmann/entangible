@@ -57,7 +57,7 @@ from .circuit_builder import (
     stray_tiles_warning,
 )
 from .detector import ArucoDetector
-from .grid import GridConfig, GridMapper
+from .grid import GridConfig, GridMapper, cluster_columns, round_half_up
 from .markers import CORNER_IDS, MARKER_TABLE, MEASURE_BLOCK_ID, QUBIT_WIRE_ID
 from .qasm import circuit_to_qasm
 from .sources import FrameSource
@@ -73,7 +73,15 @@ from .wires import (
     wire_points,
 )
 
-__all__ = ["MarkerObs", "CircuitEvent", "DetectionEvent", "Pipeline"]
+__all__ = [
+    "X_BUCKET_MM",
+    "off_grid_warning",
+    "MarkerObs",
+    "CircuitEvent",
+    "DetectionEvent",
+    "Pipeline",
+    "x_bucket",
+]
 
 logger = logging.getLogger("qamposer_vision.pipeline")
 
@@ -89,14 +97,54 @@ _FPS_ALPHA = 0.3
 #: edge is the user's business, hence a loose bound rather than a tight one.
 SPAN_MIN_FRACTION = 0.5
 
+#: Width (board mm) of the absolute x buckets a tile is stabilized under (#109).
+#:
+#: Columns are clustered from the tiles' actual x positions, so a column index
+#: is a property of the whole board, not of one tile — inserting a tile left of
+#: all others renumbers every column to its right. Had the stabilizer keyed
+#: tiles by that per-frame column, one inserted tile would change EVERY key at
+#: once and flap the whole board through the hysteresis (each tile "leaving"
+#: under its old column while it "appears" under its new one). Keys must be
+#: insertion-invariant, so a tile is keyed by ``round(x / X_BUCKET_MM)`` — an
+#: absolute position that no other tile can move — and columns are clustered
+#: only from the STABLE set, at emission. 10 mm is far below the 30 mm cluster
+#: gap (:data:`~.grid.COLUMN_GAP_MM`), so bucketing never merges or splits a
+#: column; it only absorbs sub-bucket jitter.
+X_BUCKET_MM = 10.0
+
+
+def x_bucket(x_mm: float) -> int:
+    """The absolute x bucket of a tile centre — its stability-key x (#109)."""
+    return round_half_up(x_mm / X_BUCKET_MM)
+
+
+def off_grid_warning(marker_id: int, x_mm: float, y_mm: float) -> BuildWarning:
+    """The ``off_grid`` warning for a tile on the board but on no row.
+
+    Since #109 only the row can miss: columns are clustered from wherever the
+    tiles lie, so "off grid" now means between two qubit wires / lattice rows.
+    Shared by the live pipeline and the static ``detect`` CLI.
+    """
+    return BuildWarning(
+        kind="off_grid",
+        message=(
+            f"Tile marker {marker_id} ({MARKER_TABLE[marker_id].label}) at board "
+            f"({x_mm:.0f}, {y_mm:.0f}) mm is on the board but on no qubit "
+            "wire; excluded."
+        ),
+        marker_ids=(marker_id,),
+    )
+
 
 @dataclass(frozen=True, slots=True)
 class MarkerObs:
     """One detected gate marker as reported in a :class:`DetectionEvent`.
 
-    Corner fiducials (IDs 0-3) are never reported here. On-grid tiles carry
-    ``row``/``col``; tiles rejected by grid mapping carry ``off_grid=True`` and
-    leave ``row``/``col`` as ``None``. Serialized to the camelCase
+    Corner fiducials (IDs 0-3) are never reported here. Tiles on a row carry
+    ``row``/``col`` (``col`` clustered from THIS frame's tiles, #109 — display
+    only; the circuit's columns come from the stable set); tiles on the board
+    but on no row carry ``off_grid=True`` and leave ``row``/``col`` as
+    ``None``. Serialized to the camelCase
     ``{id, row, col}`` / ``{id, offGrid: true}`` shapes by the host.
     """
 
@@ -507,7 +555,13 @@ class Pipeline:
         grid: GridMapper | None = None,
         rect: BoardRect | None = None,
     ) -> tuple[set[Tile], list[MarkerObs], list[BuildWarning], int]:
-        """Map gate tiles onto cells; also count the ones that are off the board.
+        """Map gate tiles onto rows + x buckets; also count the ones off the board.
+
+        Each accepted tile is observed as ``(marker_id, row, x_bucket,
+        rotation)`` — an absolute x bucket, not a column (see
+        :data:`X_BUCKET_MM` for why the key must be insertion-invariant). The
+        columns reported in the ``MarkerObs`` debug rows are clustered from
+        this frame's accepted tiles alone and are display-only.
 
         Two different failures, deliberately told apart (#97 follow-up):
 
@@ -517,9 +571,10 @@ class Pipeline:
           booth case: the unused kit lies on the table right next to the board,
           and it must not spam warnings or wobble the hysteresis. Only the
           count leaves this function.
-        * a tile **on the board** that lands on no cell keeps its ``off_grid``
-          warning and its debug-table row. That one is a real "you misplaced a
-          tile" signal and is worth the noise.
+        * a tile **on the board** that lands on no row (between two wires or
+          lattice rows) keeps its ``off_grid`` warning and its debug-table row.
+          That one is a real "you misplaced a tile" signal and is worth the
+          noise. No x position is rejected: columns are clustered (#109).
         """
         if grid is None:
             grid = GridMapper(self._model.grid)
@@ -527,6 +582,9 @@ class Pipeline:
         marker_obs: list[MarkerObs] = []
         off_grid_warnings: list[BuildWarning] = []
         stray_tiles = 0
+        # (index into marker_obs, marker id, row, x) of each accepted tile, so
+        # the debug rows can get this frame's clustered columns afterwards.
+        accepted: list[tuple[int, int, int, float]] = []
 
         for marker in markers:
             if marker.id in CORNER_IDS or marker.id not in MARKER_TABLE:
@@ -540,40 +598,58 @@ class Pipeline:
             ):
                 stray_tiles += 1
                 continue
-            cell = grid.assign(float(board_xy[0]), float(board_xy[1]))
-            if cell is None:
+            x_mm, y_mm = float(board_xy[0]), float(board_xy[1])
+            row = grid.assign_row(x_mm, y_mm)
+            if row is None:
                 marker_obs.append(MarkerObs(id=marker.id, off_grid=True))
-                off_grid_warnings.append(
-                    BuildWarning(
-                        kind="off_grid",
-                        message=(
-                            f"Tile marker {marker.id} "
-                            f"({MARKER_TABLE[marker.id].label}) at board "
-                            f"({board_xy[0]:.0f}, {board_xy[1]:.0f}) mm does not "
-                            "fall on any cell; excluded."
-                        ),
-                        marker_ids=(marker.id,),
-                    )
-                )
+                off_grid_warnings.append(off_grid_warning(marker.id, x_mm, y_mm))
                 continue
-            row, col = cell
             # Dial tiles carry their board-frame rotation (0-7, 45° steps) in the
             # stability key so turning one in place re-emits; every other tile
             # pins rotation 0.
             spec = MARKER_TABLE[marker.id]
             rot = board.marker_rotation(marker) if spec.dial_axis is not None else 0
-            observations.add((marker.id, row, col, rot))
-            marker_obs.append(MarkerObs(id=marker.id, row=row, col=col))
+            observations.add((marker.id, row, x_bucket(x_mm), rot))
+            accepted.append((len(marker_obs), marker.id, row, x_mm))
+            marker_obs.append(MarkerObs(id=marker.id, row=row))
+
+        cfg = grid.config
+        cols = cluster_columns(
+            [x for _i, _mid, _row, x in accepted], cfg.pitch, cfg.first_center_x
+        )
+        for (i, mid, row, _x), col in zip(accepted, cols):
+            marker_obs[i] = MarkerObs(id=mid, row=row, col=col)
 
         return observations, marker_obs, off_grid_warnings, stray_tiles
+
+    def _stable_placements(self, stable: frozenset[Tile]) -> list[TilePlacement]:
+        """Resolve the stable ``(id, row, x_bucket, rot)`` set into placements.
+
+        Columns are clustered from the stable tiles' bucket centres (#109), so
+        they follow the whole stable board and nothing else. Two keys of one
+        tile that straddle a bucket boundary land in the same column and
+        collapse to one placement, exactly as a single key did before.
+        """
+        tiles = sorted(stable)
+        cfg = self._model.grid
+        cols = cluster_columns(
+            [bucket * X_BUCKET_MM for (_mid, _row, bucket, _rot) in tiles],
+            cfg.pitch,
+            cfg.first_center_x,
+        )
+        unique = {
+            (mid, row, col, rot)
+            for (mid, row, _bucket, rot), col in zip(tiles, cols)
+        }
+        return [
+            TilePlacement(marker_id=mid, row=row, col=col, rotation=rot)
+            for (mid, row, col, rot) in sorted(unique)
+        ]
 
     def _rebuild_and_maybe_emit(
         self, stable: frozenset[Tile], source: FrameSource
     ) -> None:
-        placements = [
-            TilePlacement(marker_id=mid, row=row, col=col, rotation=rot)
-            for (mid, row, col, rot) in stable
-        ]
+        placements = self._stable_placements(stable)
         # Qubit count follows the active model: the mat's five rows, the rows
         # derived from the board height, or one per qubit-wire block (#95).
         build = build_circuit(placements, self._model.rows)
@@ -608,7 +684,7 @@ class Pipeline:
         stable: frozenset[Tile],
         warnings: list[BuildWarning],
     ) -> None:
-        occupied = {(row, col) for (_mid, row, col, _rot) in stable}
+        occupied = {(p.row, p.col) for p in self._stable_placements(stable)}
         annotated = annotate_frame(
             frame,
             markers=markers,

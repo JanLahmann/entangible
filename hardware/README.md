@@ -496,8 +496,9 @@ board homography is solved on the mat's corner markers, which lie *on* the board
 A camera that is not looking straight down therefore sees a cube's top face
 shifted **laterally** relative to where a flat tile would sit (parallax grows
 with height and viewing angle). At steep camera angles this lateral shift can
-push a cube's detected centre outside the grid tolerance and the tile may be
-**rejected as off-grid**. Cubes want a **near-vertical camera**; if you use them,
+push a cube's detected centre outside the row tolerance and the tile may be
+**rejected as off-grid** (columns are clustered from the tiles' own positions,
+so a sideways shift is absorbed, but a shift across the wires is not). Cubes want a **near-vertical camera**; if you use them,
 mount the camera high and centred, or prefer the flat `tile` variant for
 oblique-camera booths.
 

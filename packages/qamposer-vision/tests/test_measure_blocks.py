@@ -192,9 +192,9 @@ def test_a_tilted_wire_carries_its_tiles(config: BoardConfig) -> None:
     on_the_tilt = tilted.grid.wire_y_at(0, cx)
     assert on_the_tilt > 200.0  # really has moved most of the way over
 
-    assert GridMapper(tilted.grid).assign(cx, on_the_tilt) == (0, last)
+    assert GridMapper(tilted.grid).assign_row(cx, on_the_tilt) == 0
     # Without the span the same tile is not on wire 0 at all.
-    assert GridMapper(flat.grid).assign(cx, on_the_tilt) != (0, last)
+    assert GridMapper(flat.grid).assign_row(cx, on_the_tilt) != 0
 
 
 def test_snapping_still_rejects_a_tile_that_is_on_no_wire(
@@ -203,7 +203,7 @@ def test_snapping_still_rejects_a_tile_that_is_on_no_wire(
     """A tilt is not a licence to guess — the half-cell window still applies."""
     model = mat_board_model(config, (150.0, 350.0), ((30.0, 150.0, 700.0, 190.0), None))
     cx, _cy = model.grid.cell_center(0, 0)
-    assert GridMapper(model.grid).assign(cx, 260.0) is None
+    assert GridMapper(model.grid).assign_row(cx, 260.0) is None
 
 
 def test_a_mismatched_span_list_is_dropped_not_misapplied(
@@ -642,13 +642,16 @@ def test_end_to_end_a_tile_beside_the_board_is_dropped_silently(
 def test_end_to_end_a_tile_inside_the_board_still_warns_off_grid(
     config: BoardConfig, detector: ArucoDetector
 ) -> None:
-    """The signal we keep: on the board, between cells, genuinely misplaced."""
+    """The signal we keep: on the board, between two ROWS, genuinely misplaced.
+
+    Since #109 only the row can miss — a tile between two columns is clustered
+    into one (see the next test) — so the misplaced tile sits squarely between
+    rows 2 and 3, well clear of the H tile so the markers cannot overlap.
+    """
     grid = GridConfig.from_board_config(config)
     cx3, cy2 = grid.cell_center(2, 3)
-    cx4, _cy = grid.cell_center(2, 4)
-    # Squarely in the gutter between two cells, and well clear of the H tile so
-    # the two markers cannot overlap in the render.
-    between = ((35, (cx3 + cx4) / 2.0, cy2),)
+    _cx, cy3 = grid.cell_center(3, 3)
+    between = ((35, cx3, (cy2 + cy3) / 2.0),)
     img = render_board(
         ((30, 0, 0),),
         config,
@@ -657,8 +660,38 @@ def test_end_to_end_a_tile_inside_the_board_still_warns_off_grid(
     result = detect_circuit(img, config, detector=detector)
     kinds = [w.kind for w in result.warnings]
     assert kinds.count("off_grid") == 1
+    off = next(w for w in result.warnings if w.kind == "off_grid")
+    assert off.marker_ids == (35,)
+    assert "on no qubit wire" in off.message
     assert "stray_tiles" not in kinds
     assert [(g["type"], g["position"]) for g in result.circuit["gates"]] == [("H", 0)]
+
+
+def test_end_to_end_a_tile_between_two_columns_joins_one(
+    config: BoardConfig, detector: ArucoDetector
+) -> None:
+    """#109: an x between two mat cells is no longer rejected.
+
+    Before, a tile in the gutter between columns 3 and 4 (33 mm right of
+    column 3's centre, outside its 31 mm half-cell) warned ``off_grid``; now
+    its column is clustered from where it lies, and 33 mm right of column 3
+    is still column 3.
+    """
+    grid = GridConfig.from_board_config(config)
+    cx3, cy2 = grid.cell_center(2, 3)
+    pushed = ((35, cx3 + 33.0, cy2),)
+    img = render_board(
+        ((30, 0, 0),),
+        config,
+        RenderOptions(px_per_mm=3.0, extra_mm=pushed),
+    )
+    result = detect_circuit(img, config, detector=detector)
+    kinds = [w.kind for w in result.warnings]
+    assert "off_grid" not in kinds
+    assert sorted((p.marker_id, p.row, p.col) for p in result.placements) == [
+        (30, 0, 0),
+        (35, 2, 3),
+    ]
 
 
 def test_end_to_end_booth_inventory_beside_the_board(

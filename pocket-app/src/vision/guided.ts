@@ -24,7 +24,7 @@ import type { BoardResult } from './board';
 import { CORNER_IDS, TILE, type Point } from './geometry';
 import { matBoardModel, type BoardModel } from './boardModel';
 import { MARKER_TABLE } from './markers';
-import type { GridMapper } from './grid';
+import { COLUMN_GAP_MM, type GridMapper } from './grid';
 
 /** Jitter offsets (image px) applied to the projected quad — the homography and
  * cell centring are never pixel-perfect, so a couple of ±2-3 px nudges recover
@@ -53,13 +53,18 @@ export function guidedRedetect(
   model: BoardModel = matBoardModel(),
   stats?: GuidedStats,
 ): DetectedMarker[] {
-  // Cells already claimed by a blind tile detection — never re-attempt them.
-  const occupied = new Set<string>();
+  // Blind tile detections on a row: [row, board-mm x]. A lattice cell is
+  // already claimed — never re-attempted — when a blind tile on its row lies
+  // within COLUMN_GAP_MM of its centre, i.e. exactly when a tile at that centre
+  // would cluster into the blind tile's column (#109). Rows and columns thus
+  // follow the same row + cluster rule as the pipeline; the lattice is only
+  // where a missing marker is *probed*, never what files it.
+  const claimed: Array<[number, number]> = [];
   for (const m of blind) {
     if (String(m.id) in CORNER_IDS || !MARKER_TABLE.has(m.id)) continue;
     const [bx, by] = board.imageToBoard(m.center);
-    const cell = grid.assign(bx, by);
-    if (cell) occupied.add(`${cell.row},${cell.col}`);
+    const row = grid.assignRow(bx, by);
+    if (row !== null) claimed.push([row, bx]);
   }
 
   const half = TILE.markerSize / 2;
@@ -70,9 +75,9 @@ export function guidedRedetect(
   // blocks may have replaced the rows (#94/#95).
   for (let row = 0; row < model.rows; row++) {
     for (let col = 0; col < model.cols; col++) {
-      if (occupied.has(`${row},${col}`)) continue;
-
       const [cx, cy] = grid.cellCenter(row, col);
+      if (claimed.some(([r, x]) => r === row && Math.abs(x - cx) <= COLUMN_GAP_MM)) continue;
+
       const quadMm: [Point, Point, Point, Point] = [
         [cx - half, cy - half],
         [cx + half, cy - half],

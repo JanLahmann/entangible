@@ -133,7 +133,7 @@ def stray_furniture_warnings(
 def stray_tiles_warning(count: int) -> BuildWarning:
     """One warning for a frame's off-board gate tiles — again, just the count.
 
-    Distinct from ``off_grid``: those tiles ARE on the board and missed a cell,
+    Distinct from ``off_grid``: those tiles ARE on the board and missed a row,
     which is a mistake worth pointing at. These are simply not in play, which at
     a booth is what most of the kit is doing at any moment.
     """

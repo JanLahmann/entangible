@@ -227,10 +227,10 @@ describe('wire blocks replace the rows (#95)', () => {
     expect(model.wireCount).toBe(3);
     const mapper = new GridMapper(model.grid);
     const [cx] = mapper.cellCenter(0, 0);
-    expect(mapper.assign(cx, 122)).toEqual({ row: 0, col: 0 });
-    expect(mapper.assign(cx, 355)).toEqual({ row: 2, col: 0 });
+    expect(mapper.assignRow(cx, 122)).toBe(0);
+    expect(mapper.assignRow(cx, 355)).toBe(2);
     // The middle of a wide gap is off-grid, not silently filed onto a wire.
-    expect(mapper.assign(cx, 180)).toBeNull();
+    expect(mapper.assignRow(cx, 180)).toBeNull();
   });
 
   it('sorts and caps the wire set', () => {

@@ -83,7 +83,7 @@ Every message is a JSON object with a `type` discriminator.
   },
   "markers": [
     { "id": 30, "row": 0, "col": 0 },   // on-grid gate tile (30 = H)
-    { "id": 22, "offGrid": true }       // detected but rejected by grid mapping
+    { "id": 22, "offGrid": true }       // on the board but on no row / qubit wire
   ],
   "warnings": [
     { "code": "lone_control", "message": "...", "row": 1, "col": 3 }
@@ -120,8 +120,9 @@ Every message is a JSON object with a `type` discriminator.
   table beside the board can neither enter the circuit nor churn the hysteresis.
   Each raises **one counted warning per frame** (`stray_furniture` /
   `stray_tiles`), never one per piece, and off-board tiles are deliberately NOT
-  reported as `offGrid` — `off_grid` stays what it always was, a tile that IS on
-  the board and landed on no cell.
+  reported as `offGrid` — `off_grid` stays a tile that IS on the board and
+  landed on no cell; since #109 that means on no row / qubit wire (columns are
+  clustered from the tiles' x positions, so no x is ever rejected).
 - `warnings[].code` values come from the circuit builder (`lone_control`,
   `lone_target`, `cell_conflict`, `control_ambiguous`, …) plus the board-furniture
   kinds `unpaired_measure`, `measure_span_mismatch`, `stray_furniture` and

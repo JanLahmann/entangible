@@ -228,11 +228,11 @@ def test_wire_ys_replace_the_rows(config: BoardConfig) -> None:
     mapper = GridMapper(model.grid)
     cx, _cy = model.grid.cell_center(0, 0)
     # A tile snaps to the NEAREST wire, not to a lattice row.
-    assert mapper.assign(cx, 122.0) == (0, 0)
-    assert mapper.assign(cx, 355.0) == (2, 0)
+    assert mapper.assign_row(cx, 122.0) == 0
+    assert mapper.assign_row(cx, 355.0) == 2
     # ... but only within half a cell height; the middle of a wide gap is not
     # silently filed onto one of them.
-    assert mapper.assign(cx, 180.0) is None
+    assert mapper.assign_row(cx, 180.0) is None
 
 
 def test_wire_ys_are_sorted_and_capped(config: BoardConfig) -> None:
