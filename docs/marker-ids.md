@@ -107,6 +107,17 @@ distinct IDs. RZ(π)'s tile face is a text label, so its pattern is arbitrary.
 No kits existed in the wild at the time of the change, so there is **no backward
 compatibility path**: anything already printed on the old IDs must be reprinted.
 
+**Audit of the remaining assignments (2026-10-09, closes task #96).** Every
+assigned ID's bit pattern was rendered and compared against its glyph. Honest
+further matches: **15** for the CNOT target is a workable ⊕ (a plus-shaped
+white cluster), and **41** for T carries a full-height vertical bar (the T's
+stem). Neither free ID improves any current tile: **11** is an unstructured
+scatter and **14** a single diagonal staircase — not a Y, not a Z, and only
+half an × (SWAP). The rest of the tiles show big glyph art anyway, so marker
+resemblance is a bonus, not a need. Since kit-9, kits **do** exist in the wild
+and any re-homing is a reprint-everything break. Conclusion: the table is
+frozen as-is; no further re-homing is planned.
+
 ## Dial tiles (42 / 43 / 44)
 
 **RX-dial (42)**, **RY-dial (43)** and **RZ-dial (44)** are a single tile per

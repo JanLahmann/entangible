@@ -221,7 +221,7 @@ Compare against canonical states up to global phase, fidelity ≥ 0.99.
   the round's total vs par — `legendary` at −18 or better (playing every hole at
   the minimum), `under`, `even`, `over` — with the particle budget multiplied by
   2 / 1.5 / 1 / 0.6 respectively.
-- **Golf-mode animation** (builds on the layer-evolution idea in design.md):
+- **Golf-mode animation** (builds on the layer-evolution idea in design-history.md):
   the target node carries the flag and *pulses* (2 s cycle); on every stable
   circuit change the ball replays from |0…0⟩ **gate-layer by gate-layer**
   (~600 ms per layer, physically-correct rotation arcs, fading purple trail);

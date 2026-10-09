@@ -26,6 +26,9 @@
 Task numbers (`#NNN`) in commits and docs are the internal task list, not
 GitHub PR numbers.
 
+Adding a new gate tile touches most of these at once — follow the checklist in
+[`docs/extending.md`](docs/extending.md).
+
 ## The parity rule
 
 The vision pipeline exists twice — Python (`qamposer-vision`, the booth host)

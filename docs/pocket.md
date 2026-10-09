@@ -8,8 +8,8 @@
 
 ## Why / role
 
-The zero-infrastructure demo of the whole project (design.md "standalone
-browser mode" idea): a visitor — or a fair we're not at — points an iPad at
+The zero-infrastructure demo of the whole project (design-history.md
+"standalone browser mode" idea): a visitor — or a fair we're not at — points an iPad at
 the printed tiles and gets the Entangible experience. It shares the marker
 scheme, geometry, quantum engine, moment engine, and the booth-v2 visual
 system with the main product. It is NOT a replacement for the booth (no big
