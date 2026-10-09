@@ -22,6 +22,13 @@ uv run qamposer-physical run --source cv2:0        # a Mac/USB webcam
 uv run qamposer-physical run --source replay:tests/fixtures/recordings/bell-sequence
 ```
 
+Before an event, run the preflight — every row is ✓/✗ with the first fix
+(app build, camera, port, TLS, token):
+
+```bash
+uv run qamposer-physical doctor --source cv2:0
+```
+
 On start the host prints the URLs:
 
 ```

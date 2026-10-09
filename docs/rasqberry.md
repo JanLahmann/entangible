@@ -43,6 +43,7 @@ Without `--kiosk` the host still starts on boot; open
 ## The service
 
 ```bash
+.venv/bin/qamposer-physical doctor        # preflight: build, camera, port, TLS, token
 sudo systemctl status entangible-host     # is it running?
 journalctl -u entangible-host -n 20       # the printed URLs (kiosk, staff debug)
 sudo systemctl restart entangible-host    # after changing settings

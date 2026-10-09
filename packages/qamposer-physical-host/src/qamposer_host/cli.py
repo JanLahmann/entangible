@@ -7,6 +7,8 @@ Subcommands:
   Every URL it prints opens as-is (the staff ``/debug`` one carries the key).
 * ``qr``    — print the phone-capture URL (with the operator key embedded) as an
   ASCII QR code to the terminal.
+* ``doctor`` — preflight checklist (app build, camera, port, TLS, token):
+  ✓/✗ rows with the first fix to try; exit 0 only when everything is green.
 * ``token`` — print the shared operator token (generating it on first use);
   ``--rotate`` mints a new one (invalidating previously printed staff sheets).
 """
@@ -67,6 +69,19 @@ def _build_parser() -> argparse.ArgumentParser:
     tok.add_argument("--rotate", action="store_true", help="mint a new token")
     tok.add_argument("--cert-dir", default=None, help="TLS/token cert directory")
     tok.add_argument("--config-dir", default=None, help="config dir (default ~/.qamposer-physical)")
+
+    doctor = sub.add_parser(
+        "doctor", help="preflight: check the booth can start, before visitors arrive"
+    )
+    doctor.add_argument("--source", default=None,
+                        help="frame source to check (default: the configured one)")
+    doctor.add_argument("--host", default=None, help="bind address (default 0.0.0.0)")
+    doctor.add_argument("--pocket-dist", default=None,
+                        help="path to the built app (pocket-app/dist)")
+    doctor.add_argument("--cert-dir", default=None, help="TLS cert directory")
+    doctor.add_argument("--config-dir", default=None,
+                        help="config dir (default ~/.qamposer-physical)")
+    _add_common(doctor)
 
     return parser
 
@@ -172,6 +187,120 @@ def _cmd_qr(args: argparse.Namespace) -> int:
     return 0
 
 
+# --- doctor ------------------------------------------------------------------
+
+
+def _check_source(spec: str, replay_dir) -> tuple[bool, str, str]:
+    """(ok, detail, hint) for one frame-source spec, without starting a pipeline."""
+    from pathlib import Path
+
+    kind, _, rest = spec.partition(":")
+    if kind == "push":
+        return True, "phone camera (push) — frames arrive once a phone scans the staff QR", ""
+    if kind == "replay":
+        directory = Path(rest) if rest else Path(replay_dir)
+        if directory.is_dir() and any(directory.glob("**/frame_*")):
+            return True, f"replay {directory} — the recorded DEMO loop, not a live camera", ""
+        return False, f"replay dir {directory} has no frame_* files", \
+            "pick a recording under tests/fixtures/recordings"
+    if kind == "picamera2":
+        import importlib.util
+
+        if importlib.util.find_spec("picamera2") is not None:
+            return True, "picamera2 importable", ""
+        return False, "picamera2 not importable", \
+            "apt install python3-picamera2 + a venv with --system-site-packages (docs/rasqberry.md)"
+    if kind == "cv2":
+        index = int(rest or 0)
+        try:
+            from qamposer_vision.sources import list_cameras  # lazy
+        except Exception:
+            return False, "qamposer-vision not importable", "run `uv sync` from the repo root"
+        openable = list_cameras()
+        if index in openable:
+            return True, f"cv2:{index} opens (openable: {openable})", ""
+        if openable:
+            return False, f"cv2:{index} does not open (openable: {openable})", \
+                f"run with --source cv2:{openable[0]}, or pick one on /debug"
+        return False, "no cv2 camera opens", \
+            "plug in a camera, or use --source push / replay (the host still starts and retries)"
+    return False, f"unknown source spec {spec!r}", "use replay:<dir> | cv2:<idx> | picamera2 | push"
+
+
+def _cmd_doctor(args: argparse.Namespace) -> int:
+    """Preflight for booth operators: every row is ✓/✗ + the first fix to try.
+
+    Mirrors the /debug READY card for the moments before the host runs. Checks
+    never raise; exit 0 only when every row is green.
+    """
+    import socket as _socket
+
+    config = HostConfig.from_env(
+        host=args.host,
+        port=args.port,
+        source=args.source,
+        pocket_dist=args.pocket_dist,
+        cert_dir=args.cert_dir,
+        config_dir=args.config_dir,
+        tls=False if args.no_tls else None,
+        advertise_host=args.advertise_host,
+    )
+    rows: list[tuple[bool, str, str, str]] = []  # (ok, label, detail, hint)
+
+    def check(label: str, fn) -> None:
+        try:
+            ok, detail, hint = fn()
+        except Exception as exc:  # a check must never kill the doctor
+            ok, detail, hint = False, f"{type(exc).__name__}: {exc}", ""
+        rows.append((ok, label, detail, hint))
+
+    check("app build", lambda: (
+        (config.pocket_dist / "index.html").is_file(),
+        str(config.pocket_dist),
+        "cd pocket-app && npm ci && npm run build",
+    ))
+    check("camera", lambda: _check_source(config.source, config.replay_dir))
+
+    def port_free() -> tuple[bool, str, str]:
+        sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        try:
+            sock.bind((config.host, config.port))
+        except OSError:
+            # The classic trap: a stale host from an earlier demo still running.
+            return False, f"port {config.port} is taken", \
+                f"another host is running — lsof -i :{config.port}, then kill it"
+        finally:
+            sock.close()
+        return True, f"port {config.port} free on {config.host}", ""
+
+    check("port", port_free)
+
+    def tls_ready() -> tuple[bool, str, str]:
+        if not config.tls:
+            return True, "TLS off (--no-tls) — phones cannot use their camera", ""
+        extra = [config.advertise_host] if config.advertise_host else ()
+        cert_path, _key = ensure_cert(config.cert_dir, extra_hosts=extra)
+        return True, f"cert ready at {cert_path} (host {advertised_host(config)})", ""
+
+    check("tls", tls_ready)
+    check("operator token", lambda: (
+        bool(ensure_token(config.cert_dir)),
+        f"stored with the certs in {config.cert_dir}",
+        "",
+    ))
+
+    for ok, label, detail, hint in rows:
+        mark = "✓" if ok else "✗"
+        line = f" {mark} {label:<15} {detail}"
+        if not ok and hint:
+            line += f"\n     → {hint}"
+        print(line)
+    ready = all(ok for ok, *_ in rows)
+    print("READY — start with: qamposer-physical run" if ready
+          else "NOT READY — fix the ✗ rows above")
+    return 0 if ready else 1
+
+
 def _cmd_token(args: argparse.Namespace) -> int:
     config = HostConfig.from_env(cert_dir=args.cert_dir, config_dir=args.config_dir)
     token = rotate_token(config.cert_dir) if args.rotate else ensure_token(config.cert_dir)
@@ -185,6 +314,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_run(args)
     if args.command == "qr":
         return _cmd_qr(args)
+    if args.command == "doctor":
+        return _cmd_doctor(args)
     if args.command == "token":
         return _cmd_token(args)
     return 2  # pragma: no cover
