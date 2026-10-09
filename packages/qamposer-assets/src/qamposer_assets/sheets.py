@@ -21,6 +21,8 @@ composition (which tiles, how many) comes from ``[kit]`` in ``assets.toml``.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from qamposer_vision.markers import (
     DIAL_IDS,
     MARKER_TABLE,
@@ -103,26 +105,36 @@ def _dial_id(axis: str) -> int:
 def kit_tile_ids(cfg: AssetsConfig) -> list[int]:
     """Expand ``[kit]`` quantities into a flat list of marker IDs to print.
 
-    Standard booth kit: H×6, X×6, Y×4, Z×4, S×2, T×2, ●×4, ⊕×4, ××2 (SWAP),
-    ``rotations_each`` of every rotation variant (12 variants), and one RX/RY/RZ
-    dial each — 49 tiles by default.
+    Standard booth kit — the same 32-tile set the 3D beds print: H×5, X×5,
+    ●×4, SWAP×4 (two pairs), Y/Z/S/T ×2 and RX/RY/RZ dial ×2. ``CNOT_target``
+    and ``rotations_each`` are 0 by default: an X under a control *is* the ⊕,
+    and the dials cover every fixed angle. A quantity of 0 contributes nothing
+    and never looks its marker up; a negative one raises ``ValueError``.
     """
     k = cfg.kit
+    plan: list[tuple[str, int, Callable[[], list[int]]]] = [
+        ("H", k.H, lambda: [_gate_id("H")]),
+        ("X", k.X, lambda: [_gate_id("X")]),
+        ("Y", k.Y, lambda: [_gate_id("Y")]),
+        ("Z", k.Z, lambda: [_gate_id("Z")]),
+        ("S", k.S, lambda: [_gate_id("S")]),
+        ("T", k.T, lambda: [_gate_id("T")]),
+        ("CNOT_control", k.CNOT_control, lambda: [_gate_id("CNOT", "control")]),
+        ("CNOT_target", k.CNOT_target, lambda: [_gate_id("CNOT", "target")]),
+        ("swap", k.swap, lambda: [_gate_id("SWAP")]),
+        ("rotations_each", k.rotations_each, _rotation_ids),
+        ("rx_dial", k.rx_dial, lambda: [_dial_id("RX")]),
+        ("ry_dial", k.ry_dial, lambda: [_dial_id("RY")]),
+        ("rz_dial", k.rz_dial, lambda: [_dial_id("RZ")]),
+    ]
     ids: list[int] = []
-    ids += [_gate_id("H")] * k.H
-    ids += [_gate_id("X")] * k.X
-    ids += [_gate_id("Y")] * k.Y
-    ids += [_gate_id("Z")] * k.Z
-    ids += [_gate_id("S")] * k.S
-    ids += [_gate_id("T")] * k.T
-    ids += [_gate_id("CNOT", "control")] * k.CNOT_control
-    ids += [_gate_id("CNOT", "target")] * k.CNOT_target
-    ids += [_gate_id("SWAP")] * k.swap
-    for mid in _rotation_ids():
-        ids += [mid] * k.rotations_each
-    ids += [_dial_id("RX")] * k.rx_dial
-    ids += [_dial_id("RY")] * k.ry_dial
-    ids += [_dial_id("RZ")] * k.rz_dial
+    for name, qty, lookup in plan:
+        if qty < 0:
+            raise ValueError(f"[kit] {name} must be >= 0, got {qty}")
+        if qty == 0:
+            continue
+        for mid in lookup():
+            ids += [mid] * qty
     return ids
 
 

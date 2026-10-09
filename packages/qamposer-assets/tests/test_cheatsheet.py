@@ -5,7 +5,16 @@ from __future__ import annotations
 import pytest
 
 from qamposer_assets import cli
-from qamposer_assets.cheatsheet import ENTANGIBLE_URL, cheatsheet_svg, cheatsheet_svgs
+from qamposer_vision.markers import DIAL_ANGLES, pretty_angle
+
+from qamposer_assets.cheatsheet import (
+    DIAL_RULE_LINES,
+    DIAL_ZERO_NOTE,
+    ENTANGIBLE_URL,
+    cheatsheet_svg,
+    cheatsheet_svgs,
+    dial_angle_list,
+)
 from qamposer_assets.config import load_config
 from qamposer_assets.pdf import available_backend
 
@@ -35,6 +44,29 @@ def test_cheatsheet_carries_the_reference_content():
         "Show Details",  # iPhone cert tap-through
     ):
         assert needle in svg, needle
+
+
+def test_cheatsheet_dial_rule_follows_dial_angles():
+    # The printed dial rule is derived from DIAL_ANGLES (eight clockwise 45°
+    # steps, #107) — every angle, in r order, exactly as the dial tiles print
+    # it — and the retired four-position rule is gone.
+    expected = "→ " + ", ".join(pretty_angle(a) for a in DIAL_ANGLES)
+    assert dial_angle_list() == expected
+    assert len(DIAL_ANGLES) == 8
+    svg = cheatsheet_svg(CFG)
+    assert expected in svg
+    for line_ in (*DIAL_RULE_LINES, DIAL_ZERO_NOTE):
+        assert line_ in svg, line_
+    assert "45°" in DIAL_RULE_LINES[0]
+    assert "270°" not in svg
+    assert "0°/90°" not in svg
+
+
+def test_cheatsheet_dial_list_matches_the_dial_tile_labels():
+    from qamposer_assets.tile_face import dial_label_slots
+
+    slot_texts = [s.text for s in sorted(dial_label_slots(60.0), key=lambda s: s.r)]
+    assert dial_angle_list() == "→ " + ", ".join(slot_texts)
 
 
 def test_cheatsheet_embeds_the_entangible_qr():

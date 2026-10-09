@@ -38,6 +38,21 @@ Everything the wire block's face does for the same reason, mirrored left/right:
   (left) edge, just above the wire, facing the board the wire comes from, the
   same way the wire block's ``q`` faces the board.
 
+Gauge size (#108)
+-----------------
+The free strips are only 6 mm deep (``tile.min_quiet_zone``), less the 1 mm
+edge margin: 5 mm. An upright half dial is twice as wide as it is tall, so in
+the *vertical* inner-edge strip it was capped at 5 mm across. The inner gauge is
+therefore turned a quarter turn — its crown points at the inner edge
+(:data:`INNER_GAUGE_FACING`, ``"left"``), reading upright from the board side
+the wire arrives from — so the strip's *length* carries the dial's ``2r`` and
+its 5 mm depth only the ``r`` (plus the pivot dot behind it): ``r ≈ 4.03 mm``,
+an 8.1 mm dial instead of 5 mm. A second, **upright** gauge of the same size
+sits centred in the 6 mm strip along the block's **top** edge
+(:func:`measure_top_glyph_box`), where the same 5 mm depth now limits the
+upright dial's height — the same box turned a quarter turn. Neither enters the
+quiet zone: both boxes stop exactly at its boundary.
+
 The gauge is drawn as **vector art**, never a font glyph: no code point for a
 meter renders reliably across the print, laser and OpenCASCADE font stacks, and
 a silently substituted glyph on a fiducial-bearing piece is not a risk worth
@@ -73,6 +88,9 @@ __all__ = [
     "GAUGE_EDGE_MARGIN_MM",
     "GAUGE_WIRE_GAP_MM",
     "GAUGE_BOX_HEIGHT_MM",
+    "GAUGE_TOP_BOX_WIDTH_MM",
+    "INNER_GAUGE_FACING",
+    "TOP_GAUGE_FACING",
     "GAUGE_STROKE_FRACTION",
     "GAUGE_NEEDLE_ANGLE_DEG",
     "GAUGE_NEEDLE_FRACTION",
@@ -83,7 +101,10 @@ __all__ = [
     "measure_line_y",
     "measure_segments",
     "measure_glyph_box",
+    "measure_top_glyph_box",
     "measure_gauge",
+    "measure_inner_gauge",
+    "measure_top_gauge",
 ]
 
 #: Filename / plate identifier of the one printed design.
@@ -111,10 +132,32 @@ GAUGE_EDGE_MARGIN_MM = 1.0
 #: Blank gap between the top of the wire line and the bottom of the gauge box (mm).
 GAUGE_WIRE_GAP_MM = 1.5
 
-#: Height of the gauge glyph box (mm). The gauge is a wide, shallow shape (a
-#: half dial is ``2r`` × ``r``), so in practice it is the box's *width* — the
-#: 6 mm edge strip the quiet zone leaves — that sets the size.
-GAUGE_BOX_HEIGHT_MM = 6.0
+#: Height of the inner-edge gauge glyph box (mm) — the same 10 mm as the wire
+#: block's ``q`` box, so the two boxes stay exact mirrors. The inner gauge lies
+#: on its side (:data:`INNER_GAUGE_FACING`), so this height carries the dial's
+#: ``2r``; the 5 mm box *width* (the 6 mm edge strip less the edge margin) still
+#: sets the size, via ``r + pivot`` — see :func:`measure_gauge`.
+GAUGE_BOX_HEIGHT_MM = 10.0
+
+#: Width of the top-edge gauge glyph box (mm): the inner box turned a quarter
+#: turn, so the upright top gauge comes out exactly as large as the inner one.
+GAUGE_TOP_BOX_WIDTH_MM = GAUGE_BOX_HEIGHT_MM
+
+#: Direction the inner-edge gauge's crown points (SVG face frame): at the
+#: block's inner edge, so the dial reads upright from the board side the wire
+#: comes from — and the 5 mm strip depth limits ``r``, not ``2r``.
+INNER_GAUGE_FACING = "left"
+
+#: Direction the top-edge gauge's crown points: up, at the block's top edge.
+TOP_GAUGE_FACING = "up"
+
+#: Unit vector from the pivot to the crown, per facing, in SVG coords (y down).
+_FACING_AXES: dict[str, tuple[float, float]] = {
+    "up": (0.0, -1.0),
+    "down": (0.0, 1.0),
+    "left": (-1.0, 0.0),
+    "right": (1.0, 0.0),
+}
 
 #: Gauge stroke as a fraction of the glyph's full width (``2 * radius``), the
 #: same way :data:`~qamposer_assets.symbols.CROSS_STROKE_FRACTION` is defined.
@@ -135,6 +178,11 @@ GAUGE_NEEDLE_FRACTION = 0.95
 #: needle a solid root instead of a hairline meeting a hairline.
 GAUGE_PIVOT_FRACTION = 0.75
 
+#: The pivot dot's radius as a fraction of the dial radius (stroke is
+#: ``GAUGE_STROKE_FRACTION · 2r``): how far ink reaches *behind* the pivot, so
+#: the glyph's extent along its axis is ``(1 + this) · r``.
+_PIVOT_OVER_RADIUS = GAUGE_PIVOT_FRACTION * GAUGE_STROKE_FRACTION * 2.0
+
 
 @dataclass(frozen=True, slots=True)
 class Gauge:
@@ -150,14 +198,18 @@ class Gauge:
     Attributes:
         cx, cy: the dial's pivot — the centre of the arc's open side.
         radius: the arc's **outer** ink radius, so the dial spans exactly
-            ``cx ± radius`` and ``radius`` from the pivot to the arc's crown.
-            A stroked renderer draws the path at ``radius - stroke/2``.
+            ``radius`` either side of the pivot across its axis and ``radius``
+            from the pivot to the arc's crown. A stroked renderer draws the
+            path at ``radius - stroke/2``.
         stroke: line thickness of both the arc and the needle.
         needle: ``(x, y)`` of the needle's tip.
         pivot_radius: radius of the filled dot at the needle's root. The only
             ink on the far side of the pivot from the dial, and the reason the
-            glyph's full extent is ``radius + pivot_radius`` across the dial
-            axis rather than ``radius``.
+            glyph's full extent along the dial axis is ``radius +
+            pivot_radius`` rather than ``radius``.
+        axis: unit vector from the pivot to the crown, in the same frame as
+            the coordinates — ``(0, -1)`` for an upright dial in SVG coords,
+            ``(0, 1)`` for the same dial in the 3D (y-up) frame.
     """
 
     cx: float
@@ -166,20 +218,39 @@ class Gauge:
     stroke: float
     needle: tuple[float, float]
     pivot_radius: float
+    axis: tuple[float, float]
 
     @property
     def width(self) -> float:
-        """Full width of the dial's bounding box (``2 * radius``)."""
+        """Extent of the dial *across* its axis (``2 * radius``)."""
         return 2.0 * self.radius
 
     @property
     def height(self) -> float:
-        """Height of the dial's bounding box (``radius`` — it is a *half* dial).
+        """Extent of the dial *along* its axis (``radius`` — a *half* dial).
 
-        The pivot dot adds :attr:`pivot_radius` below the flat side; the glyph
-        box (:func:`measure_glyph_box`) is sized to leave room for both.
+        The pivot dot adds :attr:`pivot_radius` behind the flat side; the glyph
+        boxes (:func:`measure_glyph_box`, :func:`measure_top_glyph_box`) are
+        sized to leave room for both.
         """
         return self.radius
+
+    @property
+    def bbox(self) -> tuple[float, float, float, float]:
+        """``(x0, y0, x1, y1)`` of all the glyph's ink, in its own frame.
+
+        The dial's ``2r`` across the axis, and ``-pivot_radius … radius`` along
+        it (the pivot dot behind the flat side, the crown in front); the needle
+        and its round cap stay inside both.
+        """
+        ux, uy = self.axis
+        px, py = -uy, ux  # across the axis (either sense: the box is symmetric)
+        xs, ys = [], []
+        for a in (-self.pivot_radius, self.radius):
+            for b in (-self.radius, self.radius):
+                xs.append(self.cx + a * ux + b * px)
+                ys.append(self.cy + a * uy + b * py)
+        return (min(xs), min(ys), max(xs), max(ys))
 
 
 def measure_block_spec() -> GateSpec:
@@ -246,13 +317,14 @@ def measure_segments(cfg: AssetsConfig) -> tuple[tuple[float, float], ...]:
 
 
 def measure_glyph_box(cfg: AssetsConfig) -> tuple[float, float, float, float]:
-    """The gauge glyph box ``(x, y, w, h)`` on the block's face, SVG coords.
+    """The inner-edge gauge glyph box ``(x, y, w, h)`` on the face, SVG coords.
 
     In the strip along the block's **inner** (left) edge, one full quiet zone
     clear of the marker, sitting just above the wire line — the mirror of the
     wire block's ``q`` box, and for the mirror reason: the mark faces the board
-    the wire comes from. Raises ``ValueError`` if the geometry leaves no legal
-    room.
+    the wire comes from. The gauge in it lies on its side
+    (:data:`INNER_GAUGE_FACING`). Raises ``ValueError`` if the geometry leaves
+    no legal room.
     """
     (_x0, inner_end), (_outer_start, _x1) = measure_segments(cfg)
     x = GAUGE_EDGE_MARGIN_MM
@@ -267,37 +339,86 @@ def measure_glyph_box(cfg: AssetsConfig) -> tuple[float, float, float, float]:
     return (x, y0, w, GAUGE_BOX_HEIGHT_MM)
 
 
-def measure_gauge(box: tuple[float, float, float, float]) -> Gauge:
+def measure_top_glyph_box(cfg: AssetsConfig) -> tuple[float, float, float, float]:
+    """The top-edge gauge glyph box ``(x, y, w, h)`` on the face, SVG coords.
+
+    Centred in the strip along the block's **top** edge: from
+    :data:`GAUGE_EDGE_MARGIN_MM` below the edge down to — never into — the
+    marker's quiet zone, :data:`GAUGE_TOP_BOX_WIDTH_MM` wide. The inner box
+    turned a quarter turn, so the upright gauge in it is the inner gauge's size.
+    The wire line is at mid-height, far below. Raises ``ValueError`` if the
+    geometry leaves no legal room.
+    """
+    t = cfg.tile
+    _mx, my = measure_marker_origin(cfg)
+    y0 = GAUGE_EDGE_MARGIN_MM
+    h = my - t.min_quiet_zone - y0
+    w = GAUGE_TOP_BOX_WIDTH_MM
+    x = (t.size - w) / 2.0
+    if h <= 1.0 or x < 0.0:
+        raise ValueError(
+            f"measurement block: no room for the top gauge glyph "
+            f"({w:g} × {h:g} mm above the {t.min_quiet_zone:g} mm quiet zone)"
+        )
+    return (x, y0, w, h)
+
+
+def measure_gauge(
+    box: tuple[float, float, float, float], *, facing: str = "up"
+) -> Gauge:
     """Fit the measurement gauge into ``box`` = ``(x, y, w, h)``, SVG coords.
 
-    The glyph is a half dial: a ``2r`` × ``r`` bounding box whose flat side is
-    the bottom. It is scaled to the largest ``r`` that fits (``min(w/2, h)`` —
-    in the shipped geometry the 6 mm edge strip means the *width* always wins)
-    and centred in the box, then the needle is swung out of the pivot at
-    :data:`GAUGE_NEEDLE_ANGLE_DEG` above the horizontal.
+    The glyph is a half dial whose crown points ``facing`` (``"up"`` — flat
+    side down — ``"down"``, ``"left"`` or ``"right"``). Its ink spans ``2r``
+    across that axis and ``(1 + p) · r`` along it — the crown in front, the
+    pivot dot (``p · r``, ``p`` = :data:`_PIVOT_OVER_RADIUS`) behind. It is
+    scaled to the largest ``r`` that fits the box that way round, the whole ink
+    extent centred in the box, then the needle is swung out of the pivot at
+    :data:`GAUGE_NEEDLE_ANGLE_DEG` from the flat side (to the dial's right, as
+    seen with the crown up).
 
-    Raises ``ValueError`` for a degenerate box, so a geometry change can never
-    silently produce an invisible gauge.
+    Raises ``ValueError`` for a degenerate box or an unknown facing, so a
+    geometry change can never silently produce an invisible gauge.
     """
     x, y, w, h = box
     if w <= 0.0 or h <= 0.0:
         raise ValueError(f"measurement gauge: degenerate box {box!r}")
-    radius = min(w / 2.0, h)
+    try:
+        ux, uy = _FACING_AXES[facing]
+    except KeyError:
+        raise ValueError(f"measurement gauge: unknown facing {facing!r}") from None
+    along, across = (h, w) if ux == 0.0 else (w, h)
+    radius = min(across / 2.0, along / (1.0 + _PIVOT_OVER_RADIUS))
     if radius <= 0.0:
         raise ValueError(f"measurement gauge: no room in box {box!r}")
-    cx = x + w / 2.0
-    # Vertically centre the 2r × r bounding box, then put the pivot on its
-    # bottom edge (SVG y grows downward, so the dial opens *up*).
-    cy = y + h / 2.0 + radius / 2.0
+    # Centre the ink's extent along the axis: from -p·r (behind) to +r (crown),
+    # so the pivot sits (r - p·r)/2 behind the box centre. Across, centred.
+    shift = radius * (1.0 - _PIVOT_OVER_RADIUS) / 2.0
+    cx = x + w / 2.0 - ux * shift
+    cy = y + h / 2.0 - uy * shift
     stroke = GAUGE_STROKE_FRACTION * 2.0 * radius
+    # The dial's "right" (seen crown-up), in SVG coords: (-uy, ux).
+    px, py = -uy, ux
     theta = math.radians(GAUGE_NEEDLE_ANGLE_DEG)
     length = GAUGE_NEEDLE_FRACTION * radius
-    needle = (cx + length * math.cos(theta), cy - length * math.sin(theta))
+    c, s = math.cos(theta), math.sin(theta)
+    needle = (cx + length * (c * px + s * ux), cy + length * (c * py + s * uy))
     return Gauge(
         cx=cx,
         cy=cy,
         radius=radius,
         stroke=stroke,
         needle=needle,
-        pivot_radius=GAUGE_PIVOT_FRACTION * stroke,
+        pivot_radius=_PIVOT_OVER_RADIUS * radius,
+        axis=(ux, uy),
     )
+
+
+def measure_inner_gauge(cfg: AssetsConfig) -> Gauge:
+    """The inner-edge gauge (on its side, crown at the inner edge), SVG coords."""
+    return measure_gauge(measure_glyph_box(cfg), facing=INNER_GAUGE_FACING)
+
+
+def measure_top_gauge(cfg: AssetsConfig) -> Gauge:
+    """The upright top-edge gauge, SVG coords."""
+    return measure_gauge(measure_top_glyph_box(cfg), facing=TOP_GAUGE_FACING)

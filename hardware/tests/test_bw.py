@@ -16,13 +16,13 @@ What this suite pins:
 * **totality of the file set** — every gate of a ``--bw`` run has a ``-bw``
   sibling, and board furniture has none (it is already white + black, so a
   duplicate would be the same solid under a second name);
-* the b/w **beds are a fixed quantity set** (#106), not one of every design:
-  the exact multiset of every bed is pinned here, duplicates included, and so is
-  what the set deliberately leaves out (the ⊕ target tile, the twelve
-  fixed-angle rotations);
+* the b/w **beds are the kit's fixed quantity set** (#106, kit-wide since
+  #110a), not one of every design: the exact multiset of every bed is pinned
+  here, duplicates included, and so is what the set deliberately leaves out
+  (the ⊕ target tile, the twelve fixed-angle rotations);
 * the beds respect the cap, are stamped with their provenance, and plates.md
-  gains its b/w section — including the quantity table and the rationale that
-  says why a design is missing.
+  gains its b/w section — pointing at the quantity table and the rationale
+  (now the kit-wide *What is on the beds*) that says why a design is missing.
 """
 
 from __future__ import annotations
@@ -38,14 +38,14 @@ from qamposer_assets.config import load_config
 
 from qamposer_hardware.build import build_double_tile, build_tile
 from qamposer_hardware.export import (
-    BW_BEDS,
-    bw_kit_quantities,
+    KIT_BEDS,
     bw_part_color,
-    bw_single_ids,
     export_bw_batches,
     export_double_tile_bw_3mf,
     export_tile_3mf,
     export_tile_bw_3mf,
+    kit_quantities,
+    kit_single_ids,
     provenance,
     single_plate_groups,
     write_bw_batch_md,
@@ -377,24 +377,23 @@ def test_bw_beds_expand_double_quantities(config, tmp_path):
 def test_bw_needs_fewer_beds_than_the_coloured_plates(config, tmp_path):
     """The packing claim the route is sold on, over the same pieces.
 
-    A coloured *filament* plate is packed on its own, so a plate holding a
-    single leftover tile still costs a whole print job. With two filaments there
-    are no plates to round up to, so **the same pieces** need fewer beds. Stated
-    over the coloured kit's own piece count, which is what "the same pieces"
-    means — the b/w beds ship a different (fixed) quantity set, and that is a
-    separate decision from the packing.
+    A coloured *filament* plate is packed on its own, so its last bed costs a
+    whole print job however few leftover tiles it holds. With two filaments
+    there are no plates to round up to, so **the same pieces** — the kit's one
+    shared quantity set, on both routes — need fewer beds: 4 against 5.
     """
     from qamposer_hardware.pack import plan_batches
 
-    groups = single_plate_groups(config)
+    groups = single_plate_groups(config, kit_single_ids())
     cap = 8
     colored_jobs = sum(
         len(plan_batches(len(g["pieces"]), BED, FOOTPRINT, SPACING, max_per_bed=cap))
         for g in groups
     )
     total = sum(len(g["pieces"]) for g in groups)
+    assert sorted(m for g in groups for m in g["pieces"]) == sorted(kit_single_ids())
     flat_jobs = len(plan_batches(total, BED, FOOTPRINT, SPACING, max_per_bed=cap))
-    assert flat_jobs < colored_jobs
+    assert (flat_jobs, colored_jobs) == (4, 5)
     # And the flat packing is the tightest a cap of 8 allows.
     assert flat_jobs == -(-total // cap)
 
@@ -404,7 +403,7 @@ def test_bw_needs_fewer_beds_than_the_coloured_plates(config, tmp_path):
 # --------------------------------------------------------------------------- #
 
 #: The kit as it must come off the beds — written out here rather than read from
-#: :data:`BW_BEDS` so this is an assertion and not a tautology. One entry per
+#: :data:`KIT_BEDS` so this is an assertion and not a tautology. One entry per
 #: bed, in bed order; a bed is the exact multiset of slugs printed on it.
 EXPECTED_BEDS = [
     {"h": 5, "x": 3},
@@ -476,13 +475,13 @@ def test_bw_kit_leaves_out_the_target_and_fixed_angle_tiles(bw_kit):
 
 def test_bw_kit_quantities_agree_with_the_beds(bw_kit):
     """The table plates.md prints is the beds, summed — never a second source."""
-    assert dict(bw_kit_quantities()) == dict(Counter(s for i in bw_kit for s in i.slugs))
-    assert dict(bw_kit_quantities()) == {
+    assert dict(kit_quantities()) == dict(Counter(s for i in bw_kit for s in i.slugs))
+    assert dict(kit_quantities()) == {
         "h": 5, "x": 5, "cnot-control": 4, "swap": 4,
         "y": 2, "z": 2, "s": 2, "t": 2, "rx": 2, "ry": 2, "rz": 2,
     }
-    assert len(bw_single_ids()) == 32
-    assert len(BW_BEDS) == len(EXPECTED_BEDS)
+    assert len(kit_single_ids()) == 32
+    assert len(KIT_BEDS) == len(EXPECTED_BEDS)
 
 
 def test_bw_kit_beds_are_two_slot_prusa_projects(bw_kit):
@@ -548,34 +547,38 @@ def test_plates_md_gains_a_black_and_white_section(bw_infos, config, tmp_path):
 
 
 def test_plates_md_documents_the_fixed_quantity_set(bw_infos, config, tmp_path):
-    """The b/w section must say *which* pieces and *why* — not just how they pack.
+    """plates.md must say *which* pieces the beds hold and *why* — once, kit-wide.
 
     A reader who prints these beds gets no ⊕ tile and no fixed-angle rotations;
-    plates.md is the only place that explains that this is a decision.
+    plates.md is the only place that explains that this is a decision. Since
+    #110a the table is the whole kit's (coloured, b/w and mono beds alike), so
+    it sits above the coloured plates and the b/w section points back at it.
     """
     _out, infos = bw_infos
-    base = write_plates_md(config, tmp_path)
+    base = write_plates_md(config, tmp_path, kit=True)
     write_bw_batch_md(
         base, infos, bed=BED, spacing=SPACING, faces="single", variant="tile",
         max_per_bed=8, colored_jobs=4,
     )
     text = base.read_text(encoding="utf-8")
+    head, section = text.split("## Black + white kit")
 
-    assert "### What is on the beds" in text
-    assert "**32 pieces of 11 designs**" in text
+    assert text.count("## What is on the beds") == 1
+    assert head.index("## What is on the beds") < head.index("## Plate 1")
+    assert "**32 pieces of 11 designs**" in head
     # Every quantity is in the table, as a row, with its slug.
-    for slug, qty in bw_kit_quantities():
-        assert f"| `{slug}` | {qty} |" in text, slug
+    for slug, qty in kit_quantities():
+        assert f"| `{slug}` | {qty} |" in head, slug
     # And the three design calls are spelled out.
-    assert "No `cnot-target` (⊕)" in text
-    assert "No fixed-angle rotation tiles" in text
-    assert "SWAP only works in pairs" in text
-    assert "GHZ-5" in text and "Cascade" in text
-    # Nothing in the b/w section may still claim it holds one of every design.
-    section = text.split("## Black + white kit")[1]
+    assert "No `cnot-target` (⊕)" in head
+    assert "No fixed-angle rotation tiles" in head
+    assert "SWAP only works in pairs" in head
+    assert "GHZ-5" in head and "Cascade" in head
+    # The b/w section claims the same pieces, never one of every design.
+    assert "**same pieces** as the coloured plates above" in section
     assert "exactly once" not in section
-    for slug in EXCLUDED_SLUGS - {"cnot-target"}:
-        assert f"| `{slug}` |" not in section, slug
+    for slug in EXCLUDED_SLUGS:
+        assert f"| `{slug}` |" not in text, slug
 
 
 def test_plates_md_counts_duplicates_instead_of_repeating_them(config, tmp_path):

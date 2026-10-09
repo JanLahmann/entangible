@@ -267,12 +267,12 @@ def test_batch_pieces_disjoint_in_3mf(single_pieces, tmp_path):
 
 
 def test_single_plate_groups_membership(config):
-    """Groups mirror the plates.md rule: ≤3 accents each; every gate tile placed."""
+    """Groups mirror the plates.md rule: ≤2 accents each; every gate tile placed."""
     groups = single_plate_groups(config)
     all_pieces = [m for g in groups for m in g["pieces"]]
     assert len(all_pieces) == len(set(all_pieces))  # no dup
     for g in groups:
-        assert len(g["accents"]) <= 3
+        assert len(g["accents"]) <= 2
 
 
 def test_export_batches_splits_and_names(config, tmp_path):

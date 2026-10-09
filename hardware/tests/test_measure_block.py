@@ -13,8 +13,9 @@ on, so the mirror is pinned here rather than assumed:
   the ink the eye carries back into the row; the outer one keeps the bar
   point-symmetric.
 * **The gauge is vector art.** Where the wire block engraves a ``q``, this piece
-  engraves a half-dial-and-needle gauge, drawn as shapes and never as a font
-  glyph — nothing on a fiducial-bearing piece may depend on a host font (see
+  engraves a half-dial-and-needle gauge — on its side in the inner-edge strip,
+  plus an upright copy in the top-edge strip (#108) — drawn as shapes and never
+  as a font glyph — nothing on a fiducial-bearing piece may depend on a host font (see
   3c1334e). Every glyph assertion below is therefore about *geometry*, and holds
   whatever OpenCASCADE resolves the band font to.
 
@@ -36,16 +37,23 @@ from qamposer_assets.marker_svg import marker_bit_matrix
 from qamposer_assets.measure_block import (
     GAUGE_BOX_HEIGHT_MM,
     GAUGE_EDGE_MARGIN_MM,
+    GAUGE_TOP_BOX_WIDTH_MM,
+    GAUGE_WIRE_GAP_MM,
+    INNER_GAUGE_FACING,
     MEASURE_BLOCK_COPIES,
     MEASURE_BLOCK_ID,
     MEASURE_BLOCK_SLUG,
+    TOP_GAUGE_FACING,
     WIRE_STROKE_MM,
     measure_block_spec,
     measure_gauge,
     measure_glyph_box,
+    measure_inner_gauge,
     measure_line_y,
     measure_marker_origin,
     measure_segments,
+    measure_top_gauge,
+    measure_top_glyph_box,
 )
 from qamposer_assets.qubit_wire_block import (
     QUBIT_WIRE_COPIES,
@@ -74,6 +82,8 @@ from qamposer_hardware.face import (
     face_layout,
     measure_face_layout,
     measure_gauge_3d,
+    measure_top_gauge_3d,
+    measure_top_glyph_band,
 )
 from qamposer_hardware.pack import Bed
 from qamposer_hardware.params import HardwareParams
@@ -266,48 +276,106 @@ def test_the_gauge_box_is_the_wire_blocks_glyph_box_mirrored(config):
     # The mirror of the wire block's box: same size, opposite side.
     from qamposer_assets.qubit_wire_block import qubit_wire_glyph_box
 
-    qx, _qy, qw, _qh = qubit_wire_glyph_box(config)
+    qx, _qy, qw, qh = qubit_wire_glyph_box(config)
     assert gw == pytest.approx(qw)
+    assert gh == pytest.approx(qh)
     assert gx + gw == pytest.approx(t.size - qx)
 
 
+#: #108 pins: the 6 mm strip less the 1 mm edge margin leaves 5 mm, which now
+#: carries the dial's ``r`` plus the pivot dot (0.24 r) instead of its ``2r``.
+#: Was r = 2.5 mm (a 5.0 mm dial, 0.8 mm stroke) before #108.
+GAUGE_RADIUS_MM = 5.0 / 1.24
+GAUGE_DIAMETER_MM = 2.0 * GAUGE_RADIUS_MM  # ≈ 8.06 mm
+GAUGE_STROKE_MM = 0.32 * GAUGE_RADIUS_MM  # ≈ 1.29 mm
+
+
+def test_both_gauges_are_pinned_at_the_enlarged_size(config):
+    """#108: both gauges are r ≈ 4.03 mm — 61 % larger than the old 2.5 mm."""
+    for g in (measure_inner_gauge(config), measure_top_gauge(config)):
+        assert g.radius == pytest.approx(GAUGE_RADIUS_MM)
+        assert g.width == pytest.approx(GAUGE_DIAMETER_MM)
+        assert g.stroke == pytest.approx(GAUGE_STROKE_MM)
+        assert g.radius > 1.6 * 2.5  # substantially larger than pre-#108
+    assert INNER_GAUGE_FACING == "left" and TOP_GAUGE_FACING == "up"
+    assert measure_inner_gauge(config).axis == (-1.0, 0.0)
+    assert measure_top_gauge(config).axis == (0.0, -1.0)
+
+
 def test_the_gauge_is_a_half_dial_with_a_needle(config):
-    """Pure geometry — no font anywhere near this glyph."""
+    """Pure geometry — no font anywhere near this glyph.
+
+    The inner gauge lies on its side (crown at the inner edge), so the 5 mm
+    strip depth carries ``r + pivot`` and the box's 10 mm height the ``2r``.
+    """
     box = measure_glyph_box(config)
-    g = measure_gauge(box)
+    g = measure_inner_gauge(config)
+    assert g == measure_gauge(box, facing="left")
     x, y, w, h = box
-    # Fitted to the box's tighter axis; here (a 6 mm edge strip) the width.
-    assert g.radius == pytest.approx(min(w / 2.0, h))
+    # Fitted to the box's tighter axis; here (a 6 mm edge strip) the depth.
+    assert g.radius == pytest.approx(min(h / 2.0, w / (1.0 + g.pivot_radius / g.radius)))
+    assert g.radius == pytest.approx(w / 1.24)
     assert g.width == pytest.approx(2.0 * g.radius)
     assert g.height == pytest.approx(g.radius)
     assert 0.0 < g.stroke < g.radius
     assert 0.0 < g.pivot_radius < g.radius
-    # The needle leaves the pivot up and to the right (SVG y grows downward),
-    # and stops short of the arc so tip and dial never merge into a blob.
+    # Crown to the left: the needle leaves the pivot left and up (SVG y grows
+    # downward), and stops short of the arc so tip and dial never merge.
     nx, ny = g.needle
-    assert nx > g.cx and ny < g.cy
+    assert nx < g.cx and ny < g.cy
     assert ((nx - g.cx) ** 2 + (ny - g.cy) ** 2) ** 0.5 < g.radius
-    # All ink stays inside the box: dial across and up, pivot dot just below.
-    assert g.cx - g.radius >= x - 1e-9
-    assert g.cx + g.radius <= x + w + 1e-9
-    assert g.cy - g.radius >= y - 1e-9
-    assert g.cy + g.pivot_radius <= y + h + 1e-9
+    # All ink stays inside the box: crown at the left, pivot dot at the right.
+    x0, y0, x1, y1 = g.bbox
+    assert (x0, x1) == (pytest.approx(g.cx - g.radius), pytest.approx(g.cx + g.pivot_radius))
+    assert (y0, y1) == (pytest.approx(g.cy - g.radius), pytest.approx(g.cy + g.radius))
+    assert x0 >= x - 1e-9 and x1 <= x + w + 1e-9
+    assert y0 >= y - 1e-9 and y1 <= y + h + 1e-9
+    # The depth is used to the last 0.1 µm: edge margin to quiet-zone boundary.
+    assert x0 == pytest.approx(GAUGE_EDGE_MARGIN_MM)
+    assert x1 == pytest.approx(measure_segments(config)[0][1])
 
 
-def test_the_3d_gauge_is_the_svg_gauge_flipped_once(config):
-    """One flip, in one place: the dial opens upward on the printed piece."""
+def test_the_top_gauge_is_upright_in_the_top_strip(config):
+    """The second gauge: upright, centred, from the edge margin to the zone."""
+    t = config.tile
+    _mx, my = measure_marker_origin(config)
+    box = measure_top_glyph_box(config)
+    x, y, w, h = box
+    assert y == pytest.approx(GAUGE_EDGE_MARGIN_MM)
+    assert y + h == pytest.approx(my - t.min_quiet_zone)  # up to, never into
+    assert w == pytest.approx(GAUGE_TOP_BOX_WIDTH_MM)
+    assert x + w / 2.0 == pytest.approx(t.size / 2.0)
+    g = measure_top_gauge(config)
+    assert g == measure_gauge(box, facing="up")
+    x0, y0, x1, y1 = g.bbox
+    assert x0 >= x - 1e-9 and x1 <= x + w + 1e-9
+    assert y0 == pytest.approx(y) and y1 == pytest.approx(y + h)
+    assert g.cy - g.radius == pytest.approx(y0)  # the crown is the top ink
+    nx, ny = g.needle
+    assert nx > g.cx and ny < g.cy  # up and to the right, upright
+    # Clear of the rounded corners by a wide margin.
+    assert x0 > t.corner_radius and x1 < t.size - t.corner_radius
+
+
+def test_the_3d_gauges_are_the_svg_gauges_flipped_once(config):
+    """One flip, in one place: each dial faces one way on the printed piece."""
     size = config.tile.size
-    svg = measure_gauge(measure_glyph_box(config))
-    d3 = measure_gauge_3d(config)
-    assert d3.cx == pytest.approx(svg.cx)
-    assert d3.cy == pytest.approx(size - svg.cy)
-    assert d3.radius == pytest.approx(svg.radius)
-    assert d3.stroke == pytest.approx(svg.stroke)
-    assert d3.pivot_radius == pytest.approx(svg.pivot_radius)
-    assert d3.needle[0] == pytest.approx(svg.needle[0])
-    assert d3.needle[1] == pytest.approx(size - svg.needle[1])
-    # In the 3D frame (y up) the needle rises above the pivot.
-    assert d3.needle[1] > d3.cy
+    for svg, d3 in (
+        (measure_inner_gauge(config), measure_gauge_3d(config)),
+        (measure_top_gauge(config), measure_top_gauge_3d(config)),
+    ):
+        assert d3.cx == pytest.approx(svg.cx)
+        assert d3.cy == pytest.approx(size - svg.cy)
+        assert d3.radius == pytest.approx(svg.radius)
+        assert d3.stroke == pytest.approx(svg.stroke)
+        assert d3.pivot_radius == pytest.approx(svg.pivot_radius)
+        assert d3.needle[0] == pytest.approx(svg.needle[0])
+        assert d3.needle[1] == pytest.approx(size - svg.needle[1])
+        assert d3.axis == (svg.axis[0], -svg.axis[1])
+        # In the 3D frame (y up) every needle rises above its pivot.
+        assert d3.needle[1] > d3.cy
+    assert measure_top_gauge_3d(config).axis == (0.0, 1.0)  # opens upward
+    assert measure_gauge_3d(config).axis == (-1.0, 0.0)  # opens to the left
 
 
 def test_no_ink_at_all_inside_the_markers_quiet_zone(config, block):
@@ -347,19 +415,27 @@ def test_accent_spans_the_full_width_at_mid_height(config, block):
         assert (block.accent & probe).volume > 1e-6, f"no bar ink at x={x}"
 
 
-def test_the_accent_carries_the_gauge_as_well_as_the_bar(config, block):
-    """Ink beyond the two bars, boxed by the band, and above the bar.
+def _accent_in(block, band) -> object:
+    """The block's accent clipped to ``band`` (a 3D-frame Rect), slightly grown."""
+    return block.accent & Pos(band.cx, band.cy, TILE_H - PARAMS.face_depth) * Box(
+        band.w + 0.2,
+        band.h + 0.2,
+        2.0 * PARAMS.face_depth,
+        align=(Align.CENTER, Align.CENTER, Align.MIN),
+    )
+
+
+def test_the_accent_carries_the_gauges_as_well_as_the_bar(config, block):
+    """Ink beyond the two bars: exactly the two gauges, each inside its band.
 
     Unlike the wire block's ``q`` this glyph is vector art, so its extent *is*
-    portable and is asserted exactly: the dial's crown sits ``radius`` above the
-    pivot, and nothing reaches past it.
+    portable and is asserted exactly: each dial's crown sits ``radius`` from its
+    pivot, ``radius`` either side across, and nothing reaches past it.
     """
     bars = sum(w.area for w in block.layout.wires) * PARAMS.face_depth
     assert block.accent.volume > bars * 1.2
     assert block.layout.label == ""  # no text on this piece at all
-    band = block.layout.band
-    gauge = measure_gauge_3d(config)
-    glyph = block.accent - Pos(
+    glyphs = block.accent - Pos(
         config.tile.size / 2.0, measure_line_y(config), TILE_H - PARAMS.face_depth
     ) * Box(
         3.0 * config.tile.size,
@@ -367,26 +443,50 @@ def test_the_accent_carries_the_gauge_as_well_as_the_bar(config, block):
         2.0 * PARAMS.face_depth,
         align=(Align.CENTER, Align.CENTER, Align.MIN),
     )
-    gb = glyph.bounding_box()
-    assert gb.min.X >= band.x0 - 1e-6 and gb.max.X <= band.x1 + 1e-6
-    assert gb.min.Y >= band.y0 - 1e-6 and gb.max.Y <= band.y1 + 1e-6
-    # The dial spans its full width and reaches its crown — a half dial, drawn.
+    inner_band = block.layout.band
+    top_band = measure_top_glyph_band(config)
+    inner = _accent_in(block, inner_band)
+    top = _accent_in(block, top_band)
+    # Totality: the two banded gauges are all the non-bar ink there is.
+    assert inner.volume + top.volume == pytest.approx(glyphs.volume, rel=1e-6)
+
+    # Inner gauge on its side: crown at the left, pivot dot at the right.
+    gauge = measure_gauge_3d(config)
+    gb = inner.bounding_box()
+    assert gb.min.X >= inner_band.x0 - 1e-6 and gb.max.X <= inner_band.x1 + 1e-6
+    assert gb.min.Y >= inner_band.y0 - 1e-6 and gb.max.Y <= inner_band.y1 + 1e-6
     assert gb.min.X == pytest.approx(gauge.cx - gauge.radius, abs=1e-5)
-    assert gb.max.X == pytest.approx(gauge.cx + gauge.radius, abs=1e-5)
+    assert gb.max.X == pytest.approx(gauge.cx + gauge.pivot_radius, abs=1e-5)
+    assert gb.min.Y == pytest.approx(gauge.cy - gauge.radius, abs=1e-5)
     assert gb.max.Y == pytest.approx(gauge.cy + gauge.radius, abs=1e-5)
+    assert gb.size.Y == pytest.approx(GAUGE_DIAMETER_MM, abs=1e-5)
     # ... and every bit of it is above the bar, never crossing it.
     assert gb.min.Y > measure_line_y(config) + WIRE_STROKE_MM / 2.0 - 1e-6
 
+    # Top gauge upright: full width across, crown at the top.
+    tg = measure_top_gauge_3d(config)
+    tb = top.bounding_box()
+    assert tb.min.X >= top_band.x0 - 1e-6 and tb.max.X <= top_band.x1 + 1e-6
+    assert tb.min.Y >= top_band.y0 - 1e-6 and tb.max.Y <= top_band.y1 + 1e-6
+    assert tb.min.X == pytest.approx(tg.cx - tg.radius, abs=1e-5)
+    assert tb.max.X == pytest.approx(tg.cx + tg.radius, abs=1e-5)
+    assert tb.max.Y == pytest.approx(tg.cy + tg.radius, abs=1e-5)
+    assert tb.min.Y == pytest.approx(tg.cy - tg.pivot_radius, abs=1e-5)
+    assert tb.size.X == pytest.approx(GAUGE_DIAMETER_MM, abs=1e-5)
 
-def test_the_gauge_is_hollow_where_a_dial_is_hollow(config, block):
-    """A probe at the dial's own centre finds no ink — it is an arc, not a disc."""
-    gauge = measure_gauge_3d(config)
-    probe = Pos(
-        gauge.cx,
-        gauge.cy + gauge.radius / 2.0,
-        TILE_H - PARAMS.face_depth / 2.0,
-    ) * Box(0.3, 0.3, 0.3, align=(Align.CENTER,) * 3)
-    assert (block.accent & probe).volume == pytest.approx(0.0, abs=1e-9)
+
+def test_the_gauges_are_hollow_where_a_dial_is_hollow(config, block):
+    """A probe inside each dial finds no ink — it is an arc, not a disc."""
+    for gauge in (measure_gauge_3d(config), measure_top_gauge_3d(config)):
+        ax, ay = gauge.axis
+        # Halfway to the crown, nudged off the needle's side of the dial.
+        px, py = ay, -ax  # the dial's right (3D frame): the needle's side
+        probe = Pos(
+            gauge.cx + ax * gauge.radius / 2.0 - px * gauge.radius / 4.0,
+            gauge.cy + ay * gauge.radius / 2.0 - py * gauge.radius / 4.0,
+            TILE_H - PARAMS.face_depth / 2.0,
+        ) * Box(0.3, 0.3, 0.3, align=(Align.CENTER,) * 3)
+        assert (block.accent & probe).volume == pytest.approx(0.0, abs=1e-9)
 
 
 def test_block_is_a_single_watertight_body(block):
@@ -444,18 +544,37 @@ def test_side_bar_sits_at_mid_height_and_spans_the_flat_face(config, cube_block)
         assert span == pytest.approx(flat, abs=1e-6)
 
 
-def test_the_side_gauge_is_far_bigger_than_the_top_face_one(config, cube_block):
+def test_the_side_gauge_fills_the_space_above_the_bar(config, cube_block):
     """The seat-height face is where the gauge earns its keep.
 
-    The top face has only the 6 mm edge strip the quiet zone leaves; a side face
-    has the whole flat width, and the gauge is *scaled* rather than re-typeset,
-    so it may use it.
+    The top face has only the 6 mm edge strips the quiet zone leaves; a side
+    face has the whole flat width, and the gauge is *scaled* (up, too) rather
+    than re-typeset, so it fills the space above the bar exactly as the wire
+    block's ``q`` does: height-limited, ``side_label_margin`` from the top and
+    ``GAUGE_WIRE_GAP_MM`` clear of the bar.
     """
-    top = measure_gauge_3d(config)
-    label = cube_block.side_labels[0]
-    bb = label.solid.bounding_box()
-    gauge_height = bb.max.Z - (CUBE_H / 2.0 + WIRE_STROKE_MM / 2.0)
-    assert gauge_height > 2.0 * top.radius
+    top = measure_top_gauge_3d(config)
+    gap = GAUGE_WIRE_GAP_MM  # kept clear of the bar, as on the top face
+    max_h = CUBE_H / 2.0 - WIRE_STROKE_MM / 2.0 - PARAMS.side_label_margin - gap
+    for label in cube_block.side_labels:
+        bb = label.solid.bounding_box()
+        assert bb.max.Z == pytest.approx(CUBE_H - PARAMS.side_label_margin, abs=1e-5)
+    # Gauge ink above the bar, on the front face (an XZ face: width along X).
+    front = cube_block.side_labels[0].solid
+    bar_top = CUBE_H / 2.0 + WIRE_STROKE_MM / 2.0
+    above = front & Pos(config.tile.size / 2.0, 0.0, bar_top + 0.01) * Box(
+        2.0 * config.tile.size,
+        2.0 * config.tile.size,
+        CUBE_H,
+        align=(Align.CENTER, Align.CENTER, Align.MIN),
+    )
+    gb = above.bounding_box()
+    # Upright: wider than tall (2r across, (1 + 0.24) r tall) and ~17 mm radius.
+    radius = max_h / 1.24
+    assert gb.size.Z == pytest.approx(max_h, abs=1e-3)
+    assert gb.min.Z == pytest.approx(bar_top + gap, abs=1e-3)
+    assert max(gb.size.X, gb.size.Y) == pytest.approx(2.0 * radius, abs=1e-3)
+    assert radius > 3.5 * top.radius  # ≈ 15.7 mm vs the 4.03 mm top-face dial
 
 
 def test_cube_body_stays_watertight_after_pocketing(cube_block):

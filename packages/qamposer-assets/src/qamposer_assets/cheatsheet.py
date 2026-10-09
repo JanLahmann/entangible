@@ -16,15 +16,45 @@ from __future__ import annotations
 
 import qrcode
 
+from qamposer_vision.markers import DIAL_ANGLES, pretty_angle
+
 from .config import AssetsConfig
 from .paper import page_size
 from .svgbase import fmt, line, rect, svg_document
 from .symbols import control_dot, target_cross, text
 
-__all__ = ["ENTANGIBLE_URL", "cheatsheet_svg", "cheatsheet_svgs"]
+__all__ = [
+    "DIAL_RULE_LINES",
+    "DIAL_ZERO_NOTE",
+    "ENTANGIBLE_URL",
+    "cheatsheet_svg",
+    "cheatsheet_svgs",
+    "dial_angle_list",
+]
 
 #: The public "what is this?" URL encoded in the live QR code.
 ENTANGIBLE_URL = "https://entangible.org"
+
+#: The rotation-dial rule as printed (two lines, ~55 characters max so it fits
+#: the left column). The angle list itself is :func:`dial_angle_list`, derived
+#: from :data:`qamposer_vision.markers.DIAL_ANGLES` so it cannot go stale.
+DIAL_RULE_LINES: tuple[str, ...] = (
+    "Rotation dial: turn the tile in clockwise 45° steps;",
+    "the label reading upright at the top is the angle:",
+)
+
+#: ``r = 0`` still emits the identity gate (a placed dial is always visible).
+DIAL_ZERO_NOTE = "At 0 the gate still shows on screen, e.g. RX(0)."
+
+
+def dial_angle_list() -> str:
+    """The eight dial angles in clockwise-step order, as the tiles print them.
+
+    ``pretty_angle(DIAL_ANGLES[r])`` for ``r = 0..7`` — the same strings the
+    dial faces carry (:func:`qamposer_assets.tile_face.dial_label_slots`).
+    """
+    return "→ " + ", ".join(pretty_angle(a) for a in DIAL_ANGLES)
+
 
 # Light UI fills (not physical geometry, so not sourced from assets.toml).
 _CARD_FILL = "#f2f4f8"
@@ -158,8 +188,10 @@ def cheatsheet_svg(cfg: AssetsConfig) -> str:
     parts.append(line(lx + 2.8, gy, lx + 6.4, gy, stroke=cnot_color, stroke_width=0.5))
     parts.append(target_cross(lx + 7.8, gy, 1.4, color=cnot_color))
     parts.append(_body(lx + 11.0, y, "in the same column link into a CNOT.", fam, label)); y += 5.4
-    parts.append(_body(lx, y, "Rotation dial: turn the tile to set the angle", fam, label)); y += 4.6
-    parts.append(_body(lx, y, "(0°/90°/180°/270° → π/4, π/2, π, −π/2).", fam, faint)); y += 6.0
+    for rule in DIAL_RULE_LINES:
+        parts.append(_body(lx, y, rule, fam, label)); y += 4.6
+    parts.append(_body(lx, y, dial_angle_list(), fam, faint)); y += 4.6
+    parts.append(_body(lx, y, DIAL_ZERO_NOTE, fam, faint)); y += 6.0
 
     # --- RIGHT COLUMN: troubleshooting -----------------------------------
     ry = top

@@ -33,8 +33,8 @@ from qamposer_assets.measure_block import (
     MEASURE_BLOCK_COPIES,
     MEASURE_BLOCK_ID,
     MEASURE_BLOCK_SLUG,
-    measure_gauge,
-    measure_glyph_box,
+    measure_inner_gauge,
+    measure_top_gauge,
     measure_line_y,
     measure_marker_origin,
     measure_segments,
@@ -186,11 +186,11 @@ def test_bed_grid_too_small_raises():
 
 
 def test_sheet_count_matches_grid():
-    ids = kit_tile_ids(CFG)  # 49 tiles
+    ids = kit_tile_ids(CFG)  # 32 tiles
     cols, rows = laser_bed_grid(CFG, 300.0, 200.0, spacing=3.0, margin=10.0)
     per_sheet = cols * rows  # 8
     svgs = laser_sheet_svgs(CFG, ids, 300.0, 200.0, spacing=3.0)
-    assert len(svgs) == math.ceil(len(ids) / per_sheet) == 7
+    assert len(svgs) == math.ceil(len(ids) / per_sheet) == 4
     # Each sheet document is sized to the bed.
     assert 'width="300mm"' in svgs[0]
     assert 'height="200mm"' in svgs[0]
@@ -218,8 +218,8 @@ def test_cli_laser_emits_full_file_set(tmp_path):
     tiles = sorted((tmp_path / "laser" / "tiles").glob("*.svg"))
     readme = tmp_path / "laser" / "README.txt"
 
-    # 49 kit tiles over 8-per-sheet -> 7 sheets.
-    assert len(sheets) == 7
+    # 32 kit tiles over 8-per-sheet -> 4 sheets.
+    assert len(sheets) == 4
     # One single-tile SVG per gate.
     assert len(tiles) == len(GATE_IDS) == 24
     assert readme.is_file()
@@ -498,36 +498,52 @@ def test_measure_block_engraves_a_vector_gauge_and_no_text():
     engrave = body.split('id="engrave"', 1)[1]
     assert "<text" not in body
     art = engrave.split("</g>", 1)[1]  # drop the marker group
-    assert art.count("<path ") == 1  # the dial arc
-    assert art.count("<circle ") == 1  # the pivot dot
-    # ... and exactly three lines: the two bar runs plus the needle.
-    assert art.count("<line ") == 3
-    g = measure_gauge(measure_glyph_box(CFG))
+    assert art.count("<path ") == 2  # the two dial arcs (inner + top, #108)
+    assert art.count("<circle ") == 2  # the two pivot dots
+    # ... and exactly four lines: the two bar runs plus the two needles.
+    assert art.count("<line ") == 4
     # The arc is stroked at radius - stroke/2 so the ink lands on ``radius``.
-    r = g.radius - g.stroke / 2.0
-    assert f'A {fmt(r)} {fmt(r)} 0 0 1 {fmt(g.cx + r)} {fmt(g.cy)}' in art
-    assert f'x2="{fmt(g.needle[0])}" y2="{fmt(g.needle[1])}"' in art
+    top = measure_top_gauge(CFG)  # upright: left end -> right end, over the top
+    r = top.radius - top.stroke / 2.0
+    assert (
+        f'M {fmt(top.cx - r)} {fmt(top.cy)} '
+        f'A {fmt(r)} {fmt(r)} 0 0 1 {fmt(top.cx + r)} {fmt(top.cy)}'
+    ) in art
+    inner = measure_inner_gauge(CFG)  # on its side: bottom -> top, via the left
+    r = inner.radius - inner.stroke / 2.0
+    assert (
+        f'M {fmt(inner.cx)} {fmt(inner.cy + r)} '
+        f'A {fmt(r)} {fmt(r)} 0 0 1 {fmt(inner.cx)} {fmt(inner.cy - r)}'
+    ) in art
+    for g in (inner, top):
+        assert f'x2="{fmt(g.needle[0])}" y2="{fmt(g.needle[1])}"' in art
 
 
 def test_measure_block_ink_never_enters_the_quiet_zone():
-    """Every engraved x — bar runs, arc and needle — is outside the white ring."""
+    """Every engraved point — bar runs, arcs and needles — is outside the ring."""
     t = CFG.tile
-    mx, _my = measure_marker_origin(CFG)
+    mx, my = measure_marker_origin(CFG)
     lo, hi = mx - t.min_quiet_zone, mx + t.marker_size + t.min_quiet_zone
+    ylo, yhi = my - t.min_quiet_zone, my + t.marker_size + t.min_quiet_zone
     engrave = laser_measure_body(CFG).split('id="engrave"', 1)[1]
     art = engrave.split("</g>", 1)[1]  # drop the marker group
-    for x0, x1 in re.findall(r'<line x1="([-\d.]+)"[^>]*x2="([-\d.]+)"', art):
-        assert float(x0) <= lo + 1e-9 or float(x0) >= hi - 1e-9
-        assert float(x1) <= lo + 1e-9 or float(x1) >= hi - 1e-9
-    g = measure_gauge(measure_glyph_box(CFG))
-    assert g.cx + g.radius <= lo + 1e-9  # the whole dial sits left of the zone
+    ends = re.findall(
+        r'<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)"', art
+    )
+    assert len(ends) == 4
+    for x0, y0, x1, y1 in ends:
+        for x, y in ((float(x0), float(y0)), (float(x1), float(y1))):
+            assert x <= lo + 1e-9 or x >= hi - 1e-9 or y <= ylo + 1e-9 or y >= yhi - 1e-9
+    # The inner dial sits wholly left of the zone, the top dial wholly above it.
+    assert measure_inner_gauge(CFG).bbox[2] <= lo + 1e-9
+    assert measure_top_gauge(CFG).bbox[3] <= ylo + 1e-9
 
 
 def test_measure_block_gauge_sits_on_the_inner_edge_above_the_bar():
     """Mirror of the wire block's ``q``: inner (left) strip, above the line."""
-    g = measure_gauge(measure_glyph_box(CFG))
+    g = measure_inner_gauge(CFG)
     assert g.cx < CFG.tile.size / 2.0  # left half of the block
-    assert g.cy + g.pivot_radius < measure_line_y(CFG) - WIRE_STROKE_MM / 2.0
+    assert g.bbox[3] < measure_line_y(CFG) - WIRE_STROKE_MM / 2.0
 
 
 def test_measure_block_has_no_border_score():

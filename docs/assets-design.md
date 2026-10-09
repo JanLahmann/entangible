@@ -81,8 +81,10 @@ Reads like a giant circuit diagram; neutral IBM-Carbon grays so the colored tile
 
 - A4: 3 × 4 = 12 tiles/page, 5 mm gutters, crop marks at tile corners.
   A3/Letter layouts derived from the same tile SVGs (A3: 4×6=24; Letter: 3×4).
-- **Standard booth kit** (one PDF, ~4 A4 pages): H ×6, X ×6, Y ×4, Z ×4,
-  ● ×4, ⊕ ×4, one of each rotation variant ×12 → 40 tiles.
+- **Standard booth kit** (3 A4 pages): the shared 32-tile set the 3D beds print
+  too — H ×5, X ×5, ● ×4, SWAP ×4, Y/Z/S/T ×2, RX/RY/RZ dial ×2; no ⊕ (an X
+  under a ● is the target) and no fixed-angle rotations (the dials cover them).
+  Quantities live in `assets.toml` `[kit]`.
 - Page footer on every sheet: "print at 100 % scale — no fit-to-page", plus a
   100 mm calibration ruler so booth staff can verify scale.
 

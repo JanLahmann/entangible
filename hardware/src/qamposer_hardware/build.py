@@ -42,6 +42,7 @@ from build123d import (
     scale,
 )
 from qamposer_assets.config import AssetsConfig
+from qamposer_assets.measure_block import GAUGE_WIRE_GAP_MM
 
 from .face import (
     WIRE_STROKE_MM,
@@ -213,6 +214,17 @@ def _fit_sketch(sk, max_w: float, max_h: float):
         factor = min(factor, max_h / bb.size.Y)
     if factor < 1.0:
         sk = scale(sk, by=factor)
+    c = sk.bounding_box().center()
+    return Pos(-c.X, -c.Y) * sk
+
+
+def _fill_sketch(sk, max_w: float, max_h: float):
+    """Scale a vector glyph sketch to *exactly* fill ``max_w`` x ``max_h`` on its
+    tighter axis (up or down), recentred — :func:`_fit_sketch` that may grow."""
+    bb = sk.bounding_box()
+    factors = [m / s for m, s in ((max_w, bb.size.X), (max_h, bb.size.Y)) if s > 0]
+    if factors:
+        sk = scale(sk, by=min(factors))
     c = sk.bounding_box().center()
     return Pos(-c.X, -c.Y) * sk
 
@@ -838,12 +850,16 @@ def measure_gauge_sketch(gauge: Gauge):
     :func:`qamposer_assets.symbols.measure_gauge`, so the engraved, printed and
     extruded gauges are one glyph. ``gauge.radius`` is the *outer* ink radius,
     so the annulus runs ``radius - stroke … radius`` and the dial spans exactly
-    ``cx ± radius``. The half is taken by intersecting with the box above the
-    pivot (3D face coords: ``+y`` is up, so the dial opens upward).
+    ``radius`` either side of the pivot. The half is taken by intersecting with
+    the box on the crown side of the pivot — ``gauge.axis``, in 3D face coords
+    (``+y`` is up, so ``(0, 1)`` opens the dial upward).
     """
     r = gauge.radius
     ring = Circle(r) - Circle(r - gauge.stroke)
-    upper = Pos(0.0, r / 2.0) * Rectangle(2.0 * r, r)
+    ax, ay = gauge.axis
+    upper = (Pos(0.0, r / 2.0) * Rectangle(2.0 * r, r)).rotate(
+        Axis.Z, math.degrees(math.atan2(ay, ax)) - 90.0
+    )
     dial = ring & upper
 
     nx, ny = gauge.needle
@@ -859,10 +875,10 @@ def measure_gauge_sketch(gauge: Gauge):
 
 
 def measure_accent_sketch(layout: FaceLayout, config: AssetsConfig):
-    """The measurement block's top-face art: the wire runs + the gauge.
+    """The measurement block's top-face art: the wire runs + both gauges.
 
-    The runs come straight from :attr:`FaceLayout.wires` and the gauge from
-    :attr:`FaceLayout.gauge` (both derived once in
+    The runs come straight from :attr:`FaceLayout.wires` and the gauges from
+    :attr:`FaceLayout.gauge` / :attr:`FaceLayout.top_gauge` (all derived once in
     :mod:`qamposer_assets.measure_block`); everything is intersected with the
     tile footprint so ink can never sit outside the body. There is no text on
     this piece — nothing here goes near a font.
@@ -871,6 +887,8 @@ def measure_accent_sketch(layout: FaceLayout, config: AssetsConfig):
         raise ValueError("measurement block layout carries no gauge")
     footprint = _footprint(layout)
     sketch = footprint & measure_gauge_sketch(layout.gauge)
+    if layout.top_gauge is not None:
+        sketch = sketch + (footprint & measure_gauge_sketch(layout.top_gauge))
     for wr in layout.wires:
         sketch = sketch + (footprint & (Pos(wr.cx, wr.cy) * Rectangle(wr.w, wr.h)))
     return sketch
@@ -888,24 +906,35 @@ def measure_side_labels(
     Exactly the wire block's side treatment (:func:`qubit_wire_side_labels`) —
     a bar spanning the face's flat width at mid-height, the glyph centred above
     it — with the gauge in place of the ``q``. Unlike the ``q`` the gauge is
-    vector art, so it is scaled rather than re-typeset, and it can be drawn far
-    larger here than in the 5 mm strip the top face allows: this is the face a
-    player actually reads from a seat. Black, like every other mark on the
-    piece. Returns ``[]`` for a flat tile.
+    vector art, so it is *scaled* (up as well as down, :func:`_fill_sketch`)
+    to fill the space above the bar, as the ``q`` fills it: this is the face a
+    player actually reads from a seat, far larger than the 5 mm strips the top
+    face allows. The side copy is the **upright** top-edge gauge
+    (:attr:`FaceLayout.top_gauge`), never the inner one lying on its side.
+    Black, like every other mark on the piece. Returns ``[]`` for a flat tile.
     """
     if not has_side_labels(height, params):
         return []
-    if layout.gauge is None:
-        raise ValueError("measurement block layout carries no gauge")
+    upright = layout.top_gauge
+    if upright is None:
+        raise ValueError("measurement block layout carries no upright gauge")
     flat = layout.size - 2.0 * layout.corner_radius
     bar = Rectangle(flat, WIRE_STROKE_MM)
-    max_h = height / 2.0 - WIRE_STROKE_MM / 2.0 - params.side_label_margin
+    # Everything above the bar, less the edge margin and the same blank gap the
+    # top face keeps between bar and gauge: a filled gauge's pivot dot would
+    # otherwise sit tangent to the bar — a non-manifold touch in the inlay.
+    max_h = (
+        height / 2.0
+        - WIRE_STROKE_MM / 2.0
+        - params.side_label_margin
+        - GAUGE_WIRE_GAP_MM
+    )
     max_w = _side_max_width(layout, params)
     sketch = bar
     if max_h > 1.0 and max_w > 1.0:
-        glyph = _fit_sketch(measure_gauge_sketch(layout.gauge), max_w, max_h)
+        glyph = _fill_sketch(measure_gauge_sketch(upright), max_w, max_h)
         gh = glyph.bounding_box().size.Y
-        v = WIRE_STROKE_MM / 2.0 + (max_h - gh) / 2.0 + gh / 2.0
+        v = WIRE_STROKE_MM / 2.0 + GAUGE_WIRE_GAP_MM + (max_h - gh) / 2.0 + gh / 2.0
         sketch = sketch + Pos(0.0, v) * glyph
     d = params.side_label_depth if depth is None else depth
     return [

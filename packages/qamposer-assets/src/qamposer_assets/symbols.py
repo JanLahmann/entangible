@@ -138,6 +138,7 @@ def measure_gauge(
     stroke: float,
     needle: tuple[float, float],
     pivot_radius: float,
+    axis: tuple[float, float] = (0.0, -1.0),
 ) -> str:
     """Measurement-gauge glyph: a half-dial arc, a needle and its pivot dot.
 
@@ -147,18 +148,23 @@ def measure_gauge(
     tofu on a fiducial-bearing piece would ship silently.
 
     ``radius`` is the arc's **outer** ink radius, so the glyph spans exactly
-    ``cx ± radius`` and ``cy - radius … cy`` (SVG ``y`` grows downward, so the
-    dial opens *upward*); the stroked path is therefore drawn at
-    ``radius - stroke/2``. The needle runs from the pivot to ``needle``. Every
+    ``cx ± radius`` and ``cy - radius … cy`` for the default ``axis`` (SVG
+    ``y`` grows downward, so the dial opens *upward*); the stroked path is
+    therefore drawn at ``radius - stroke/2``. ``axis`` is the unit vector from
+    the pivot to the crown — ``(-1, 0)`` lays the dial on its side, crown to the
+    left. The needle runs from the pivot to ``needle``. Every
     dimension is resolved by
     :func:`qamposer_assets.measure_block.measure_gauge`, so the printed, laser
     and 3D gauges are the same glyph.
     """
     nx, ny = needle
     r = radius - stroke / 2.0
+    # The flat side runs across the axis; sweeping clockwise (flag 1) from the
+    # dial's left end to its right end passes through the crown.
+    px, py = -axis[1], axis[0]
     arc = (
-        f'<path d="M {fmt(cx - r)} {fmt(cy)} '
-        f"A {fmt(r)} {fmt(r)} 0 0 1 {fmt(cx + r)} {fmt(cy)}\" "
+        f'<path d="M {fmt(cx - r * px)} {fmt(cy - r * py)} '
+        f"A {fmt(r)} {fmt(r)} 0 0 1 {fmt(cx + r * px)} {fmt(cy + r * py)}\" "
         f'fill="none" stroke="{color}" stroke-width="{fmt(stroke)}" '
         f'stroke-linecap="butt" />'
     )

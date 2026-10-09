@@ -2,8 +2,8 @@
 
     qamposer-hardware generate [--variant tile|cube|all] [--gates H,X,...|all]
                                [--magnets] [--mono] [--bw] [--corners] [--out DIR]
-    qamposer-hardware plates   [--variant tile|cube] [--bed WxH] [--mono] [--bw]
-                               [--corners] [--out DIR]
+    qamposer-hardware plates   [--variant tile|cube] [--bed WxH] [--max-accents N]
+                               [--mono] [--bw] [--corners] [--out DIR]
 
 Writes, per variant, ``out/hardware/<variant>/`` containing per-colour STL
 parts and a coloured 3MF for every requested tile, plus a ``plates.md`` MMU
@@ -13,6 +13,10 @@ black + white ones (the same geometry on exactly two filaments) and
 the printed mat, the qubit-wire block that sets how many qubits the board plays
 and the measurement block that ends a wire — all opt-in, so the default kit is
 exactly what it was.
+
+``generate`` writes every tile design; ``plates`` lays out the kit's one shared
+quantity set (``KIT_BEDS``) on every bed route — coloured, ``--bw`` and
+``--mono`` alike.
 """
 
 from __future__ import annotations
@@ -33,6 +37,8 @@ from .build import (
     build_tile,
 )
 from .export import (
+    DEFAULT_MAX_ACCENTS,
+    MAX_ACCENTS_CHOICES,
     double_slug,
     export_bw_batches,
     export_corner_batches,
@@ -393,8 +399,22 @@ def _plates(
     mono: bool = False,
     bw: bool = False,
     corners: bool = False,
+    max_accents: int | None = None,
 ) -> int:
-    """Generate bed-ready multi-piece batch 3MFs + a Print jobs plates.md."""
+    """Generate bed-ready multi-piece batch 3MFs + a Print jobs plates.md.
+
+    ``max_accents`` caps the single-faced kit's accents per filament plate
+    (default :data:`DEFAULT_MAX_ACCENTS`). The double-faced kit always groups ≤3:
+    its cross-family pieces carry two accents each, so it needs a 5-slot MMU.
+    """
+    if faces == "double" and max_accents not in (None, 3):
+        raise SystemExit(
+            "--max-accents applies to the single-faced kit only: the double-faced "
+            "kit groups up to 3 accents per plate (its cross-family pieces carry "
+            "2 each) and needs a 5-slot MMU"
+        )
+    if max_accents is None:
+        max_accents = DEFAULT_MAX_ACCENTS
     bed = parse_bed(bed_text)
     height = variant_height(variant, faces=faces)
     subdir = f"{variant}-double" if faces == "double" else variant
@@ -419,10 +439,11 @@ def _plates(
             bed=bed, spacing=spacing, out_dir=vdir, max_per_bed=cap,
         )
     else:
-        base_md = write_plates_md(config, vdir)
+        base_md = write_plates_md(config, vdir, kit=True, max_accents=max_accents)
         infos = export_single_batches(
             config, variant=variant, height=height,
             bed=bed, spacing=spacing, out_dir=vdir, max_per_bed=cap,
+            max_accents=max_accents,
         )
 
     write_batch_plates_md(
@@ -582,16 +603,24 @@ def main(argv: list[str] | None = None) -> int:
              "(default: 8; 0 = fill the bed)",
     )
     plates.add_argument(
+        "--max-accents", type=int, choices=MAX_ACCENTS_CHOICES, default=None,
+        dest="max_accents",
+        help="single-faced kit: max accent colours per filament plate, on top "
+             f"of white + black (default: {DEFAULT_MAX_ACCENTS} = 4 filaments, "
+             "fits a 4-slot AMS or a 5-slot MMU; 3 needs the 5-slot MMU). The "
+             "double-faced kit always uses 3",
+    )
+    plates.add_argument(
         "--mono", action="store_true",
         help="also emit mono batch 3MFs — separate beds per form (all-recessed "
              "beds, all-raised beds) for printers without an MMU (default: off)",
     )
     plates.add_argument(
         "--bw", action="store_true",
-        help="also emit black + white batch 3MFs (`bw-batch*.3mf`) — a playable "
-             "kit on two filaments (a fixed quantity set with duplicates, not "
-             "one of every design), packed straight onto beds because there are "
-             "no accent slots to group by (default: off)",
+        help="also emit black + white batch 3MFs (`bw-batch*.3mf`) — the same "
+             "fixed quantity set as the coloured beds on two filaments, packed "
+             "straight onto beds because there are no accent slots to group by "
+             "(default: off)",
     )
     plates.add_argument(
         "--corners", action="store_true",
@@ -633,6 +662,7 @@ def main(argv: list[str] | None = None) -> int:
             mono=args.mono,
             bw=args.bw,
             corners=args.corners,
+            max_accents=args.max_accents,
         )
     parser.error("unknown command")
     return 2

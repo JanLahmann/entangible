@@ -32,22 +32,40 @@ Output layout:
 
 ```
 out/assets/
-  tiles/  booth-kit_A4-p01.pdf … p05.pdf   (49 tiles → 5 A4 pages)
+  tiles/  booth-kit_A4-p01.pdf … p03.pdf   (32 tiles → 3 A4 pages)
           sample_A4-p01.pdf … p02.pdf      (one of every gate)
   board/  board_full.pdf                    (720×500 mm, single page — print shops / A1)
           board_A4_tiled-p01.pdf … p09.pdf  (home-printer tiles, tape together)
 ```
+
+### What is in the booth kit
+
+The booth kit is the **same 32-tile set** the 3D-printed kits lay on their beds
+(`[kit]` in `assets.toml`; the reasoning is in the generated `plates.md`, *What is
+on the beds*): `H` ×5, `X` ×5, CNOT control `●` ×4, `SWAP` ×4 (two pairs), and
+`Y`, `Z`, `S`, `T` and the `RX` / `RY` / `RZ` **dial** tiles ×2 each. It is not
+one of every design, on purpose:
+
+- **No CNOT target `⊕`.** A CNOT is the generic control `●` with the target gate
+  under it in the same column, so an `X` below a `●` *is* the ⊕.
+- **No fixed-angle rotation tiles.** The dial tiles cover every angle.
+- **Sized for the demos:** GHZ-5 (`●` ×4 over `X` ×4, plus a spare `X`), the
+  five-qubit uniform superposition (`H` ×5) and Cascade.
+
+The `sample` sheets still carry one of every gate, the target and the twelve
+fixed-angle rotations included. A quantity of `0` in `[kit]` simply leaves that
+tile out of the booth kit.
 
 ### Per-format tile counts
 
 Tiles are laid **edge-to-edge** (no gutter), so each boundary between two tiles
 is a single shared cut — see "Paper, cutting and lamination" below.
 
-| Format | Tiles/page | Booth-kit pages (49 tiles) | Board tiled pages |
+| Format | Tiles/page | Booth-kit pages (32 tiles) | Board tiled pages |
 | ------ | ---------- | -------------------------- | ----------------- |
-| A4     | 3 × 4 = 12 | 5                          | 9 (3 × 3)         |
-| A3     | 4 × 6 = 24 | 3                          | 4 (2 × 2)         |
-| Letter | 3 × 4 = 12 | 5                          | 9 (3 × 3)         |
+| A4     | 3 × 4 = 12 | 3                          | 9 (3 × 3)         |
+| A3     | 4 × 6 = 24 | 2                          | 4 (2 × 2)         |
+| Letter | 3 × 4 = 12 | 3                          | 9 (3 × 3)         |
 
 For a seamless mat, use `board_full.pdf` (single 720 × 500 mm page) at a print
 shop; the tiled pages are for home printers.
@@ -118,9 +136,9 @@ Output layout (SVG only — laser shops import vector SVG, so no PDF is produced
 
 ```
 out/assets/laser/
-  sheets/  kit-bed300x200-p01.svg …   (kit nested onto the bed, one file per sheet)
-  tiles/   tile-10.svg … tile-45.svg  (one SVG per gate id, for one-off cuts)
-  README.txt                          (the shop notes: colour convention, kerf, validation)
+  sheets/  kit-bed300x200-p01.svg … p04.svg  (32-tile booth kit, 8 per sheet; 6 with --corners)
+  tiles/   tile-10.svg … tile-45.svg          (one SVG per gate id, for one-off cuts)
+  README.txt                                  (the shop notes: colour convention, kerf, validation)
 ```
 
 ### Layer / colour convention

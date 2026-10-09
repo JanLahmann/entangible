@@ -38,11 +38,13 @@ from qamposer_assets.measure_block import (
     MEASURE_BLOCK_SLUG,
     Gauge,
     measure_block_spec,
-    measure_gauge,
     measure_glyph_box,
+    measure_inner_gauge,
     measure_line_y,
     measure_marker_origin,
     measure_segments,
+    measure_top_gauge,
+    measure_top_glyph_box,
 )
 from qamposer_assets.qubit_wire_block import (
     QUBIT_WIRE_COPIES,
@@ -107,6 +109,8 @@ __all__ = [
     "measure_glyph_band",
     "measure_rects",
     "measure_gauge_3d",
+    "measure_top_gauge_3d",
+    "measure_top_glyph_band",
     "measure_face_layout",
     "FURNITURE_IDS",
 ]
@@ -233,7 +237,8 @@ class FaceLayout:
     side_label: str = ""  # cube side-face gate name (family only); "" = vector glyph
     dial: DialFace | None = None  # dial-face geometry (IDs 42/43/44), else None
     wires: tuple[Rect, ...] = ()  # wire / measurement block: the line's drawn runs
-    gauge: Gauge | None = None  # measurement block: the gauge glyph, 3D coords
+    gauge: Gauge | None = None  # measurement block: the inner-edge gauge, 3D coords
+    top_gauge: Gauge | None = None  # measurement block: the upright top-edge gauge
 
     @property
     def black_cells(self) -> tuple[tuple[int, int], ...]:
@@ -636,23 +641,25 @@ def qubit_wire_face_layout(config: AssetsConfig) -> FaceLayout:
 # piece; this module only lifts it into the 3D face frame.
 
 
-def measure_glyph_band(config: AssetsConfig) -> Rect:
-    """The gauge glyph box on a measurement block's top face (3D coords)."""
-    x, y, w, h = measure_glyph_box(config)
-    size = config.tile.size
+def _band_3d(size: float, box: tuple[float, float, float, float]) -> Rect:
+    x, y, w, h = box
     return Rect(cx=x + w / 2.0, cy=_flip_y(size, y + h / 2.0), w=w, h=h)
 
 
-def measure_gauge_3d(config: AssetsConfig) -> Gauge:
-    """The gauge glyph resolved into the 3D face frame (y up).
+def measure_glyph_band(config: AssetsConfig) -> Rect:
+    """The inner-edge gauge glyph box on a measurement block's face (3D coords)."""
+    return _band_3d(config.tile.size, measure_glyph_box(config))
 
-    The one place the SVG→3D flip is applied to the gauge: :mod:`build` and the
-    tests read this, never the SVG values, so the dial can only ever open
-    *upward* on the printed piece in exactly one way.
-    """
-    size = config.tile.size
-    g = measure_gauge(measure_glyph_box(config))
+
+def measure_top_glyph_band(config: AssetsConfig) -> Rect:
+    """The top-edge gauge glyph box on a measurement block's face (3D coords)."""
+    return _band_3d(config.tile.size, measure_top_glyph_box(config))
+
+
+def _gauge_3d(size: float, g: Gauge) -> Gauge:
+    """One SVG gauge flipped into the 3D face frame (y up) — y values and axis."""
     nx, ny = g.needle
+    ax, ay = g.axis
     return Gauge(
         cx=g.cx,
         cy=_flip_y(size, g.cy),
@@ -660,7 +667,24 @@ def measure_gauge_3d(config: AssetsConfig) -> Gauge:
         stroke=g.stroke,
         needle=(nx, _flip_y(size, ny)),
         pivot_radius=g.pivot_radius,
+        axis=(ax, -ay),
     )
+
+
+def measure_gauge_3d(config: AssetsConfig) -> Gauge:
+    """The inner-edge gauge resolved into the 3D face frame (y up).
+
+    The one place the SVG→3D flip is applied to the gauges (with
+    :func:`measure_top_gauge_3d`): :mod:`build` and the tests read these, never
+    the SVG values, so each dial can only ever face one way on the printed
+    piece — this one on its side, crown at the inner (left) edge.
+    """
+    return _gauge_3d(config.tile.size, measure_inner_gauge(config))
+
+
+def measure_top_gauge_3d(config: AssetsConfig) -> Gauge:
+    """The upright top-edge gauge resolved into the 3D face frame (y up)."""
+    return _gauge_3d(config.tile.size, measure_top_gauge(config))
 
 
 def measure_rects(config: AssetsConfig) -> tuple[Rect, ...]:
@@ -687,7 +711,8 @@ def measure_face_layout(config: AssetsConfig) -> FaceLayout:
     the block centre is the height at which the wire ends), the wire bar in
     :attr:`FaceLayout.wires`, and — in place of the wire block's ``q`` — the
     measurement gauge in :attr:`FaceLayout.gauge`, boxed by
-    :attr:`FaceLayout.band`. :attr:`FaceLayout.label` is deliberately empty:
+    :attr:`FaceLayout.band`, plus the upright top-edge gauge in
+    :attr:`FaceLayout.top_gauge` (#108). :attr:`FaceLayout.label` is deliberately empty:
     there is no text on this piece at all.
     """
     t = config.tile
@@ -737,6 +762,7 @@ def measure_face_layout(config: AssetsConfig) -> FaceLayout:
         side_label="",
         wires=measure_rects(config),
         gauge=measure_gauge_3d(config),
+        top_gauge=measure_top_gauge_3d(config),
     )
 
 

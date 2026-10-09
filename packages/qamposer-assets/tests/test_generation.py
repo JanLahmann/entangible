@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import math
 
 import pytest
@@ -17,8 +18,9 @@ HAVE_PDF = available_backend() is not None
 
 def test_kit_tile_count_matches_assets_toml():
     k = CFG.kit
-    # 12 rotation variants (RX/RY/RZ × 4 angles) × rotations_each, plus one of
-    # each RX/RY/RZ dial tile and two SWAP × tiles.
+    # 12 rotation variants (RX/RY/RZ × 4 angles) × rotations_each — 0 in the
+    # shared 32-tile kit, like CNOT_target: the dials and the generic control
+    # cover both.
     expected = (
         k.H
         + k.X
@@ -35,7 +37,42 @@ def test_kit_tile_count_matches_assets_toml():
         + k.rz_dial
     )
     ids = kit_tile_ids(CFG)
-    assert len(ids) == expected == 49
+    assert len(ids) == expected == 32
+
+
+def _with_kit(**quantities):
+    """``CFG`` with every ``[kit]`` quantity zeroed, then ``quantities`` applied."""
+    zero = {f: 0 for f in CFG.kit.__dataclass_fields__}
+    return dataclasses.replace(
+        CFG, kit=dataclasses.replace(CFG.kit, **{**zero, **quantities})
+    )
+
+
+def test_kit_zero_quantities_contribute_nothing():
+    assert kit_tile_ids(_with_kit()) == []
+    assert kit_tile_ids(_with_kit(H=2, rz_dial=1)) == [30, 30, 44]
+    # rotations_each = 1 is the twelve fixed-angle tiles, once each.
+    assert len(kit_tile_ids(_with_kit(rotations_each=1))) == 12
+
+
+def test_kit_zero_quantity_never_looks_its_marker_up(monkeypatch):
+    """A tile the kit leaves out may even be missing from the marker table."""
+    from qamposer_assets import sheets
+
+    real = sheets._gate_id
+
+    def guarded(gate, role=None):
+        if role == "target":
+            raise KeyError("CNOT target looked up for a zero quantity")
+        return real(gate, role)
+
+    monkeypatch.setattr(sheets, "_gate_id", guarded)
+    assert kit_tile_ids(CFG).count(17) == CFG.kit.CNOT_control
+
+
+def test_kit_negative_quantity_is_rejected():
+    with pytest.raises(ValueError, match="swap"):
+        kit_tile_ids(_with_kit(swap=-1))
 
 
 def test_cli_all_end_to_end(tmp_path):
@@ -46,12 +83,12 @@ def test_cli_all_end_to_end(tmp_path):
     tiles = sorted((tmp_path / "tiles").glob(f"*.{suffix}"))
     board = sorted((tmp_path / "board").glob(f"*.{suffix}"))
 
-    # Booth kit: ceil(49 / 12) = 5 pages; sample: ceil(24 / 12) = 2 pages.
+    # Booth kit: ceil(32 / 12) = 3 pages; sample: ceil(24 / 12) = 2 pages.
     cols, rows = FORMAT_GRID["A4"]
     per_page = cols * rows
     kit_pages = math.ceil(len(kit_tile_ids(CFG)) / per_page)
     kit_files = [p for p in tiles if p.name.startswith("booth-kit")]
-    assert len(kit_files) == kit_pages == 5
+    assert len(kit_files) == kit_pages == 3
 
     assert (tmp_path / "board" / f"board_full.{suffix}").exists()
     # 720×500 mat over landscape A4 => a multi-page tiled set.

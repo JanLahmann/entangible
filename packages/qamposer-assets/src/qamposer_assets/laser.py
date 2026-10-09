@@ -42,11 +42,11 @@ from .measure_block import (
     MEASURE_BLOCK_COPIES,
     MEASURE_BLOCK_ID,
     MEASURE_BLOCK_LABEL,
-    measure_gauge,
-    measure_glyph_box,
+    measure_inner_gauge,
     measure_line_y,
     measure_marker_origin,
     measure_segments,
+    measure_top_gauge,
 )
 from .qubit_wire_block import (
     QUBIT_WIRE_COPIES,
@@ -496,7 +496,8 @@ def laser_measure_body(cfg: AssetsConfig, *, kerf: float = 0.0) -> str:
     the same 60 mm outline and red-cut / black-engrave convention, the same
     centred tile marker, the same wire line engraved at mid-height in the two
     runs the quiet zone leaves free — and, in place of the ``q``, a measurement
-    gauge in the strip along the block's **inner** (left) edge.
+    gauge in the strip along the block's **inner** (left) edge, plus an upright
+    one in the strip along its **top** edge (#108).
 
     The gauge is vector art, not a ``<text>`` element: no meter code point
     renders reliably, and this piece carries a fiducial, so nothing on it is
@@ -539,15 +540,18 @@ def laser_measure_body(cfg: AssetsConfig, *, kerf: float = 0.0) -> str:
         line(x0, cy, x1, cy, stroke=ENGRAVE_COLOR, stroke_width=WIRE_STROKE_MM)
         for x0, x1 in measure_segments(cfg)
     )
-    g = measure_gauge(measure_glyph_box(cfg))
-    glyph = measure_gauge_svg(
-        g.cx,
-        g.cy,
-        g.radius,
-        color=ENGRAVE_COLOR,
-        stroke=g.stroke,
-        needle=g.needle,
-        pivot_radius=g.pivot_radius,
+    glyph = "".join(
+        measure_gauge_svg(
+            g.cx,
+            g.cy,
+            g.radius,
+            color=ENGRAVE_COLOR,
+            stroke=g.stroke,
+            needle=g.needle,
+            pivot_radius=g.pivot_radius,
+            axis=g.axis,
+        )
+        for g in (measure_inner_gauge(cfg), measure_top_gauge(cfg))
     )
     engrave = f'<g id="engrave">{marker}{wire}{glyph}</g>'
     return f'<g id="laser-measure-{MEASURE_BLOCK_ID}">{cut}{engrave}</g>'

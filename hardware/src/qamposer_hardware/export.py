@@ -16,6 +16,7 @@ import datetime as _datetime
 import functools
 import subprocess
 import zipfile
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from xml.sax.saxutils import escape as xml_escape
@@ -80,9 +81,11 @@ __all__ = [
     "furniture_ids",
     "export_mono_batches",
     "export_bw_batches",
-    "BW_BEDS",
-    "bw_kit_quantities",
-    "bw_single_ids",
+    "KIT_BEDS",
+    "kit_quantities",
+    "kit_single_ids",
+    "DEFAULT_MAX_ACCENTS",
+    "MAX_ACCENTS_CHOICES",
     "write_batch_plates_md",
     "write_corner_plates_md",
     "write_corners_md",
@@ -783,8 +786,13 @@ def write_mono_md(
 
 
 # --------------------------------------------------------------------------- #
-# plates.md — MMU plate groupings
+# The kit — one shared quantity set for every bed route
 # --------------------------------------------------------------------------- #
+#
+# ``generate`` writes one file per tile *design*; every ``plates`` route (the
+# coloured filament plates, ``--bw`` and ``--mono``) instead lays out the same
+# fixed, playable quantity set below, and so does the paper booth kit
+# (``assets.toml`` ``[kit]``). One set, so the three routes print the same kit.
 
 
 def _gate_tiles() -> list[tuple[int, GateSpec]]:
@@ -794,57 +802,290 @@ def _gate_tiles() -> list[tuple[int, GateSpec]]:
     )
 
 
-def write_plates_md(config: AssetsConfig, out_dir: Path) -> Path:
-    """Emit ``plates.md``: two MMU plates (≤5 slots) with per-slot hex + tiles."""
-    out_dir.mkdir(parents=True, exist_ok=True)
+#: The kit's **fixed bed layout** for the flat (b/w, mono) packing: one entry per
+#: bed, each a tuple of ``(tile slug, quantity)`` in fill order. This is a
+#: playable quantity set, not one of every tile design — see
+#: :func:`kit_quantities` for the rationale. Four beds of eight, which is exactly
+#: what the default 8-piece wipe-tower cap packs, so the flat packers reproduce
+#: these beds verbatim; the coloured route regroups the same pieces by filament
+#: plate first (:func:`single_plate_groups`).
+KIT_BEDS: tuple[tuple[tuple[str, int], ...], ...] = (
+    (("h", 5), ("x", 3)),
+    (("x", 2), ("cnot-control", 4), ("swap", 2)),
+    (("y", 2), ("z", 2), ("s", 2), ("t", 2)),
+    (("rx", 2), ("ry", 2), ("rz", 2), ("swap", 2)),
+)
 
-    # accent hex -> [tile labels]
-    by_accent: dict[str, list[str]] = {}
-    accent_order: list[str] = []
-    for _mid, spec in _gate_tiles():
-        hexc = config.colors.for_gate(spec.gate)
-        if hexc not in by_accent:
-            by_accent[hexc] = []
-            accent_order.append(hexc)
-        by_accent[hexc].append(spec.label)
 
-    # Fixed slots white + black leave 3 free MMU slots per plate → chunk accents.
-    free_slots = 3
-    chunks = [
-        accent_order[i : i + free_slots]
-        for i in range(0, len(accent_order), free_slots)
+def kit_quantities() -> list[tuple[str, int]]:
+    """``(slug, total quantity)`` of the kit, in first-appearance order.
+
+    Three design calls shrink 24 tile *designs* to 11, and then size those 11
+    for the demos the kit is built around:
+
+    * **no ``cnot-target``** — a CNOT is laid as the generic control ``●`` plus
+      the target gate underneath it in the same column (#51), so the ``x`` tile
+      under a ``cnot-control`` *is* the ⊕ and the dedicated target tile is dead
+      weight;
+    * **no fixed-angle rotations** — the ``rx``/``ry``/``rz`` dial tiles cover
+      every angle by turning the dial (#107), so the twelve ``rx-pi4``-style
+      tiles only repeat what a dial already does;
+    * **SWAP in pairs** — a SWAP is only meaningful as two tiles on two wires,
+      so ``swap`` ships ×4 (two pairs).
+
+    The quantities cover GHZ-5 (``cnot-control`` ×4 with ``x`` ×4 as the
+    targets, plus one more ``x`` for the flipped variants), the five-qubit
+    uniform-superposition demo (``h`` ×5) and Cascade (2 ``h`` + 2
+    ``cnot-control``) — every other tile is the ×2 that lets it appear twice in
+    one circuit.
+    """
+    totals: dict[str, int] = {}
+    for bed in KIT_BEDS:
+        for slug, qty in bed:
+            totals[slug] = totals.get(slug, 0) + qty
+    return list(totals.items())
+
+
+def kit_single_ids() -> list[int]:
+    """:data:`KIT_BEDS` flattened to marker IDs, one entry per physical tile.
+
+    Raises ``ValueError`` for a slug the marker table no longer carries, so a
+    renamed or retired tile fails the run rather than silently dropping pieces
+    off the beds.
+    """
+    by_slug = {tile_slug(spec): mid for mid, spec in _gate_tiles()}
+    out: list[int] = []
+    for bed in KIT_BEDS:
+        for slug, qty in bed:
+            try:
+                mid = by_slug[slug]
+            except KeyError:
+                raise ValueError(
+                    f"KIT_BEDS names {slug!r}, which is not a gate tile — update "
+                    "KIT_BEDS when a tile is renamed or retired"
+                ) from None
+            out.extend([mid] * qty)
+    return out
+
+
+#: Tile slug -> the label the quantity table shows next to it, so the table
+#: reads as gates rather than as filenames.
+_KIT_TILE_LABELS: dict[str, str] = {
+    "h": "H",
+    "x": "X",
+    "y": "Y",
+    "z": "Z",
+    "s": "S",
+    "t": "T",
+    "swap": "SWAP",
+    "cnot-control": "CNOT control ●",
+    "rx": "RX dial",
+    "ry": "RY dial",
+    "rz": "RZ dial",
+}
+
+
+def _tile_label(spec: GateSpec) -> str:
+    """The gate a tile reads as — ``SWAP``, not ``SWAP ×``, so ``×4`` is a count."""
+    return _KIT_TILE_LABELS.get(tile_slug(spec), spec.label)
+
+
+def _kit_lines() -> list[str]:
+    """The quantity table + why the kit is not one of every tile design."""
+    quantities = kit_quantities()
+    total = sum(q for _slug, q in quantities)
+    lines = [
+        "## What is on the beds",
+        "",
+        "Every bed `plates` writes — the coloured plates below, black + white "
+        "(`--bw`) and mono (`--mono`) alike — holds the **same kit**, and it is "
+        "**not** one of each tile design: it is a fixed quantity set — "
+        f"**{total} pieces of {len(quantities)} designs**, several of them "
+        "duplicated — chosen so that one printed kit plays the circuits the "
+        "board is built around. Duplicates are ordinary objects on the bed, so a "
+        "bed holding `h` five times slices as five objects. The paper booth kit "
+        "(`assets.toml` `[kit]`) is the same set.",
+        "",
+        "| Tile | Slug | Qty |",
+        "| ---- | ---- | --- |",
     ]
+    for slug, qty in quantities:
+        lines.append(f"| {_KIT_TILE_LABELS.get(slug, slug)} | `{slug}` | {qty} |")
+    lines += [
+        "",
+        f"**Why these and not the other {len(_gate_tiles()) - len(quantities)} "
+        "designs:**",
+        "",
+        "- **No `cnot-target` (⊕).** A CNOT is laid as the generic control `●` "
+        "with the target gate directly under it in the same column, so an `X` "
+        "below a `●` *is* the ⊕. The dedicated target tile has nothing left to "
+        "do, and dropping it removes the one tile people place the wrong way up.",
+        "- **No fixed-angle rotation tiles.** The `rx` / `ry` / `rz` **dial** "
+        "tiles set any angle by turning the dial, so they already cover "
+        "everything the twelve fixed-angle tiles (`rx-pi4`, `rx-pi2`, `rx-pi`, "
+        "`rx-negpi2` and the `ry-*` / `rz-*` twins) could express — twelve prints "
+        "to say what three tiles say better.",
+        "- **SWAP only works in pairs.** A SWAP is two tiles on two wires or it "
+        "is nothing, so `swap` ships **×4** — two usable pairs.",
+        "",
+        "**Why these quantities:**",
+        "",
+        "- **GHZ-5** needs `cnot-control` **×4** with an `X` under each as the "
+        "target — hence `●` ×4 and `X` ×4, plus one more `X` (×5) so the flipped "
+        "variants can be laid without stealing a target.",
+        "- **Five-qubit uniform superposition** needs an `H` on every wire — "
+        "hence `H` ×5.",
+        "- **Cascade** needs 2 `H` + 2 `●`, which the above already covers.",
+        "- Everything else is **×2**, the minimum that lets a gate appear twice "
+        "in one circuit.",
+        "",
+        "The per-piece files `generate` writes still cover **every** design, so "
+        "print one whenever you want a tile the beds leave out.",
+        "",
+    ]
+    return lines
+
+
+def _counted(items: list) -> list[tuple[object, int]]:
+    """Run-length ``(item, count)`` — a bed lists ``h ×5``, not ``h`` five times."""
+    out: list[tuple[object, int]] = []
+    for item in items:
+        if out and out[-1][0] == item:
+            out[-1] = (item, out[-1][1] + 1)
+        else:
+            out.append((item, 1))
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# plates.md — filament plate groupings (single-faced kit)
+# --------------------------------------------------------------------------- #
+
+#: Accent filaments per single-faced plate by default. White + black + 2 is four
+#: filaments, which a 4-slot Bambu AMS loads as readily as the 5-slot Prusa MMU.
+DEFAULT_MAX_ACCENTS = 2
+
+#: ``plates --max-accents`` range. 3 is the 5-slot MMU's ceiling (5 − white −
+#: black); 1 trades filament swaps for more plates.
+MAX_ACCENTS_CHOICES: tuple[int, ...] = (1, 2, 3)
+
+
+def single_plate_groups(
+    config: AssetsConfig,
+    ids: list[int] | None = None,
+    *,
+    max_accents: int = DEFAULT_MAX_ACCENTS,
+) -> list[dict]:
+    """Filament plates for the single kit, as ``{"accents": [hex], "pieces": [mid]}``.
+
+    ``ids`` holds one entry per physical piece, duplicates included; ``None`` is
+    one of every gate design (what ``generate`` writes). Accent families are
+    taken in marker-table order whatever ``ids`` holds — so a colour sits on the
+    same plate in ``generate`` and ``plates`` — and chunked ``max_accents`` per
+    plate. A plate lists its pieces by accent, then by marker ID, duplicates
+    adjacent. :func:`write_plates_md` and the batch exporter both read this.
+    """
+    if max_accents not in MAX_ACCENTS_CHOICES:
+        raise ValueError(
+            f"max_accents must be one of {MAX_ACCENTS_CHOICES}, got {max_accents!r}"
+        )
+    tiles = _gate_tiles()
+    gate_ids = {mid for mid, _spec in tiles}
+    counts = Counter(gate_ids if ids is None else ids)
+    unknown = set(counts) - gate_ids
+    if unknown:
+        raise ValueError(f"not gate tiles: {sorted(unknown)}")
+
+    by_accent: dict[str, list[int]] = {}
+    for mid, spec in tiles:
+        hexc = config.colors.for_gate(spec.gate)
+        by_accent.setdefault(hexc, []).extend([mid] * counts[mid])
+    accent_order = [hexc for hexc, pieces in by_accent.items() if pieces]
+
+    plates: list[dict] = []
+    for i in range(0, len(accent_order), max_accents):
+        chunk = accent_order[i : i + max_accents]
+        pieces = [mid for hexc in chunk for mid in by_accent[hexc]]
+        plates.append({"accents": chunk, "pieces": pieces})
+    return plates
+
+
+def _slot_fit(slots: int) -> str:
+    """Which multi-material units load a plate of ``slots`` filaments."""
+    if slots <= 4:
+        return (
+            "so every plate fits a **4-slot** Bambu AMS as well as the 5-slot "
+            "Prusa Core One MMU."
+        )
+    return (
+        "which needs the **5-slot** Prusa Core One MMU — a 4-slot AMS wants "
+        "`--max-accents 2`."
+    )
+
+
+def write_plates_md(
+    config: AssetsConfig,
+    out_dir: Path,
+    *,
+    kit: bool = False,
+    max_accents: int = DEFAULT_MAX_ACCENTS,
+) -> Path:
+    """Emit ``plates.md``: the filament plates, per-slot hex + the tiles on each.
+
+    ``kit=False`` (``generate``) groups one of every gate design — the per-piece
+    files. ``kit=True`` (``plates``) groups the shared quantity set the beds
+    hold, with its quantities, and documents that set (:func:`_kit_lines`).
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    groups = single_plate_groups(
+        config, kit_single_ids() if kit else None, max_accents=max_accents
+    )
+    n_accents = sum(len(g["accents"]) for g in groups)
+    slots = 2 + max_accents
+    what = "the kit's pieces split" if kit else "tiles split"
 
     lines: list[str] = [
-        "# MMU plate groupings — Entangible gate tiles",
+        "# Filament plate groupings — Entangible gate tiles",
         "",
         _md_stamp(),
         "",
-        "Prusa Core One MMU has 5 filament slots. Every plate reserves slot 1",
-        "for **white** (bodies) and slot 2 for **black** (markers), leaving 3",
-        "slots for gate accent colours. The gate set uses "
-        f"{len(accent_order)} accent colours, so tiles split across "
-        f"{len(chunks)} plate(s) below.",
+        "Every plate loads slot 1 = **white** (bodies) and slot 2 = **black** "
+        f"(markers), then at most **{max_accents}** gate accent colour(s) — at "
+        f"most **{slots} filaments** per plate, {_slot_fit(slots)} The gate set "
+        f"uses {n_accents} accent colours, so {what} across {len(groups)} "
+        "plate(s) below.",
         "",
+    ]
+    if kit:
+        lines += _kit_lines()
+    lines += [
         "Load filaments into these slots, then print the listed tiles on that",
         "plate (any height variant). Hex values come straight from `assets.toml`.",
         "",
     ]
 
-    for pi, chunk in enumerate(chunks, start=1):
+    for pi, group in enumerate(groups, start=1):
         lines.append(f"## Plate {pi}")
         lines.append("")
         lines.append("| Slot | Filament | Hex |")
         lines.append("| ---- | -------- | --- |")
         lines.append(f"| 1 | white (bodies) | `{WHITE_HEX}` |")
         lines.append(f"| 2 | black (markers) | `{BLACK_HEX}` |")
-        for si, hexc in enumerate(chunk, start=3):
+        for si, hexc in enumerate(group["accents"], start=3):
             lines.append(f"| {si} | {accent_color_name(hexc)} | `{hexc}` |")
         lines.append("")
         lines.append("Tiles on this plate:")
         lines.append("")
-        for hexc in chunk:
-            tiles = ", ".join(by_accent[hexc])
+        for hexc in group["accents"]:
+            mids = [
+                m
+                for m in group["pieces"]
+                if config.colors.for_gate(MARKER_TABLE[m].gate) == hexc
+            ]
+            tiles = ", ".join(
+                _tile_label(MARKER_TABLE[m]) + (f" ×{n}" if n > 1 else "")
+                for m, n in _counted(mids)
+            )
             lines.append(f"- **{accent_color_name(hexc)}** (`{hexc}`): {tiles}")
         lines.append("")
 
@@ -869,7 +1110,9 @@ def write_plates_md(config: AssetsConfig, out_dir: Path) -> Path:
 # plates.md — double-faced kit (pieces may span two accent families)
 # --------------------------------------------------------------------------- #
 
-#: Max accent filaments per plate (5 MMU slots − white − black).
+#: Max accent filaments per double plate (5 MMU slots − white − black). Not
+#: lowered to the single kit's :data:`DEFAULT_MAX_ACCENTS`: a cross-family piece
+#: alone carries two accents, so the double kit needs the 5-slot MMU.
 _DOUBLE_FREE_SLOTS = 3
 
 
@@ -944,6 +1187,11 @@ def write_double_plates_md(
         "**white** (bodies) and slot 2 for **black** (markers), leaving 3 slots "
         "for accent colours — so a plate can host any pieces whose **combined** "
         f"accent families number ≤ 3. Greedy packing uses **{len(plates)} plate(s)**.",
+        "",
+        "That is **5 filament slots**: the double kit needs the 5-slot MMU. A "
+        "4-slot AMS cannot load a 3-family plate, and a 2-family cap would give "
+        "every cross-family colour pair — each such piece already carries two "
+        "accents — a plate of its own.",
         "",
     ]
 
@@ -1021,30 +1269,6 @@ class BatchInfo:
     object_count: int  # coloured parts in the 3MF (one object per piece)
     cols: int
     rows: int
-
-
-def single_plate_groups(config: AssetsConfig) -> list[dict]:
-    """Filament plates for the single kit, as ``{"accents": [hex], "pieces": [mid]}``.
-
-    Same membership rule as :func:`write_plates_md`: white + black + ≤3 accent
-    families per plate, accents chunked in table order, tiles grouped by accent.
-    """
-    by_accent: dict[str, list[int]] = {}
-    accent_order: list[str] = []
-    for mid, spec in _gate_tiles():
-        hexc = config.colors.for_gate(spec.gate)
-        if hexc not in by_accent:
-            by_accent[hexc] = []
-            accent_order.append(hexc)
-        by_accent[hexc].append(mid)
-
-    free_slots = 3
-    plates: list[dict] = []
-    for i in range(0, len(accent_order), free_slots):
-        chunk = accent_order[i : i + free_slots]
-        pieces = [mid for hexc in chunk for mid in by_accent[hexc]]
-        plates.append({"accents": chunk, "pieces": pieces})
-    return plates
 
 
 def double_plate_groups(
@@ -1175,13 +1399,20 @@ def _export_batches(
     encounter order when omitted. ``stem_fmt`` names the files (``{plate}`` /
     ``{batch}``); the corner-block plate uses its own stem so it can never be
     confused with a numbered gate plate.
+
+    A duplicate member is the same solids at another bed position (placing
+    never mutates a piece), so each distinct member is built once.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     cols, rows = _cols_rows(bed, spacing)
     infos: list[BatchInfo] = []
+    built: dict = {}
     for pi, members in enumerate(plate_pieces, start=1):
         accents = plate_accents[pi - 1] if plate_accents is not None else None
-        pieces = [build_pieces(m) for m in members]
+        for m in members:
+            if m not in built:
+                built[m] = build_pieces(m)
+        pieces = [built[m] for m in members]
         batches = plan_batches(
             len(pieces), bed, FOOTPRINT, spacing, max_per_bed=max_per_bed
         )
@@ -1219,10 +1450,23 @@ def export_single_batches(
     out_dir: Path,
     params: HardwareParams | None = None,
     max_per_bed: int | None = None,
+    ids: list[int] | None = None,
+    max_accents: int = DEFAULT_MAX_ACCENTS,
 ) -> list[BatchInfo]:
-    """Write bed-ready batch 3MFs for the single-faced kit."""
+    """Write bed-ready batch 3MFs for the single-faced kit.
+
+    The pieces are the kit's shared quantity set (:func:`kit_single_ids`, one
+    3MF object per physical piece) unless ``ids`` names others, grouped into
+    filament plates of at most ``max_accents`` accents by
+    :func:`single_plate_groups` — the grouping ``write_plates_md(kit=True)``
+    documents.
+    """
     params = params or HardwareParams()
-    groups = single_plate_groups(config)
+    groups = single_plate_groups(
+        config,
+        kit_single_ids() if ids is None else ids,
+        max_accents=max_accents,
+    )
     return _export_batches(
         lambda mid: _single_piece(mid, config, variant, height, params),
         [g["pieces"] for g in groups],
@@ -1266,80 +1510,14 @@ def export_double_batches(
 # Black + white plates — two filaments, so the bed is the only constraint
 # --------------------------------------------------------------------------- #
 #
-# The coloured kit splits into *filament* plates first (white + black + ≤3
-# accents per plate) and packs each plate onto beds second, so a plate holding a
-# single tile still costs a whole print job. The b/w kit has no accent slots to
-# compete over — every piece is the same two filaments — so the filament plate
-# stops existing and the pieces pack straight onto beds. That is where the
-# "fewer print jobs" comes from: nothing rounds up to a plate boundary any more.
-#
-# What lands on those beds is not one of every tile design either: the b/w kit
-# is a fixed quantity set (BW_BEDS below), so the two choices are independent —
-# the packing saves jobs per piece, the quantity set decides which pieces.
-
-
-#: The b/w kit's **fixed bed layout**: one entry per bed, each a tuple of
-#: ``(tile slug, quantity)`` in fill order. This is a playable quantity set, not
-#: one of every tile design — see :func:`bw_kit_quantities` for the rationale.
-#: Four beds of eight, which is exactly what the default 8-piece wipe-tower cap
-#: packs, so the flat packer below reproduces these beds verbatim.
-BW_BEDS: tuple[tuple[tuple[str, int], ...], ...] = (
-    (("h", 5), ("x", 3)),
-    (("x", 2), ("cnot-control", 4), ("swap", 2)),
-    (("y", 2), ("z", 2), ("s", 2), ("t", 2)),
-    (("rx", 2), ("ry", 2), ("rz", 2), ("swap", 2)),
-)
-
-
-def bw_kit_quantities() -> list[tuple[str, int]]:
-    """``(slug, total quantity)`` of the b/w kit, in first-appearance order.
-
-    Three design calls shrink 24 tile *designs* to 11, and then size those 11
-    for the demos the kit is built around:
-
-    * **no ``cnot-target``** — a CNOT is laid as the generic control ``●`` plus
-      the target gate underneath it in the same column (#51), so the ``x`` tile
-      under a ``cnot-control`` *is* the ⊕ and the dedicated target tile is dead
-      weight;
-    * **no fixed-angle rotations** — the ``rx``/``ry``/``rz`` dial tiles cover
-      every angle by turning the dial, so the twelve ``rx-pi4``-style tiles only
-      repeat what a dial already does;
-    * **SWAP in pairs** — a SWAP is only meaningful as two tiles on two wires,
-      so ``swap`` ships ×4 (two pairs).
-
-    The quantities cover GHZ-5 (``cnot-control`` ×4 with ``x`` ×4 as the
-    targets, plus one more ``x`` for the flipped variants), the five-qubit
-    uniform-superposition demo (``h`` ×5) and Cascade (2 ``h`` + 2
-    ``cnot-control``) — every other tile is the ×2 that lets it appear twice in
-    one circuit.
-    """
-    totals: dict[str, int] = {}
-    for bed in BW_BEDS:
-        for slug, qty in bed:
-            totals[slug] = totals.get(slug, 0) + qty
-    return list(totals.items())
-
-
-def bw_single_ids() -> list[int]:
-    """:data:`BW_BEDS` flattened to marker IDs, one entry per physical tile.
-
-    Raises ``ValueError`` for a slug the marker table no longer carries, so a
-    renamed or retired tile fails the run rather than silently dropping pieces
-    off the beds.
-    """
-    by_slug = {tile_slug(spec): mid for mid, spec in _gate_tiles()}
-    out: list[int] = []
-    for bed in BW_BEDS:
-        for slug, qty in bed:
-            try:
-                mid = by_slug[slug]
-            except KeyError:
-                raise ValueError(
-                    f"BW_BEDS names {slug!r}, which is not a gate tile — update "
-                    "BW_BEDS when a tile is renamed or retired"
-                ) from None
-            out.extend([mid] * qty)
-    return out
+# The coloured kit splits into *filament* plates first (white + black + ≤2
+# accents per plate by default) and packs each plate onto beds second, so a
+# plate's last bed often holds a few leftover tiles and still costs a whole
+# print job. The b/w kit has no accent slots to compete over — every piece is
+# the same two filaments — so the filament plate stops existing and the pieces
+# pack straight onto beds. That is where the "fewer print jobs" comes from:
+# nothing rounds up to a plate boundary any more. The pieces themselves are the
+# same on both routes: the kit's shared quantity set (:data:`KIT_BEDS`).
 
 
 def _bw_members(
@@ -1351,13 +1529,13 @@ def _bw_members(
     """Every physical piece of the kit, in one flat list — no plate grouping.
 
     Quantities are expanded here (a ``qty`` of 4 is four pieces on the beds),
-    exactly as the mono beds do it: :data:`BW_BEDS` for the single-faced kit,
+    exactly as the mono beds do it: :data:`KIT_BEDS` for the single-faced kit,
     the double-faced kit's own ``qty`` column for the double one.
     """
     if faces == "double":
         source = kit if kit is not None else DOUBLE_FACED_KIT
         return [(a, b) for a, b, qty in source for _ in range(qty)]
-    return bw_single_ids() if ids is None else list(ids)
+    return kit_single_ids() if ids is None else list(ids)
 
 
 def export_bw_batches(
@@ -1376,9 +1554,10 @@ def export_bw_batches(
 ) -> list[BatchInfo]:
     """Write bed-ready ``bw-batch*.3mf`` — a playable kit on two filaments.
 
-    The single-faced beds are :data:`BW_BEDS`, a **fixed quantity set** (32
-    pieces of 11 tile designs, several of them duplicated) rather than one of
-    every tile: see :func:`bw_kit_quantities`. Duplicates are ordinary pieces —
+    The single-faced beds are :data:`KIT_BEDS`, the kit's **fixed quantity
+    set** (32 pieces of 11 tile designs, several of them duplicated — the same
+    pieces as the coloured and mono beds) rather than one of every tile: see
+    :func:`kit_quantities`. Duplicates are ordinary pieces —
     one 3MF object each — so a bed holding ``h`` five times slices as five
     objects. The double-faced beds keep expanding the double kit's ``qty``
     column.
@@ -1386,7 +1565,7 @@ def export_bw_batches(
     Members are laid out in that fill order and packed by bed capacity (and
     ``max_per_bed``, which still applies: a two-filament print purges too, just
     far less than an MMU one). At the default bed and the default cap of 8 that
-    reproduces :data:`BW_BEDS` bed for bed. Board furniture is deliberately
+    reproduces :data:`KIT_BEDS` bed for bed. Board furniture is deliberately
     absent — it is already white + black and ships on its own ``corners-batch*``
     plate, so a b/w duplicate of it would be the same file under another name.
     """
@@ -1599,7 +1778,9 @@ def _mono_entries(
     """``(slug, {form: solid})`` for every physical piece of the mono kit.
 
     One entry per *piece*, so a double-faced design with ``qty`` 4 contributes
-    four entries (the same two solids, placed four times).
+    four entries (the same two solids, placed four times). The single-faced
+    pieces are the kit's shared quantity set (:func:`kit_single_ids`) unless
+    ``ids`` names others; a duplicated design is built once and placed again.
     """
     entries: list[tuple[str, dict[str, object]]] = []
     if faces == "double":
@@ -1611,12 +1792,14 @@ def _mono_entries(
             forms = _mono_forms(parts, params)
             entries.extend((slug, forms) for _ in range(qty))
     else:
-        members = [mid for mid, _spec in _gate_tiles()] if ids is None else list(ids)
-        for mid in members:
-            parts = build_tile(
-                mid, config, variant=variant, height=height, params=params
-            )
-            entries.append((tile_slug(parts.layout.spec), _mono_forms(parts, params)))
+        built: dict[int, tuple[str, dict[str, object]]] = {}
+        for mid in kit_single_ids() if ids is None else list(ids):
+            if mid not in built:
+                parts = build_tile(
+                    mid, config, variant=variant, height=height, params=params
+                )
+                built[mid] = (tile_slug(parts.layout.spec), _mono_forms(parts, params))
+            entries.append(built[mid])
     if corners:
         # One entry per physical furniture block, so the five identical wire
         # blocks really do get five pieces on the mono beds.
@@ -1645,7 +1828,9 @@ def export_mono_batches(
 
     Every piece of the kit appears exactly once on the recessed beds and exactly
     once on the raised beds; the two forms never share a bed, so a raised bed is
-    a single filament swap (at ``Z = height``) for the whole plate.
+    a single filament swap (at ``Z = height``) for the whole plate. The
+    single-faced kit is the shared quantity set, so at the default bed and cap
+    each form's beds are :data:`KIT_BEDS` bed for bed.
     """
     params = params or HardwareParams()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1709,6 +1894,13 @@ def _ascii_layout(info: BatchInfo, cell_w: int = 8) -> list[str]:
         lines.append(rule)
     lines.append("```")
     return lines
+
+
+def _slug_list(slugs: list[str]) -> str:
+    """A bed's pieces as ``"`h` ×3, `x`"`` — duplicates counted, not repeated."""
+    return ", ".join(
+        f"`{slug}`" + (f" ×{n}" if n > 1 else "") for slug, n in _counted(slugs)
+    )
 
 
 def write_batch_plates_md(
@@ -1775,7 +1967,7 @@ def write_batch_plates_md(
         lines.append("")
         lines.append(
             f"{len(info.slugs)} piece(s), {info.object_count} coloured parts: "
-            + ", ".join(f"`{s}`" for s in info.slugs)
+            + _slug_list(info.slugs)
         )
         lines.append("")
         lines.extend(_ascii_layout(info))
@@ -1898,73 +2090,6 @@ def _bw_intro_lines(faces: str) -> list[str]:
     ]
 
 
-#: Tile slug -> the label the quantity table shows next to it, so the table
-#: reads as gates rather than as filenames.
-_BW_TILE_LABELS: dict[str, str] = {
-    "h": "H",
-    "x": "X",
-    "y": "Y",
-    "z": "Z",
-    "s": "S",
-    "t": "T",
-    "swap": "SWAP",
-    "cnot-control": "CNOT control ●",
-    "rx": "RX dial",
-    "ry": "RY dial",
-    "rz": "RZ dial",
-}
-
-
-def _bw_kit_lines() -> list[str]:
-    """The quantity table + why the b/w kit is not one of every tile design."""
-    quantities = bw_kit_quantities()
-    total = sum(q for _slug, q in quantities)
-    lines = [
-        "### What is on the beds",
-        "",
-        f"The b/w beds are **not** one of each tile design: they are a fixed "
-        f"quantity set — **{total} pieces of {len(quantities)} designs**, several "
-        "of them duplicated — chosen so that one printed kit plays the circuits "
-        "the board is built around. Duplicates are ordinary objects on the bed, "
-        "so a bed holding `h` five times slices as five objects.",
-        "",
-        "| Tile | Slug | Qty |",
-        "| ---- | ---- | --- |",
-    ]
-    for slug, qty in quantities:
-        lines.append(f"| {_BW_TILE_LABELS.get(slug, slug)} | `{slug}` | {qty} |")
-    lines += [
-        "",
-        f"**Why these and not the other {len(_gate_tiles()) - len(quantities)} "
-        "designs:**",
-        "",
-        "- **No `cnot-target` (⊕).** A CNOT is laid as the generic control `●` "
-        "with the target gate directly under it in the same column, so an `X` "
-        "below a `●` *is* the ⊕. The dedicated target tile has nothing left to "
-        "do, and dropping it removes the one tile people place the wrong way up.",
-        "- **No fixed-angle rotation tiles.** The `rx` / `ry` / `rz` **dial** "
-        "tiles set any angle by turning the dial, so they already cover "
-        "everything the twelve fixed-angle tiles (`rx-pi4`, `rx-pi2`, `rx-pi`, "
-        "`rx-negpi2` and the `ry-*` / `rz-*` twins) could express — twelve prints "
-        "to say what three tiles say better.",
-        "- **SWAP only works in pairs.** A SWAP is two tiles on two wires or it "
-        "is nothing, so `swap` ships **×4** — two usable pairs, one pair per bed.",
-        "",
-        "**Why these quantities:**",
-        "",
-        "- **GHZ-5** needs `cnot-control` **×4** with an `X` under each as the "
-        "target — hence `●` ×4 and `X` ×4, plus one more `X` (×5) so the flipped "
-        "variants can be laid without stealing a target.",
-        "- **Five-qubit uniform superposition** needs an `H` on every wire — "
-        "hence `H` ×5.",
-        "- **Cascade** needs 2 `H` + 2 `●`, which the above already covers.",
-        "- Everything else is **×2**, the minimum that lets a gate appear twice "
-        "in one circuit.",
-        "",
-    ]
-    return lines
-
-
 def write_bw_md(base_md: Path, *, faces: str) -> Path:
     """Append the **Black + white kit** section to a generated ``plates.md``.
 
@@ -1980,10 +2105,11 @@ def write_bw_md(base_md: Path, *, faces: str) -> Path:
         "only the palette differs, so if you assemble from STLs simply send the "
         "accent part to the black slot.",
         "",
-        "Run `plates --bw` for bed-ready `bw-batch*.3mf` files. Those beds hold "
-        "a **fixed quantity set** — a playable kit with duplicates, not one of "
-        "every design — while the per-piece files here cover every design, so "
-        "print a piece file whenever you want one the beds leave out.",
+        "Run `plates --bw` for bed-ready `bw-batch*.3mf` files. Those beds — "
+        "like every `plates` bed, coloured and mono too — hold the kit's **fixed "
+        "quantity set**, a playable kit with duplicates rather than one of every "
+        "design, while the per-piece files here cover every design, so print a "
+        "piece file whenever you want one the beds leave out.",
         "",
     ]
     with base_md.open("a", encoding="utf-8") as fh:
@@ -2015,7 +2141,12 @@ def write_bw_batch_md(
     total_pieces = sum(len(i.slugs) for i in infos)
     lines = ["", "---", "", _BW_HEADING, "", *_bw_intro_lines(faces)]
     if faces != "double":
-        lines += _bw_kit_lines()
+        lines += [
+            "The b/w beds hold the **same pieces** as the coloured plates above: "
+            "the kit's fixed quantity set (*What is on the beds*). Only the "
+            "palette and the packing differ.",
+            "",
+        ]
     lines += [
         "### Print jobs (black + white)",
         "",
@@ -2032,8 +2163,8 @@ def write_bw_batch_md(
             f"> **Fewer jobs.** The coloured route above needs **{colored_jobs}** "
             f"batch files; these {total_pieces} pieces take only "
             f"**{len(infos)}**. A coloured filament plate is packed on its own, "
-            "so a plate holding one leftover tile still costs a whole print job; "
-            "with two filaments nothing rounds up to a plate boundary.",
+            "so its last bed costs a whole print job however few leftover tiles "
+            "it holds; with two filaments nothing rounds up to a plate boundary.",
             "",
         ]
     if max_per_bed is not None and max_per_bed < cols * rows:
@@ -2056,17 +2187,9 @@ def write_bw_batch_md(
     for info in infos:
         lines.append(f"### `{info.path.name}` — black + white, batch {info.batch}")
         lines.append("")
-        # Duplicates are the norm on a b/w bed, so the listing counts them
-        # (``h ×5``) rather than repeating the same slug five times.
-        counted: list[tuple[str, int]] = []
-        for slug in info.slugs:
-            if counted and counted[-1][0] == slug:
-                counted[-1] = (slug, counted[-1][1] + 1)
-            else:
-                counted.append((slug, 1))
         lines.append(
             f"{len(info.slugs)} piece(s), {info.object_count} coloured parts: "
-            + ", ".join(f"`{s}`" + (f" ×{n}" if n > 1 else "") for s, n in counted)
+            + _slug_list(info.slugs)
         )
         lines.append("")
         lines.extend(_ascii_layout(info))
@@ -2178,9 +2301,11 @@ def _measure_block_md_lines(config: AssetsConfig) -> list[str]:
         "line the bar up with the row's wire. Where a wire block carries a "
         "small **q**, this one carries a **measurement gauge** — a half dial "
         "with a needle, the symbol a circuit diagram puts at the end of a wire "
-        "— engraved just above the bar on the block's inner (left) edge, "
-        "facing the board the wire comes from. On a cube-height block the bar "
-        "and a much larger gauge are repeated on all four vertical faces.",
+        "— twice (#108): lying on its side just above the bar on the block's "
+        "inner (left) edge, crown toward the board the wire comes from so it "
+        "reads upright from that side, and upright in the strip along the top "
+        "edge. On a cube-height block the bar and a much larger upright gauge "
+        "are repeated on all four vertical faces.",
         "",
     ]
 
@@ -2264,6 +2389,13 @@ def write_corners_md(config: AssetsConfig, out_dir: Path) -> Path:
         "- keep all four blocks flat and coplanar (the homography assumes a "
         "plane), and keep the whole rectangle in frame.",
         "",
+        "That spacing reproduces the printed mat exactly, but it is a default, "
+        "not a requirement: the app **measures** the rectangle the four blocks "
+        "actually span (#94). Any flat rectangle the camera can frame works — "
+        "a wider table simply plays more columns (the default `grid` layout "
+        "keeps the mat's 70 mm pitch), and `stretch` scales the classic 5 × 8 "
+        "lattice into whatever you lay out.",
+        "",
         "Corner blocks do not draw the grid or the qubit labels — only the "
         "corners. The circuit still reads left → right from the UL/LL side. If "
         "you want the printed guides, use the mat (`qamposer-assets board`).",
@@ -2321,6 +2453,18 @@ def write_mono_batch_md(
         f"{height:g} mm body, so a single M600 does the whole plate.",
         "",
     ]
+    if faces != "double":
+        quantities = kit_quantities()
+        lines += [
+            "The beds hold the kit's **fixed quantity set** — "
+            f"{sum(q for _s, q in quantities)} pieces of {len(quantities)} "
+            "designs, duplicates included, the same pieces as the coloured and "
+            "black + white beds (the table and the reasoning are in `plates.md`, "
+            "*What is on the beds*) — not one of every design; `--corners` adds "
+            "the board furniture after it. The per-piece mono STLs from "
+            "`generate --mono` cover every design.",
+            "",
+        ]
     if faces == "double":
         lines += [
             f"> Double-faced raised pieces have art on **both** faces, so they "
@@ -2342,7 +2486,7 @@ def write_mono_batch_md(
         lines.append("")
         lines.append(
             f"{len(info.slugs)} piece(s), {info.object_count} object(s): "
-            + ", ".join(f"`{s}`" for s in info.slugs)
+            + _slug_list(info.slugs)
         )
         lines.append("")
         lines.extend(_ascii_layout(info))

@@ -130,17 +130,22 @@ in-plane spin, so the upside-down half is exactly what rights itself.
 
 ### Filament slots / plates
 
-`plates.md` (regenerated on every run) lists the MMU plate groupings. The MMU has
-5 slots; every plate uses slot 1 = **white** (`#ffffff`) bodies, slot 2 =
-**black** (`#000000`) markers, leaving 3 slots for gate accent colours. The gate
-set uses **4** accent colours, so tiles split across **2 plates**:
+`plates.md` (regenerated on every run) lists the filament plate groupings. Every
+plate uses slot 1 = **white** (`#ffffff`) bodies, slot 2 = **black**
+(`#000000`) markers, then at most **2** gate accent colours — **4 filaments**
+per plate, so a 4-slot Bambu AMS prints the single-faced kit as well as the
+5-slot Prusa MMU. The gate set uses **4** accent colours, so tiles split across
+**2 plates**: plate 1 = cyan + magenta, plate 2 = blue + red (SWAP is in the
+blue CNOT family, so it shares plate 2 with X, the CNOT tiles and H).
+`plates --max-accents 3` packs three accents per plate instead (5 filaments,
+MMU only — still 2 plates); `--max-accents 1` gives every colour its own plate.
 
 | Filament | Hex | Gates |
 | -------- | --- | ----- |
 | white | `#ffffff` | all bodies |
 | black | `#000000` | all markers |
 | red | `#fa4d56` | H |
-| blue | `#002d9c` | X, CNOT |
+| blue | `#002d9c` | X, CNOT, SWAP |
 | magenta | `#9f1853` | Y, RX, RY |
 | cyan | `#33b1ff` | Z, RZ, S, T |
 
@@ -179,10 +184,24 @@ uv run qamposer-hardware plates --bed 300x300 --spacing 6       # custom bed/gap
 ```
 
 Options: `--faces single|double`, `--variant tile|cube`, `--bed WIDTHxHEIGHT`
-(default `250x220`, Prusa Core One), `--spacing` mm (default `8`), `--mono`,
-`--bw`, `--corners`, `--out DIR`.
+(default `250x220`, Prusa Core One), `--spacing` mm (default `8`),
+`--max-per-plate` (default `8`, wipe-tower room), `--max-accents 1|2|3`
+(single-faced kit, default `2`), `--mono`, `--bw`, `--corners`, `--out DIR`.
 
-It reuses the same filament-plate groupings above, then **packs** each plate onto
+**What goes on the beds is the kit, not the catalogue.** `generate` writes every
+tile design; every `plates` route — colour, `--bw` and `--mono` alike — lays out
+one shared, fixed quantity set instead: **32 pieces of 11 designs**, `H` ×5,
+`X` ×5, CNOT control `●` ×4, `SWAP` ×4, and `Y`, `Z`, `S`, `T` and the
+`RX`/`RY`/`RZ` dial tiles ×2 each, one 3MF object per physical piece. No
+`cnot-target`: a CNOT is the generic control `●` with the target gate under it in
+the same column, so an `X` below a `●` *is* the ⊕. No fixed-angle rotation tiles
+either: the dial tiles already cover every angle. SWAP ships in pairs. The
+quantities cover GHZ-5, the five-qubit uniform superposition and Cascade;
+`plates.md` carries the table and the reasoning, and the paper booth kit
+(`assets.toml` `[kit]`) is the same set. Print a per-piece `generate` file
+whenever you want a tile the beds leave out.
+
+It groups that set into the filament plates above, then **packs** each plate onto
 the bed: 60 × 60 mm footprints on a grid with `--spacing` gaps, row-major and
 centred — `250 × 220` fits **3 × 3 = 9** pieces. A plate with more pieces than one
 bed holds is split into numbered batches: `plate1-batch1.3mf`, `plate1-batch2.3mf`,
@@ -193,6 +212,11 @@ OrcaSlicer, which read the same colours off the 3MF's base materials).
 `plates.md` gains a **Print jobs** section listing every batch file, its pieces,
 and a tiny ASCII bed sketch. Cubes pack the same 3 × 3 but are a tall, long
 print.
+
+At the defaults (`250x220`, 8 per bed, 2 accents) the colour kit is **5 print
+jobs**: plate 1 (cyan + magenta, 14 pieces) on 2 beds, plate 2 (blue + red, 18
+pieces) on 3. `--bw` packs the same 32 pieces onto **4** beds and `--mono` onto 4
+beds per form (8 jobs).
 
 `--mono` writes the same kind of project file with a single slot — one object per
 piece, everything pinned to **filament 1** — so an MMU printer profile cannot
@@ -217,16 +241,12 @@ uv run qamposer-hardware plates --faces single --variant tile --bw
   black slot.
 - `plates --bw` writes `bw-batch*.3mf`. With no accent slots to compete over the
   filament-plate grouping stops applying and the kit packs straight onto beds, so
-  the same pieces need **fewer print jobs** than the colour kit.
-- **The b/w beds are a fixed quantity set**, not one of every design: 32 pieces
-  of 11 designs over 4 beds of 8 (`--max-per-plate 8`), with duplicates — `H` ×5,
-  `X` ×5, `●` ×4, `SWAP` ×4, everything else ×2. No `cnot-target`: a CNOT is the
-  generic control `●` with the target gate under it in the same column, so an `X`
-  below a `●` *is* the ⊕. No fixed-angle rotation tiles either: the `rx`/`ry`/`rz`
-  **dial** tiles already cover every angle. The quantities cover GHZ-5, the
-  five-qubit uniform superposition and Cascade; `plates.md` carries the table and
-  the reasoning. The per-piece `<gate>-bw.3mf` files still cover **every** design,
-  so print one whenever you want a tile the beds leave out.
+  the same pieces need **fewer print jobs** than the colour kit (4 vs 5).
+- **The b/w beds hold the kit's fixed quantity set** — the same 32 pieces as the
+  colour and mono beds (see [Bed-ready print plates](#bed-ready-print-plates)),
+  over 4 beds of 8 (`--max-per-plate 8`). The per-piece `<gate>-bw.3mf` files
+  still cover **every** design, so print one whenever you want a tile the beds
+  leave out.
 - **The band caption still reads.** Its glyphs are cut *out* of the accent and
   left standing in the white body, so the accent going black turns the caption
   from white-on-colour into **white-out-of-black** with no geometry change.
@@ -363,7 +383,10 @@ that still follows the tiles). A measurement block with no wire block across
 from it is ignored and warned about. The face is the wire block's mirrored: same
 centred 36 mm marker, same 2 mm bar at mid-height into both edges, and in place
 of the `q` a **measurement gauge** — a half dial with a needle, drawn as vector
-art (never a font glyph) — on the block's inner (left) edge.
+art (never a font glyph) — twice (#108): an 8 mm dial lying on its side in the
+strip along the block's inner (left) edge, crown toward the board so it reads
+upright from the side the wire comes from, and an upright one of the same size
+centred in the strip along the top edge.
 
 `plates --corners` packs the whole family — 4 corners + 5 wire blocks +
 5 measurement blocks = 14 pieces — onto `corners-batch1/2.3mf` (white + black
@@ -434,9 +457,11 @@ is unambiguous.
 ### Plates (double kit)
 
 `plates.md` in the double output uses a relaxed rule: a plate hosts any pieces
-whose **combined** accent families number ≤ 3 (white + black + 3 MMU slots). The
-mixed pieces cover all six cross-family colour pairs, which cannot fit on two
-3-family plates, so the double kit needs **3 plates**:
+whose **combined** accent families number ≤ 3 (white + black + 3 MMU slots). That
+is **5 filaments**, so the double kit needs the 5-slot MMU — a 4-slot AMS cannot
+load it, and `--max-accents` does not apply (a cross-family piece alone carries
+two accents). The mixed pieces cover all six cross-family colour pairs, which
+cannot fit on two 3-family plates, so the double kit needs **3 plates**:
 
 | Plate | Accent slots | Pieces |
 | ----- | ------------ | ------ |

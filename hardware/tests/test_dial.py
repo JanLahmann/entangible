@@ -267,10 +267,10 @@ def test_single_kit_includes_three_dials(config):
     placed = [m for g in groups for m in g["pieces"]]
     for mid in DIAL_IDS:
         assert mid in placed, f"dial {mid} not in any plate group"
-    # No duplicates and every group still ≤3 accent families.
+    # No duplicates and every group still ≤2 accent families (4-slot AMS).
     assert len(placed) == len(set(placed))
     for g in groups:
-        assert len(g["accents"]) <= 3
+        assert len(g["accents"]) <= 2
 
 
 def test_dials_add_no_new_accent_colour(config):
