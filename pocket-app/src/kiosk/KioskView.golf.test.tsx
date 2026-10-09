@@ -56,6 +56,16 @@ describe('KioskView golf mode', () => {
     expect(screen.getByText('golf')).toBeTruthy();
   });
 
+  it('spells out the hole goal in plain words under the sphere', () => {
+    snapshot = golfSnapshot(bell);
+    const { container } = render(<KioskView />);
+    // Hole E1 is |+⟩ — the exact sentence is pinned in goalLine.test.ts; here
+    // we pin that the kiosk golf well carries it at all.
+    const goal = container.querySelector('.bo-golf-goal');
+    expect(goal).not.toBeNull();
+    expect(goal!.textContent).toBe('Goal: a fair 50/50 coin.');
+  });
+
   it('swaps out the composer panels for the golf sidebar', () => {
     snapshot = golfSnapshot(bell);
     render(<KioskView />);

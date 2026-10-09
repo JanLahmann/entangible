@@ -102,6 +102,8 @@ import {
   randomBaseSeed,
 } from '@quantum/golfRandom';
 import { CourseDealing, useCourseDealer } from './CourseDealing';
+import { holeGoal } from '@shared/display/goalLine';
+import { BUILD_ON_SCREEN, GOLF_ON_SCREEN, welcomeEligible } from './welcome';
 import {
   detectEnv,
   exitFullscreen,
@@ -1030,6 +1032,9 @@ export function App() {
   const streamPill = cameraStreamPill(streamStatus);
   const golfTargets = useMemo(() => holeHighlight(currentLevel), [currentLevel]);
   const golfTargetState = useMemo(() => holeTargetState(currentLevel), [currentLevel]);
+  // The hole's goal in plain words, under the target (derived from the target
+  // state alone, so a generated hole reads exactly like a classic one).
+  const golfGoal = useMemo(() => holeGoal(currentLevel), [currentLevel]);
   // The Q-sphere and the bra-ket line show the HOLE's state space, not the full
   // five qubits: a level-2 hole gets a 4-node sphere and 2-bit kets. Untouched
   // qubits are exactly |0⟩, so restricting to the first 2^n amplitudes is
@@ -1062,6 +1067,22 @@ export function App() {
     setCamExpanded(!camExpanded);
   };
 
+  // The welcome card's three paths (camera · build on screen · golf) replace the
+  // plain camera card only on the idle composer landing; any purposeful URL,
+  // booth link or camera role keeps today's card (see `welcomeEligible`). The
+  // URL is read as the page was opened — a later settings change does not turn
+  // a shared link back into a welcome.
+  const [openedSearch] = useState(() =>
+    typeof window === 'undefined' ? '' : window.location.search,
+  );
+  const welcome = welcomeEligible({
+    search: openedSearch,
+    status: camera.status,
+    connected,
+    cameraRole,
+    mode: effectiveMode,
+  });
+
   const cameraPanel = (
     <CameraPanel
       key="camera"
@@ -1071,7 +1092,9 @@ export function App() {
       visible={hasPanel('camera')}
       frozen={frozen}
       onToggleFreeze={toggleFreeze}
-      onBuildOnScreen={() => settingsStore.update({ input: 'manual' })}
+      onBuildOnScreen={() => settingsStore.update(BUILD_ON_SCREEN)}
+      // Golf from the card is the drawer's own Mode/Input write (one golf entry).
+      onPlayGolf={welcome ? () => settingsStore.update(GOLF_ON_SCREEN) : undefined}
       expanded={camExpanded}
       onToggleExpand={toggleCamExpanded}
     />
@@ -1274,6 +1297,15 @@ export function App() {
             showKet
             classPrefix="pk"
           />
+          {/* The goal in plain words, right under the target ket. One line,
+              ellipsized; the full sentence is the tooltip. Hidden while a
+              course is dealt (the target is the course being left) and once
+              the course is complete (there is no hole to aim at). */}
+          {!dealing && !golfState.complete && (
+            <p className="pk-golf-goal" title={golfGoal}>
+              {golfGoal}
+            </p>
+          )}
           {advanceHole && golfState.holedIn && (
             <button
               type="button"
@@ -1626,6 +1658,7 @@ function CameraPanel({
   matLocked = false,
   onUnlockMat,
   onBuildOnScreen,
+  onPlayGolf,
   expanded,
   onToggleExpand,
 }: {
@@ -1641,6 +1674,13 @@ function CameraPanel({
    * role (streaming), where building on screen makes no sense.
    */
   onBuildOnScreen?: () => void;
+  /**
+   * The WELCOME card (`welcomeEligible`): when set, the idle card offers three
+   * paths — the camera (primary), build on screen, and Quantum Golf (this) —
+   * instead of the plain camera instructions. Omitted everywhere a visitor
+   * arrived with a purpose (shared links, booth, camera role) and on error.
+   */
+  onPlayGolf?: () => void;
   /**
    * iPhone expand toggle, App-controlled in the main layout so the stage can
    * freeze its pre-expansion height (the camera then pushes content below the
@@ -1779,6 +1819,17 @@ function CameraPanel({
             )
           )}
         </div>
+      ) : !streaming && onPlayGolf && onBuildOnScreen && status !== 'error' ? (
+        <div className="pk-cam is-idle">
+          {/* Keep the video element mounted so the ref is stable across starts. */}
+          <video ref={videoRef} playsInline muted style={{ display: 'none' }} />
+          <WelcomeCard
+            starting={status === 'starting'}
+            onStartCamera={camera.start}
+            onBuildOnScreen={onBuildOnScreen}
+            onPlayGolf={onPlayGolf}
+          />
+        </div>
       ) : (
         <div className="pk-cam is-idle">
           {/* Keep the video element mounted so the ref is stable across starts. */}
@@ -1786,13 +1837,7 @@ function CameraPanel({
           <div className={`pk-startcard ${status === 'error' ? 'is-error' : ''}`}>
             {/* Most visitors arrive from a QR code with no context: say what
                 this is before asking for the camera. */}
-            {!streaming && (
-              <p className="pk-startcard-intro">
-                Entangible lets you build a quantum circuit with your hands: lay printed tiles
-                on the mat, point a camera at them, and watch the results appear live. No tiles
-                or camera at hand — tap to build it on screen instead.
-              </p>
-            )}
+            {!streaming && <p className="pk-startcard-intro">{START_INTRO}</p>}
             <h2>
               {status === 'error'
                 ? 'Camera unavailable'
@@ -1826,6 +1871,65 @@ function CameraPanel({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* Most visitors arrive from a QR code with no context: say what this is before
+   asking for anything. One string, shared by the plain card and the welcome. */
+const START_INTRO =
+  'Entangible lets you build a quantum circuit with your hands: lay printed tiles on the ' +
+  'mat, point a camera at them, and watch the results appear live. No tiles or camera at ' +
+  'hand — tap to build it on screen instead.';
+
+/**
+ * The welcome card: what Entangible is (the same two sentences the plain card
+ * opens with), then three ways in. The camera is the primary path — full width,
+ * filled, first — because the printed board is the exhibit; building on screen
+ * and Quantum Golf sit under it as outlined secondaries that share a row when
+ * the card is wide enough and stack when it is not (a 320–360 px phone).
+ */
+export function WelcomeCard({
+  starting,
+  onStartCamera,
+  onBuildOnScreen,
+  onPlayGolf,
+}: {
+  /** The camera is coming up (from this card's own primary button). */
+  starting: boolean;
+  onStartCamera: () => void;
+  onBuildOnScreen: () => void;
+  onPlayGolf: () => void;
+}) {
+  return (
+    <div className="pk-startcard pk-welcome">
+      <p className="pk-startcard-intro">{START_INTRO}</p>
+      <div className="pk-welcome-paths" role="group" aria-label="Choose how to start">
+        <button
+          type="button"
+          className="pk-welcome-path pk-welcome-path--primary"
+          onClick={onStartCamera}
+          disabled={starting}
+        >
+          <span className="pk-welcome-path-title">
+            {starting ? 'Starting the camera…' : 'Point your camera at the board'}
+          </span>
+          <span className="pk-welcome-path-sub">All four corner markers in view</span>
+        </button>
+        <div className="pk-welcome-alts">
+          <button type="button" className="pk-welcome-path" onClick={onBuildOnScreen}>
+            <span className="pk-welcome-path-title">Build on screen</span>
+            <span className="pk-welcome-path-sub">No tiles needed</span>
+          </button>
+          <button type="button" className="pk-welcome-path" onClick={onPlayGolf}>
+            <span className="pk-welcome-path-title">Play Quantum Golf</span>
+            <span className="pk-welcome-path-sub">Hole by hole, on screen</span>
+          </button>
+        </div>
+      </div>
+      <a className="pk-startcard-link" href="#guide">
+        New here? Read the guide
+      </a>
     </div>
   );
 }

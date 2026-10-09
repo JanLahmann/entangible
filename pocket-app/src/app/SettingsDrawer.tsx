@@ -1,11 +1,22 @@
 /**
  * Settings drawer (docs/pocket.md) — a gear pill in the topbar opens a
  * right-side overlay (pk styling, hairline border, 200 ms slide-in, ESC /
- * backdrop close). Sections: MODE, PANELS, SIDEBAR SIDE, LOW-POWER, DEBUG. All
- * touch targets ≥ 44 px. Changes go straight through the settings store (which
- * persists and clears the matching URL override).
+ * backdrop close). All touch targets ≥ 44 px. Changes go straight through the
+ * settings store (which persists and clears the matching URL override).
+ *
+ * Two groups, because a visitor who opens the gear should meet the settings a
+ * visitor uses — not the booth's wiring:
+ *   - VISITOR (always visible): mode (+ golf course code / Quantina menu),
+ *     input, panels, wires, noise, camera, low-power, and the guide link.
+ *   - STAFF & ADVANCED (collapsed at the bottom): board layout, sidebar side,
+ *     the booth host / camera role, and the debug panel. Collapsed by default;
+ *     its open state is remembered for the page session only (module memory,
+ *     nothing stored), so a staffer re-opening the drawer finds it as they left
+ *     it, and the next visitor after a reload finds it closed.
+ * The grouping is presentational only: every setting keeps its storage key,
+ * URL override and behaviour.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   PANEL_IDS,
   settingsStore,
@@ -322,6 +333,57 @@ function BoothSection({
   );
 }
 
+/**
+ * Is the Staff & advanced group open? Page-session memory: survives the drawer
+ * closing and re-opening (the drawer body unmounts each time), resets on a
+ * reload, and is never persisted — the next visitor always starts collapsed.
+ */
+let advancedOpen = false;
+
+/** Test seam: collapse the Staff & advanced group (the page-session default). */
+export function resetAdvancedOpen(): void {
+  advancedOpen = false;
+}
+
+/**
+ * The collapsed-by-default "Staff & advanced" group — a disclosure (the
+ * `<details>` pattern as a button + region, so collapsed content is genuinely
+ * absent rather than merely hidden).
+ */
+function AdvancedGroup({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(advancedOpen);
+  const toggle = () => {
+    advancedOpen = !open;
+    setOpen(!open);
+  };
+  return (
+    <section className={`pk-drawer-sec pk-drawer-adv${open ? ' is-open' : ''}`}>
+      <button
+        type="button"
+        className="pk-drawer-adv-toggle"
+        aria-expanded={open}
+        aria-controls="pk-drawer-adv-body"
+        onClick={toggle}
+      >
+        <span>Staff &amp; advanced</span>
+        <span aria-hidden="true" className="pk-drawer-adv-chevron">
+          ▸
+        </span>
+      </button>
+      {open && (
+        <div
+          id="pk-drawer-adv-body"
+          className="pk-drawer-adv-body"
+          role="region"
+          aria-label="Staff & advanced"
+        >
+          {children}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function SettingsControl({
   cameraRoleAvailable = false,
 }: {
@@ -454,25 +516,6 @@ export function SettingsControl({
               </section>
 
               <section className="pk-drawer-sec">
-                <div className="pk-label">Board</div>
-                <Segmented<BoardLayout>
-                  value={settings.boardLayout}
-                  options={[
-                    { value: 'grid', label: 'More columns' },
-                    { value: 'stretch', label: 'Bigger cells' },
-                  ]}
-                  disabled={connected}
-                  onChange={(boardLayout) => settingsStore.update({ boardLayout })}
-                />
-                <p className="pk-drawer-hint">
-                  Corner blocks may span any rectangle. On a table bigger than the printed
-                  mat, "More columns" keeps the tile pitch and gives you extra columns;
-                  "Bigger cells" stretches the 8-column board to fit. A mat-sized board
-                  ignores this. {connected ? 'Controlled by booth.' : null}
-                </p>
-              </section>
-
-              <section className="pk-drawer-sec">
                 <div className="pk-label">Noise</div>
                 <Segmented<NoisePreset>
                   value={settings.noise}
@@ -492,21 +535,7 @@ export function SettingsControl({
                 </p>
               </section>
 
-              <section className="pk-drawer-sec">
-                <div className="pk-label">Sidebar side</div>
-                <Segmented<Side>
-                  value={settings.side}
-                  options={[
-                    { value: 'left', label: 'Left' },
-                    { value: 'right', label: 'Right' },
-                  ]}
-                  onChange={(side) => settingsStore.update({ side })}
-                />
-              </section>
-
               <CameraSection />
-
-              <BoothSection cameraRoleAvailable={cameraRoleAvailable} onClose={close} />
 
               <section className="pk-drawer-sec">
                 <div className="pk-label">Power</div>
@@ -518,15 +547,6 @@ export function SettingsControl({
               </section>
 
               <section className="pk-drawer-sec">
-                <div className="pk-label">Developer</div>
-                <Toggle
-                  label="Debug panel"
-                  checked={settings.debug}
-                  onChange={(debug) => settingsStore.update({ debug })}
-                />
-              </section>
-
-              <section className="pk-drawer-sec">
                 <a className="pk-drawer-row" href="#guide" onClick={close}>
                   <span>Guide &amp; about</span>
                   <span aria-hidden="true" className="pk-drawer-row-chevron">
@@ -534,6 +554,52 @@ export function SettingsControl({
                   </span>
                 </a>
               </section>
+
+              {/* Operator-ish settings: how the table is read, where the
+                  sidebar sits, the booth link / staff camera role, debugging. */}
+              <AdvancedGroup>
+                <section className="pk-drawer-sec">
+                  <div className="pk-label">Board</div>
+                  <Segmented<BoardLayout>
+                    value={settings.boardLayout}
+                    options={[
+                      { value: 'grid', label: 'More columns' },
+                      { value: 'stretch', label: 'Bigger cells' },
+                    ]}
+                    disabled={connected}
+                    onChange={(boardLayout) => settingsStore.update({ boardLayout })}
+                  />
+                  <p className="pk-drawer-hint">
+                    Corner blocks may span any rectangle. On a table bigger than the printed
+                    mat, "More columns" keeps the tile pitch and gives you extra columns;
+                    "Bigger cells" stretches the 8-column board to fit. A mat-sized board
+                    ignores this. {connected ? 'Controlled by booth.' : null}
+                  </p>
+                </section>
+
+                <section className="pk-drawer-sec">
+                  <div className="pk-label">Sidebar side</div>
+                  <Segmented<Side>
+                    value={settings.side}
+                    options={[
+                      { value: 'left', label: 'Left' },
+                      { value: 'right', label: 'Right' },
+                    ]}
+                    onChange={(side) => settingsStore.update({ side })}
+                  />
+                </section>
+
+                <BoothSection cameraRoleAvailable={cameraRoleAvailable} onClose={close} />
+
+                <section className="pk-drawer-sec">
+                  <div className="pk-label">Developer</div>
+                  <Toggle
+                    label="Debug panel"
+                    checked={settings.debug}
+                    onChange={(debug) => settingsStore.update({ debug })}
+                  />
+                </section>
+              </AdvancedGroup>
             </div>
           </aside>
         </div>

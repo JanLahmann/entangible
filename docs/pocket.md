@@ -71,8 +71,12 @@ Landscape (primary, ~4:3):
 
 - Portrait: stacked — collapsible camera preview on top (thumbnail once the
   board locks), circuit, results.
-- Start state: big "Start camera" card (secure-context error card otherwise,
-  as in the camera role). Camera: `facingMode: environment`, 1280×720.
+- Start state: a cold landing (no URL params, no booth) gets the WELCOME card —
+  what Entangible is plus three ways in: point the camera (primary), build on
+  screen, play Quantum Golf (`src/app/welcome.ts` gates it). Purposeful links
+  (`?course=`, `?menu=`, `?kiosk`, the camera role, …) keep the plain "Start
+  camera" card (secure-context error card otherwise, as in the camera role).
+  Camera: `facingMode: environment`, 1280×720.
 - The camera preview shows the detection overlay (marker outlines, board
   quad, fps chip) — it doubles as the /debug view here.
 - Wake lock while running; PWA manifest + icons so "Add to Home Screen"

@@ -57,6 +57,7 @@ import { shouldAttract } from './attract';
 import { Histogram } from './Histogram';
 import { MessageStrip, type StripMessage } from './MessageStrip';
 import { courseElapsed, tickCourseTimer } from '@shared/display/courseTimer';
+import { holeGoal } from '@shared/display/goalLine';
 import { Celebrations, type CelebrationRequest } from './Celebrations';
 import { AttractMode } from './AttractMode';
 import { VisitorQr } from './VisitorQr';
@@ -434,6 +435,8 @@ export function KioskView() {
   const currentLevel = HOLES[golfState.levelIndex];
   const golfTargets = useMemo(() => holeHighlight(currentLevel), [currentLevel]);
   const golfTargetState = useMemo(() => holeTargetState(currentLevel), [currentLevel]);
+  // The hole's goal in plain words (same line as pocket's golf well).
+  const golfGoal = useMemo(() => holeGoal(currentLevel), [currentLevel]);
   const GOLF_STRUCTURAL = new Set(['scorecard', 'minicircuit', 'qsphere', 'bloch']);
   const golfSidebar = (
     <>
@@ -449,6 +452,11 @@ export function KioskView() {
             showKet
             classPrefix="bo"
           />
+          {!golfState.complete && (
+            <p className="bo-golf-goal" title={golfGoal}>
+              {golfGoal}
+            </p>
+          )}
         </div>
       </div>
       <Scorecard key="scorecard" state={golfState} circuit={liveCircuit} />

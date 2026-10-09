@@ -1574,6 +1574,20 @@ body,
   font-size: 0.95rem;
 }
 
+/* The hole's goal in plain words, under the target ket. Always ONE line —
+   ellipsized, never wrapped and never widening the column (the full sentence
+   is the element's title). */
+.pk-golf-goal {
+  margin: 0.4rem 0 0;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
 /* Dealing a random course — a quiet card over the golf sphere while a course
    that is not generated yet is dealt (seconds of work, chunked so the page
    stays live). Covers the sphere only, never the picker or the drawer. */
@@ -2419,6 +2433,92 @@ body,
   background: color-mix(in srgb, var(--entangle) 14%, transparent);
 }
 
+/* Welcome card: three ways in (camera · build on screen · Quantum Golf). The
+   camera path is the dominant one — full width, filled, first; the two
+   on-screen paths are outlined secondaries that share a row when the card is
+   wide enough and stack when it is not. Everything wraps, nothing overflows:
+   phone-width first (360 px with 16 px gutters, down to 320 px). */
+.pk-welcome-paths {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0 0 0.2rem;
+}
+
+.pk-welcome-alts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 0.5rem;
+}
+
+.pk-welcome-path {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0.45rem 0.7rem;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--entangle);
+  border-radius: var(--radius);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pk-welcome-path:hover {
+  background: color-mix(in srgb, var(--entangle) 14%, transparent);
+}
+
+.pk-welcome-path--primary {
+  min-height: 52px;
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.pk-welcome-path--primary:hover {
+  background: color-mix(in srgb, var(--accent) 85%, #fff);
+}
+
+.pk-welcome-path--primary:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.pk-welcome-path-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.pk-welcome-path--primary .pk-welcome-path-title {
+  font-size: 0.98rem;
+}
+
+.pk-welcome-path-sub {
+  font-size: 0.74rem;
+  line-height: 1.25;
+  color: var(--muted);
+}
+
+.pk-welcome-path--primary .pk-welcome-path-sub {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+/* A short landscape phone has no height to spare: the path titles say enough. */
+@media (max-height: 450px) {
+  .pk-welcome-path-sub {
+    display: none;
+  }
+}
+
 /* Manual mode: the library's gate palette above the editable circuit. */
 .pk-manual-palette {
   margin-bottom: 0.6rem;
@@ -2439,6 +2539,43 @@ body,
 
 .pk-drawer-row-chevron {
   color: var(--muted);
+}
+
+/* settings-drawer "Staff & advanced" group — collapsed by default at the
+   bottom, so a visitor opening the gear meets the visitor settings first. */
+.pk-drawer-adv {
+  padding-bottom: 0;
+}
+
+.pk-drawer-adv-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pk-drawer-adv-chevron {
+  transition: transform 0.15s ease;
+}
+
+.pk-drawer-adv.is-open .pk-drawer-adv-chevron {
+  transform: rotate(90deg);
+}
+
+.pk-drawer-adv-body {
+  border-top: 1px solid #1c212c;
 }
 
 /* ---- Guide page (overlay over the still-mounted app) ------------------ */

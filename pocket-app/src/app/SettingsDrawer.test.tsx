@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup, screen, fireEvent } from '@testing-library/react';
-import { SettingsControl } from './SettingsDrawer';
+import { SettingsControl, resetAdvancedOpen } from './SettingsDrawer';
 import { boothLink } from './boothLink';
 import { settingsStore } from './settings';
 import { courseCode, parseCourseCode } from '@quantum/golfRandom';
@@ -16,9 +16,15 @@ function openDrawer() {
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
 }
 
+/** Expand the collapsed "Staff & advanced" group. */
+function openAdvanced() {
+  fireEvent.click(screen.getByRole('button', { name: /Staff & advanced/ }));
+}
+
 afterEach(() => {
   boothLink.disconnect();
-  settingsStore.update({ mode: 'composer', courseCode: null, boardLayout: 'grid' });
+  settingsStore.update({ mode: 'composer', courseCode: null, boardLayout: 'grid', debug: false });
+  resetAdvancedOpen();
   cleanup();
 });
 
@@ -81,6 +87,7 @@ describe('SettingsDrawer golf course code (#78)', () => {
 describe('SettingsDrawer BOARD section (#94)', () => {
   it('defaults to more columns and switches to bigger cells', () => {
     openDrawer();
+    openAdvanced();
     const more = screen.getByRole('button', { name: 'More columns' });
     const bigger = screen.getByRole('button', { name: 'Bigger cells' });
     expect(more.getAttribute('aria-pressed')).toBe('true');
@@ -93,8 +100,68 @@ describe('SettingsDrawer BOARD section (#94)', () => {
   it('is locked while connected — the booth owns the board layout', () => {
     boothLink.connect('wss://booth.local:8443');
     openDrawer();
+    openAdvanced();
     for (const name of ['More columns', 'Bigger cells']) {
       expect((screen.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(true);
     }
+  });
+});
+
+describe('SettingsDrawer visitor / staff split', () => {
+  /** Section labels present in the drawer right now, in order. */
+  const sectionLabels = () =>
+    [...document.querySelectorAll('.pk-drawer .pk-label')].map((el) => el.textContent);
+
+  it('shows the visitor settings directly, the staff group collapsed at the bottom', () => {
+    openDrawer();
+    // Visitor settings: all there without expanding anything.
+    for (const label of ['Mode', 'Input', 'Panels', 'Wires', 'Noise', 'Camera', 'Power']) {
+      expect(sectionLabels()).toContain(label);
+    }
+    expect(screen.getByRole('switch', { name: 'Low-power mode' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /Guide/ })).toBeTruthy();
+
+    // Staff & advanced: collapsed, and its controls genuinely absent.
+    const toggle = screen.getByRole('button', { name: /Staff & advanced/ });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    for (const label of ['Board', 'Sidebar side', 'Booth', 'Developer']) {
+      expect(sectionLabels()).not.toContain(label);
+    }
+    expect(screen.queryByRole('switch', { name: 'Debug panel' })).toBeNull();
+
+    // At the BOTTOM: the group is the drawer body's last section.
+    const body = document.querySelector('.pk-drawer-body')!;
+    expect(body.lastElementChild?.contains(toggle)).toBe(true);
+  });
+
+  it('expanding reaches every staff control, and they still write the same settings', () => {
+    openDrawer();
+    openAdvanced();
+    expect(
+      screen.getByRole('button', { name: /Staff & advanced/ }).getAttribute('aria-expanded'),
+    ).toBe('true');
+    for (const label of ['Board', 'Sidebar side', 'Booth', 'Developer']) {
+      expect(sectionLabels()).toContain(label);
+    }
+    expect(screen.getByLabelText('Booth host')).toBeTruthy();
+    fireEvent.click(screen.getByRole('switch', { name: 'Debug panel' }));
+    expect(settingsStore.get().debug).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Left' }));
+    expect(settingsStore.get().side).toBe('left');
+    settingsStore.update({ side: 'right' });
+  });
+
+  it('remembers the open group across drawer re-opens, for the page session only', () => {
+    openDrawer();
+    openAdvanced();
+    // Close the drawer and open it again: still expanded.
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(
+      screen.getByRole('button', { name: /Staff & advanced/ }).getAttribute('aria-expanded'),
+    ).toBe('true');
+    // Nothing persisted: the open state is not a setting.
+    expect(JSON.stringify(settingsStore.get())).not.toMatch(/advanced/i);
+    expect(JSON.stringify({ ...localStorage })).not.toMatch(/advanced/i);
   });
 });

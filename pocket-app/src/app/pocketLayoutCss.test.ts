@@ -88,3 +88,34 @@ describe('pocket.css idle start card is never clipped', () => {
     expect(body).toContain('max-height: none');
   });
 });
+
+describe('pocket.css welcome card is phone-width first', () => {
+  it('lets every path shrink and wrap instead of widening the card', () => {
+    const path = ruleBody('.pk-welcome-path');
+    expect(path).toContain('width: 100%');
+    expect(path).toContain('min-width: 0');
+    expect(path).toContain('box-sizing: border-box');
+    expect(path).toContain('overflow-wrap: anywhere');
+    // Touch targets stay ≥ 44 px; the primary is the taller, dominant one.
+    expect(path).toContain('min-height: 44px');
+    expect(ruleBody('.pk-welcome-path--primary')).toContain('min-height: 52px');
+  });
+
+  it('puts the two on-screen paths side by side only when they fit', () => {
+    // 2 × 8.5rem + the gap fits a 360 px phone's card (16 px gutters); below
+    // that the auto-fit grid stacks them rather than overflowing.
+    expect(ruleBody('.pk-welcome-alts')).toContain(
+      'grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr))',
+    );
+  });
+});
+
+describe('pocket.css golf goal line', () => {
+  it('is one line that ellipsizes rather than wrapping or widening the column', () => {
+    const goal = ruleBody('.pk-golf-goal');
+    expect(goal).toContain('white-space: nowrap');
+    expect(goal).toContain('text-overflow: ellipsis');
+    expect(goal).toContain('overflow: hidden');
+    expect(goal).toContain('min-width: 0');
+  });
+});

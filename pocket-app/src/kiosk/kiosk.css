@@ -436,6 +436,12 @@
   color: var(--text);
   font-family: 'IBM Plex Sans', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
   overflow: hidden;
+  /* Booth screens and tablets must not zoom by accident: a visitor's pinch or
+     double-tap on the exhibit would leave it magnified for the next one. Pans
+     only — scoped to the kiosk root ON PURPOSE. The visitor phone app (`.pk`)
+     keeps full pinch-zoom (an accessibility must, see index.html), and the
+     gesture surfaces inside (spheres) still claim `touch-action: none`. */
+  touch-action: pan-x pan-y;
 }
 
 .bo .mono,
@@ -1806,4 +1812,17 @@
     grid-area: auto; /* un-stack: both prompts flow, no overlap */
     opacity: 1;
   }
+}
+
+/* The hole's goal in plain words under the golf sphere — one line, ellipsized
+   (the big screen is read from metres away; a wrapped line would push the
+   sphere around on every hole change). */
+.bo-golf-goal {
+  margin: 0.4rem 0 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 1rem;
+  color: var(--text);
 }
