@@ -112,7 +112,7 @@ export interface DetectionWarning {
 /** `detection` — diagnostics, throttled to ≤ 5 Hz. */
 export interface DetectionMessage {
   type: 'detection';
-  /** Pipeline throughput, smoothed. `0` signals a stopped pipeline. */
+  /** Pipeline throughput, smoothed. `0` signals a stopped pipeline or a lost camera. */
   fps: number;
   board: BoardState;
   markers: MarkerObs[];
@@ -126,6 +126,12 @@ export interface CameraStatus {
   kind: CameraKind;
   name?: string;
   connected: boolean;
+  /**
+   * The camera stopped delivering frames for more than 2 s (unplugged, frozen
+   * driver) and the host is reopening it with backoff; cleared by the next real
+   * frame. Additive — absent on older hosts. Replay / push sources never set it.
+   */
+  lost?: boolean;
 }
 
 export interface BackendStatus {

@@ -26,7 +26,8 @@ def test_health_shape():
         body = resp.json()
         assert body["status"] == "ok"
         assert body["backend"] == {"enabled": False, "healthy": False}
-        assert set(body["camera"]) == {"kind", "name", "connected"}
+        assert set(body["camera"]) == {"kind", "name", "connected", "lost"}
+        assert body["camera"]["lost"] is False
         assert body["camera"]["kind"] == "replay"
         assert body["clients"] == 0
 

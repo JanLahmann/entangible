@@ -126,20 +126,42 @@ Every message is a JSON object with a `type` discriminator.
 - `warnings[].code` values come from the circuit builder (`lone_control`,
   `lone_target`, `cell_conflict`, `control_ambiguous`, …) plus the board-furniture
   kinds `unpaired_measure`, `measure_span_mismatch`, `stray_furniture` and
-  `stray_tiles` (#97); `row`/`col` optional.
+  `stray_tiles` (#97); `row`/`col` optional. The full list is
+  `WARNING_KINDS` (Python `circuit_builder`, TS `circuitBuilder`), and each code
+  has visitor copy and a kiosk decision in `shared/display/warnings.ts`
+  (`WARNING_AUDIENCE` / `kioskVisible`): visitor surfaces never show
+  `stray_*` or `measure_span_mismatch`; `/debug` shows everything.
 - Latest `detection` also replayed on connect (may be stale; `fps: 0` signals
-  a stopped pipeline).
+  a stopped pipeline or a lost camera — see `status.camera.lost`).
+- **Board out of sight** (fewer than 3 corner blocks): `board.found` is `false`
+  at once, but the pipeline HOLDS the last stable circuit, tiles and lattice
+  until the board has been continuously missing for **2.0 s**
+  (`BOARD_LOSS_GRACE_S`, measured on frame timestamps in both the Python and the
+  TS pipeline). A visitor leaning over the table therefore causes no `circuit`
+  message at all; only past the grace is the circuit cleared (one `circuit`
+  message, exactly as before).
 
 ### `status` — sent on connect and on every change
 
 ```jsonc
 {
   "type": "status",
-  "camera":  { "kind": "replay", "name": "fixtures/bell-sequence", "connected": true },
+  "camera":  { "kind": "replay", "name": "fixtures/bell-sequence", "connected": true, "lost": false },
   "backend": { "enabled": false, "healthy": false },
   "clients": 2                          // current /ws/state client count
 }
 ```
+
+- `camera.lost` (additive; absent on older hosts) is `true` while a live camera
+  source (`cv2` / `picamera2`) has delivered no frame for more than **2.0 s**
+  (`CAMERA_STALL_S`) — unplugged, or a frozen driver. The host broadcasts the
+  transition immediately (a `detection` with `fps: 0`, then this `status`,
+  neither throttled), keeps reopening the device with capped exponential
+  backoff (1 s → 2 s → 4 s … capped at 10 s, forever), and clears the flag on
+  the next real frame. Replay and push sources are never flagged. Kiosk and
+  pocket viewer pills turn red ("Camera lost — check the cable"); `/debug`
+  shows it on the camera row. `connected` keeps meaning "a source is
+  configured".
 
 ### `served` — a Quantina serve, broadcast to every client (additive)
 
@@ -349,7 +371,8 @@ Pipeline(
   board model (#94/#95/#97): `rect_mm: tuple[float, float] | None`,
   `board_layout: str`, `rows: int`, `cols: int`, `wires: int | None`,
   `measures: int | None`, `unpaired_measures: int`, `stray_furniture: int`,
-  `stray_tiles: int`.
+  `stray_tiles: int`, and `camera_lost: bool` (the stall report above; the
+  host turns its transitions into `status.camera.lost`).
   Snake_case in Python; the host serializes to the camelCase JSON above.
 - `Pipeline(..., board_layout: str = "grid")` and `.set_board_layout(layout)`
   choose how a non-mat rectangle becomes a lattice; the host drives it from

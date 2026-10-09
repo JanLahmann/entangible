@@ -525,6 +525,12 @@
   background: #e5484d;
 }
 
+/* Camera lost (status.camera.lost): the whole pill reads red, not just its dot. */
+.bo-pill.is-camera-lost {
+  color: #e5484d;
+  border-color: #e5484d;
+}
+
 .bo-pill.is-camera .bo-dot {
   background: var(--accent);
 }

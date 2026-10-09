@@ -840,12 +840,16 @@ export function DebugView() {
           <h2>status</h2>
           <table className="debug__kv">
             <tbody>
-              <tr>
+              <tr className={status?.camera.lost ? 'debug__row-off' : undefined}>
                 <td>camera</td>
                 <td>
                   {status
                     ? `${status.camera.kind}${status.camera.name ? ` (${status.camera.name})` : ''} · ${
-                        status.camera.connected ? 'connected' : 'offline'
+                        status.camera.lost
+                          ? 'LOST — no frames for 2 s, reopening (check the cable)'
+                          : status.camera.connected
+                            ? 'connected'
+                            : 'offline'
                       }`
                     : '—'}
                 </td>

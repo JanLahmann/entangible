@@ -46,9 +46,21 @@ describe('friendlyWarning', () => {
     );
   });
 
-  it('falls back to the caller message for unknown codes (e.g. lone_swap)', () => {
+  it('phrases a lone SWAP with a 1-based column (no longer the raw message)', () => {
     expect(friendlyWarning({ code: 'lone_swap', col: 1, message: 'SWAP has no partner.' })).toBe(
-      'SWAP has no partner.',
+      'A SWAP tile is missing its partner in column 2 — SWAPs work in pairs.',
+    );
+  });
+
+  it('phrases the off-board inventory without counts or positions', () => {
+    expect(friendlyWarning({ code: 'stray_tiles', message: '5 gate tile(s) are not on the board' })).toBe(
+      'Tiles beside the board are ignored — only tiles between the corner blocks count.',
+    );
+  });
+
+  it('falls back to the caller message for unknown codes (a newer host)', () => {
+    expect(friendlyWarning({ code: 'future_kind', col: 1, message: 'Something new.' })).toBe(
+      'Something new.',
     );
   });
 

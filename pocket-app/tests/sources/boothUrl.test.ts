@@ -51,6 +51,16 @@ describe('connectionPill', () => {
     expect(connectionPill('connecting').label).toMatch(/connecting/i);
     expect(connectionPill('closed').label).toMatch(/disconnect/i);
   });
+
+  it('turns red with the camera-lost line while the booth camera is lost', () => {
+    expect(connectionPill('open', true)).toEqual({
+      label: 'Camera lost — check the cable',
+      cls: 'is-off',
+    });
+    expect(connectionPill('open', false).cls).toBe('is-live');
+    // Not connected: the connection phase is the more urgent news.
+    expect(connectionPill('closed', true).label).toMatch(/disconnect/i);
+  });
 });
 
 describe('cameraSwitchAction (source switch local ⇄ booth restores camera)', () => {

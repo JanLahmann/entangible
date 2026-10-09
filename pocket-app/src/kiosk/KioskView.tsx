@@ -36,7 +36,7 @@ import {
 import { getKioskSocket, kioskStanding, useKioskState } from './kioskSocket';
 import { sendServe } from './serve';
 import { withKey } from '@shared/ws/operatorKey';
-import { friendlyWarning } from '@shared/display/warnings';
+import { CAMERA_LOST_LABEL, friendlyWarning, kioskVisible } from '@shared/display/warnings';
 import type { ConnectionState } from '@shared/ws/stateSocket';
 import type { CircuitMessage, NoisePreset, ShotSource, SidebarSide, Wires } from '@shared/ws/messages';
 import { MenuGrid } from '@shared/menu/MenuGrid';
@@ -199,7 +199,10 @@ export function KioskView() {
   // consumer (moments, QASM, state) keeps the full five-qubit truth.
   const displayedCircuit = displayCircuit(liveCircuit, wires, golfMinWires);
   const displayedQubits = displayedCircuit.qubits;
-  const warnings = detection?.warnings ?? [];
+  // Visitor screen: only warnings the person at the table can act on. Spare kit
+  // beside the board (stray_*) and set-up checks stay on /debug.
+  const warnings = (detection?.warnings ?? []).filter(kioskVisible);
+  const cameraLost = status?.camera?.lost === true;
   const markersPresent = (detection?.markers?.length ?? 0) > 0;
   const conn = connectionInfo(connectionState);
 
@@ -542,9 +545,18 @@ export function KioskView() {
         <span className="bo-pill">{mode}</span>
         <span className="bo-spacer" />
         {status?.camera && (
-          <span className="bo-pill is-camera">
+          // Camera lost (no frames for 2 s; the host is reopening it): the pill
+          // goes red with a plain line so staff notice before visitors do.
+          <span
+            className={`bo-pill ${cameraLost ? 'is-down is-camera-lost' : 'is-camera'}`}
+            role={cameraLost ? 'alert' : undefined}
+          >
             <span className="bo-dot" aria-hidden="true" />
-            {status.camera.kind === 'push' ? 'iPhone camera' : status.camera.kind}
+            {cameraLost
+              ? CAMERA_LOST_LABEL
+              : status.camera.kind === 'push'
+                ? 'iPhone camera'
+                : status.camera.kind}
           </span>
         )}
         <span className={`bo-pill ${conn.cls}`}>

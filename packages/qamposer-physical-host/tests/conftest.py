@@ -62,6 +62,16 @@ class FakeWarning:
 
 
 @dataclass
+class FakeKindWarning:
+    """The REAL pipeline shape: ``BuildWarning`` names its discriminant ``kind``."""
+
+    kind: str
+    message: str
+    row: int | None = None
+    col: int | None = None
+
+
+@dataclass
 class FakeCircuitEvent:
     circuit: dict
     qasm: str = "OPENQASM 2.0;\n"
@@ -76,6 +86,7 @@ class FakeDetectionEvent:
     reprojection_error_mm: float | None = 0.05
     markers: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
+    camera_lost: bool = False
 
 
 class FakeWSClient:

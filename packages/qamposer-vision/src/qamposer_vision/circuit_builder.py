@@ -26,6 +26,7 @@ from typing import Any
 from .markers import DIAL_ANGLES, MARKER_TABLE, GateSpec
 
 __all__ = [
+    "WARNING_KINDS",
     "TilePlacement",
     "BuildWarning",
     "BuildResult",
@@ -80,12 +81,31 @@ class TilePlacement:
         return MARKER_TABLE[self.marker_id]
 
 
+#: Every ``BuildWarning.kind`` the vision package can emit — builder, pipeline
+#: and CLI alike. Mirrors ``WARNING_KINDS`` in
+#: ``pocket-app/src/vision/circuitBuilder.ts``; each kind must also be
+#: classified for visitors in ``shared/display/warnings.ts``
+#: (``WARNING_AUDIENCE``). ``tests/test_warning_kinds.py`` greps the sources so
+#: a new kind fails until it is listed and classified.
+WARNING_KINDS: tuple[str, ...] = (
+    "cell_conflict",
+    "lone_control",
+    "lone_target",
+    "lone_swap",
+    "control_ambiguous",
+    "off_grid",
+    "unpaired_measure",
+    "measure_span_mismatch",
+    "stray_furniture",
+    "stray_tiles",
+)
+
+
 @dataclass(frozen=True, slots=True)
 class BuildWarning:
     """A structured, machine-readable reason a tile was excluded.
 
-    ``kind`` is one of ``"cell_conflict"``, ``"lone_control"``,
-    ``"lone_target"``, ``"lone_swap"``, ``"control_ambiguous"``.
+    ``kind`` is one of :data:`WARNING_KINDS`.
     """
 
     kind: str

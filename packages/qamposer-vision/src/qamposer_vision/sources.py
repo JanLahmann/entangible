@@ -18,7 +18,9 @@ Implementations:
 
 Each concrete source also carries a ``source_kind`` class attribute
 (``"camera" | "push" | "replay"``) that the pipeline copies into
-``CircuitEvent.source`` (see ``docs/protocol.md``).
+``CircuitEvent.source`` (see ``docs/protocol.md``). Only ``"camera"`` sources
+are watched for stalls (no frame for ``CAMERA_STALL_S``); a camera source may
+offer an optional ``reopen() -> bool`` the pipeline retries with backoff.
 """
 
 from __future__ import annotations
@@ -71,12 +73,29 @@ class Cv2CaptureSource:
         self.index = index
         self.width = width
         self.height = height
-        self._capture = cv2.VideoCapture(index)
-        if self._capture is not None and self._capture.isOpened():
-            self._capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-            self._capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        self._capture = None
+        self._open()
         reported = self._capture.get(cv2.CAP_PROP_FPS) if self._capture else 0.0
         self.fps_hint: float | None = float(reported) if reported and reported > 0 else None
+
+    def _open(self) -> bool:
+        self._capture = cv2.VideoCapture(self.index)
+        if self._capture is not None and self._capture.isOpened():
+            self._capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+            self._capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+            return True
+        return False
+
+    def reopen(self) -> bool:
+        """Release the device and open it again; ``True`` if it opened.
+
+        Called by the pipeline's stall watchdog when the camera has delivered
+        no frame for :data:`~.pipeline.CAMERA_STALL_S` (unplugged, frozen
+        driver). An open device is not yet a *working* one, so the pipeline
+        only clears its ``camera_lost`` flag once a frame actually arrives.
+        """
+        self.close()
+        return self._open()
 
     def is_opened(self) -> bool:
         return self._capture is not None and self._capture.isOpened()

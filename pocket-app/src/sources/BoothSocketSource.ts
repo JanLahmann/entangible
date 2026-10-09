@@ -85,6 +85,7 @@ export function snapshotToUpdate(
     boothMenu: layout ? layout.menu : undefined,
     boothServed: snap.served,
     connection: connectionPhase(snap.connectionState),
+    boothCameraLost: snap.status?.camera?.lost === true,
   };
 }
 

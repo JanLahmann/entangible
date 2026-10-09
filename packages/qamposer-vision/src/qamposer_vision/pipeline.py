@@ -20,6 +20,10 @@ Design notes:
 * ``latest_annotated()`` returns the most recent annotated BGR frame for the
   ``/debug`` MJPEG preview.
 * The worker never lets an exception escape: it is logged and the loop continues.
+* Booth resilience: a board out of sight is HELD for
+  :data:`BOARD_LOSS_GRACE_S` before the circuit is cleared, and a camera that
+  stops delivering frames for :data:`CAMERA_STALL_S` is reported lost
+  (``fps=0``, ``camera_lost=True``) and reopened with capped backoff.
 """
 
 from __future__ import annotations
@@ -74,6 +78,10 @@ from .wires import (
 )
 
 __all__ = [
+    "BOARD_LOSS_GRACE_S",
+    "CAMERA_REOPEN_INITIAL_S",
+    "CAMERA_REOPEN_MAX_S",
+    "CAMERA_STALL_S",
     "X_BUCKET_MM",
     "off_grid_warning",
     "MarkerObs",
@@ -89,6 +97,31 @@ logger = logging.getLogger("qamposer_vision.pipeline")
 _IDLE_SLEEP = 0.005
 #: EMA smoothing factor for the reported FPS.
 _FPS_ALPHA = 0.3
+
+#: Seconds the board (>= 3 corner blocks) may be continuously out of sight
+#: before the circuit is cleared. Until then the pipeline HOLDS the last stable
+#: board — circuit, tiles and lattice untouched, ``board_found`` false — so a
+#: visitor leaning over the table cannot wipe the circuit (and with it the
+#: achievements, celebrations and golf strokes downstream). Measured on the
+#: frame timestamps, never in frames: "12 frames" was 0.4 s at 30 fps and 2.4 s
+#: at 5 fps. Mirrors ``BOARD_LOSS_GRACE_S`` in ``pocket-app/src/vision/pipeline.ts``.
+BOARD_LOSS_GRACE_S = 2.0
+
+#: Seconds a live camera source (``source_kind == "camera"``) may go without
+#: delivering a frame before it is reported lost: one ``DetectionEvent`` with
+#: ``fps=0`` and ``camera_lost=True``, then reopen attempts. Replay / push
+#: sources are exempt — a replay loops by design and a phone stopping its
+#: stream is the phone's status to report.
+CAMERA_STALL_S = 2.0
+#: Reopen backoff for a lost camera: the first retry follows this long after
+#: the first attempt, each later one doubles, capped at
+#: :data:`CAMERA_REOPEN_MAX_S` — forever, because booths run unattended.
+CAMERA_REOPEN_INITIAL_S = 1.0
+CAMERA_REOPEN_MAX_S = 10.0
+#: How often the watchdog thread checks for a stall. It exists so the lost
+#: report goes out on time even while the worker is stuck inside a blocking
+#: ``read()`` (a frozen V4L2 device can block for ~10 s before it fails).
+_WATCHDOG_INTERVAL = 0.25
 
 #: Smallest fraction of the estimated board width a wire's measured left→right
 #: run may cover before it is called out (#97). Wire and measurement blocks sit
@@ -196,6 +229,16 @@ class DetectionEvent:
     #: the table. Deliberately NOT ``off_grid``: they are not misplaced, they
     #: are simply not in play.
     stray_tiles: int = 0
+    #: The camera source delivered no frame for :data:`CAMERA_STALL_S` and is
+    #: being reopened (``fps`` is then 0). Cleared by the next real frame.
+    camera_lost: bool = False
+
+
+def _describe(source: FrameSource) -> str:
+    try:
+        return source.describe()
+    except Exception:  # pragma: no cover - describe is best-effort
+        return type(source).__name__
 
 
 def _wire_ends(
@@ -256,6 +299,7 @@ class Pipeline:
 
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._watchdog: threading.Thread | None = None
 
         # Per-run state (reset in start()).
         self._fps = 0.0
@@ -263,6 +307,18 @@ class Pipeline:
         self._last_circuit: dict[str, Any] | None = None
         self._structural_warnings: list[BuildWarning] = []
         self._emitted = False
+        # Board-loss grace (BOARD_LOSS_GRACE_S): timestamp of the first frame
+        # of the current no-board streak, and whether that streak has already
+        # cleared the circuit.
+        self._board_missing_since: float | None = None
+        self._board_cleared = False
+        # Camera stall watchdog (CAMERA_STALL_S). Guarded by _stall_lock: the
+        # worker and the watchdog thread both check for a stall.
+        self._stall_lock = threading.Lock()
+        self._last_frame_at = monotonic()
+        self._camera_lost = False
+        self._next_reopen_at = 0.0
+        self._reopen_delay = CAMERA_REOPEN_INITIAL_S
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -281,10 +337,16 @@ class Pipeline:
         self._measure_stabilizer.reset()
         self._rect = mat_rect(self._board_config)
         self._model = mat_board_model(self._board_config)
+        self._reset_board_loss()
+        self._reset_stall(monotonic())
         self._thread = threading.Thread(
             target=self._run, name="qamposer-pipeline", daemon=True
         )
         self._thread.start()
+        self._watchdog = threading.Thread(
+            target=self._watch, name="qamposer-camera-watchdog", daemon=True
+        )
+        self._watchdog.start()
 
     def stop(self) -> None:
         """Signal the worker to stop and join it. Idempotent."""
@@ -295,6 +357,10 @@ class Pipeline:
             if thread.is_alive():  # pragma: no cover - worker should exit promptly
                 logger.warning("pipeline worker did not stop within 2s")
         self._thread = None
+        watchdog = self._watchdog
+        if watchdog is not None:
+            watchdog.join(timeout=2.0)
+        self._watchdog = None
         with self._lock:
             source = self._source
         try:
@@ -322,6 +388,10 @@ class Pipeline:
         self._stabilizer.reset()
         self._wire_stabilizer.reset()
         self._measure_stabilizer.reset()
+        self._reset_board_loss()
+        # A new source gets a fresh stall budget; the next frame (or the next
+        # stall) re-reports its state.
+        self._reset_stall(monotonic())
         if old is not source:
             try:
                 old.close()
@@ -344,17 +414,170 @@ class Pipeline:
             except Exception:
                 logger.exception("frame source read() failed")
                 frame = None
+            now = monotonic()
             if frame is None:
+                self._on_no_frame(source, now)
                 sleep(_IDLE_SLEEP)
                 continue
+            self._on_frame_arrived(now)
             try:
-                self._process_frame(frame, source)
+                self._process_frame(frame, source, now)
             except Exception:
                 logger.exception("pipeline frame processing failed")
                 # keep the loop alive; drop this frame
 
-    def _process_frame(self, frame: np.ndarray, source: FrameSource) -> None:
-        self._update_fps()
+    def _watch(self) -> None:
+        """Watchdog thread: report a stall even while ``read()`` is blocked."""
+        while not self._stop.wait(_WATCHDOG_INTERVAL):
+            with self._lock:
+                source = self._source
+            try:
+                self._check_stall(source, monotonic())
+            except Exception:  # pragma: no cover - the watchdog must not die
+                logger.exception("camera watchdog check failed")
+
+    # -- camera stall (CAMERA_STALL_S) --------------------------------------
+
+    @property
+    def camera_lost(self) -> bool:
+        """``True`` while the camera is reported lost and being reopened."""
+        return self._camera_lost
+
+    def _reset_stall(self, now: float) -> None:
+        with self._stall_lock:
+            self._last_frame_at = now
+            self._camera_lost = False
+            self._reopen_delay = CAMERA_REOPEN_INITIAL_S
+            self._next_reopen_at = 0.0
+
+    def _on_frame_arrived(self, now: float) -> None:
+        """A frame came in: refresh the stall clock and clear a lost camera."""
+        with self._stall_lock:
+            self._last_frame_at = now
+            if not self._camera_lost:
+                return
+            self._camera_lost = False
+            self._reopen_delay = CAMERA_REOPEN_INITIAL_S
+            self._next_reopen_at = 0.0
+        logger.info("camera recovered; resuming detection")
+        # The outage is not evidence about the board: restart its grace clock
+        # on the first real frame instead of counting the dead seconds.
+        self._reset_board_loss()
+
+    def _on_no_frame(self, source: FrameSource, now: float) -> None:
+        """Worker idle step: report a stall, and reopen a lost camera when due."""
+        self._check_stall(source, now)
+        self._maybe_reopen(source, now)
+
+    def _check_stall(self, source: FrameSource, now: float) -> bool:
+        """Flag a camera that delivered no frame for :data:`CAMERA_STALL_S`.
+
+        Emits exactly one lost ``DetectionEvent`` (``fps=0``,
+        ``camera_lost=True``) per outage — the host bridges the transition to
+        a ``status`` broadcast — and schedules the first reopen immediately.
+        Returns ``True`` on the call that flagged the stall.
+        """
+        if getattr(source, "source_kind", None) != "camera":
+            return False
+        with self._stall_lock:
+            if self._camera_lost or now - self._last_frame_at <= CAMERA_STALL_S:
+                return False
+            self._camera_lost = True
+            self._next_reopen_at = now
+            self._reopen_delay = CAMERA_REOPEN_INITIAL_S
+            self._fps = 0.0
+            self._last_frame_time = None
+        logger.warning(
+            "camera delivered no frame for %.1fs (%s); reporting lost, reopening",
+            now - self._last_frame_at,
+            _describe(source),
+        )
+        self._emit_camera_lost()
+        return True
+
+    def _maybe_reopen(self, source: FrameSource, now: float) -> bool:
+        """Retry a lost camera on the capped exponential backoff schedule.
+
+        Runs on the worker thread only (never concurrently with ``read()``).
+        Returns ``True`` when an attempt was made. Success is NOT judged by
+        ``reopen()``'s return value: an opened device that still delivers
+        nothing gets retried again — only a real frame clears the flag.
+        """
+        reopen = getattr(source, "reopen", None)
+        if reopen is None:
+            return False
+        with self._stall_lock:
+            if not self._camera_lost or now < self._next_reopen_at:
+                return False
+            delay = self._reopen_delay
+            self._next_reopen_at = now + delay
+            self._reopen_delay = min(delay * 2.0, CAMERA_REOPEN_MAX_S)
+        try:
+            opened = bool(reopen())
+        except Exception:
+            logger.warning("camera reopen raised", exc_info=True)
+            opened = False
+        logger.info(
+            "camera reopen %s; next attempt in %.0fs if still no frames",
+            "opened the device" if opened else "failed",
+            delay,
+        )
+        return True
+
+    def _emit_camera_lost(self) -> None:
+        if self._on_detection is None:
+            return
+        model = self._model
+        self._on_detection(
+            DetectionEvent(
+                fps=0.0,
+                board_found=False,
+                corners=0,
+                reprojection_error_mm=None,
+                board_layout=model.kind,
+                rows=model.rows,
+                cols=model.cols,
+                wires=model.wire_count,
+                measures=model.measure_count,
+                camera_lost=True,
+            )
+        )
+
+    # -- board loss (BOARD_LOSS_GRACE_S) ------------------------------------
+
+    def _reset_board_loss(self) -> None:
+        self._board_missing_since = None
+        self._board_cleared = False
+
+    def _board_loss(self, board_found: bool, now: float) -> tuple[bool, bool]:
+        """Advance the board-loss clock: ``(hold, clear)`` for this frame.
+
+        ``hold`` — the board is out of sight but for less than
+        :data:`BOARD_LOSS_GRACE_S`: keep the last stable board untouched.
+        ``clear`` — the grace just ran out on this frame: clear the circuit
+        once, exactly as the old frame-count wipe ended up doing. Afterwards a
+        still-missing board is processed as before (nothing left to clear).
+        """
+        if board_found:
+            self._reset_board_loss()
+            return False, False
+        if self._board_missing_since is None:
+            self._board_missing_since = now
+        if now - self._board_missing_since < BOARD_LOSS_GRACE_S:
+            return True, False
+        if self._board_cleared:
+            return False, False
+        self._board_cleared = True
+        return False, True
+
+    def _process_frame(
+        self, frame: np.ndarray, source: FrameSource, now: float | None = None
+    ) -> None:
+        """Run one frame through the loop. ``now`` is the frame's monotonic
+        timestamp (seconds); tests inject it to script time."""
+        if now is None:
+            now = monotonic()
+        self._update_fps(now)
 
         markers = self._detector.detect(frame)
         corners = sum(1 for m in markers if m.id in CORNER_IDS)
@@ -362,6 +585,7 @@ class Pipeline:
         # 1. What rectangle do the corner blocks actually span? (task #94)
         self._update_rect(markers)
         board = fit_board(markers, self._board_config, self._rect)
+        hold, clear = self._board_loss(board is not None, now)
 
         # 2. Qubit-wire blocks, read in the rectangle's own board frame (#95),
         #    then measurement blocks refining them (#97). The pre-wire model
@@ -392,8 +616,10 @@ class Pipeline:
                 wires.wires,
                 wire_spans=spans,
             )
-        else:
+        elif not hold:
             self._model = base
+        # (hold: the last board's model stays, so the lattice and qubit count
+        # do not flicker while the board is briefly out of sight)
 
         grid = GridMapper(self._model.grid)
         rect = base.rect if board is not None else None
@@ -403,14 +629,29 @@ class Pipeline:
         if stray_tiles:
             off_grid_warnings.append(stray_tiles_warning(stray_tiles))
 
-        result = self._stabilizer.update(observations)
-        if result.changed or wire_changed or not self._emitted:
-            self._rebuild_and_maybe_emit(result.stable, source)
+        if hold:
+            # Board out of sight, grace not over: the tile stabilizer is not
+            # fed at all, so no tile's absence streak advances and the board
+            # comes back exactly as it left.
+            stable = self._stabilizer.stable
+            changed = False
+        else:
+            # Grace over: clear the stable set once — what the 12-frame wipe
+            # did, now on the clock. A forced rebuild only when there was
+            # something to clear, so an already-empty board emits nothing.
+            cleared = clear and bool(self._stabilizer.stable)
+            if clear:
+                self._stabilizer.reset()
+            result = self._stabilizer.update(observations)
+            stable = result.stable
+            changed = result.changed or cleared
+        if changed or wire_changed or not self._emitted:
+            self._rebuild_and_maybe_emit(stable, source)
 
         detection_warnings = self._compose_warnings(
             off_grid_warnings + furniture_warnings
         )
-        self._store_annotated(frame, markers, board, result.stable, detection_warnings)
+        self._store_annotated(frame, markers, board, stable, detection_warnings)
 
         if self._on_detection is not None:
             self._on_detection(
@@ -537,8 +778,7 @@ class Pipeline:
             )
         ]
 
-    def _update_fps(self) -> None:
-        now = monotonic()
+    def _update_fps(self, now: float) -> None:
         if self._last_frame_time is not None:
             dt = now - self._last_frame_time
             if dt > 0:

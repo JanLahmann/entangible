@@ -88,6 +88,17 @@ export const SPAN_MIN_FRACTION = 0.5;
  */
 export const X_BUCKET_MM = 10.0;
 
+/**
+ * Seconds the board (≥ 3 corner blocks) may be continuously out of sight before
+ * the circuit is cleared. Until then the pipeline HOLDS the last stable board —
+ * circuit, tiles and lattice untouched, `boardFound` false — so a visitor
+ * leaning over the table cannot wipe the circuit (and with it the achievements,
+ * celebrations and golf strokes downstream). Measured on the frame timestamps,
+ * never in frames: "12 frames" was 0.4 s at 30 fps and 2.4 s at 5 fps. Mirrors
+ * `pipeline.BOARD_LOSS_GRACE_S`.
+ */
+export const BOARD_LOSS_GRACE_S = 2.0;
+
 /** The absolute x bucket of a tile centre — its stability-key x (#109). */
 export function xBucket(xMm: number): number {
   return roundHalfUp(xMm / X_BUCKET_MM);
@@ -253,6 +264,13 @@ export class PocketPipeline {
    */
   private rect: BoardRect = MAT_RECT;
   private model: BoardModel = matBoardModel();
+  /**
+   * Board-loss grace (`BOARD_LOSS_GRACE_S`): timestamp (ms) of the first frame
+   * of the current no-board streak, and whether that streak already cleared
+   * the circuit.
+   */
+  private boardMissingSinceMs: number | null = null;
+  private boardCleared = false;
   /** Resolved parameter snapshot (matches detect.ts defaults), for the debug panel. */
   readonly params: ResolvedParams;
 
@@ -281,6 +299,30 @@ export class PocketPipeline {
     this.lastCircuit = null;
     this.structuralWarnings = [];
     this.emitted = false;
+    this.boardMissingSinceMs = null;
+    this.boardCleared = false;
+  }
+
+  /**
+   * Advance the board-loss clock: `[hold, clear]` for this frame. Mirrors
+   * `pipeline._board_loss`.
+   *
+   * `hold` — the board is out of sight but for less than `BOARD_LOSS_GRACE_S`:
+   * keep the last stable board untouched. `clear` — the grace just ran out on
+   * this frame: clear the circuit once, exactly as the old frame-count wipe
+   * ended up doing. Afterwards a still-missing board is processed as before.
+   */
+  private boardLoss(boardFound: boolean, nowMs: number): [boolean, boolean] {
+    if (boardFound) {
+      this.boardMissingSinceMs = null;
+      this.boardCleared = false;
+      return [false, false];
+    }
+    if (this.boardMissingSinceMs === null) this.boardMissingSinceMs = nowMs;
+    if ((nowMs - this.boardMissingSinceMs) / 1000 < BOARD_LOSS_GRACE_S) return [true, false];
+    if (this.boardCleared) return [false, false];
+    this.boardCleared = true;
+    return [false, true];
   }
 
   /**
@@ -292,7 +334,11 @@ export class PocketPipeline {
     this.boardLayout = layout;
   }
 
-  processFrame(image: RgbaImage | GrayImage): FrameResult {
+  /**
+   * Run one frame. `nowMs` is the frame's timestamp on a monotonic clock
+   * (`performance.now()` by default); tests inject it to script time.
+   */
+  processFrame(image: RgbaImage | GrayImage, nowMs: number = performance.now()): FrameResult {
     // Grayscale once, then share it across blind detection and the guided pass.
     const gray: GrayImage =
       'data' in image && (image as RgbaImage).data.length === image.width * image.height * 4
@@ -305,6 +351,7 @@ export class PocketPipeline {
     // 1. What rectangle do the corner blocks actually span? (task #94)
     this.updateRect(blind);
     const board = fitBoard(blind, this.rect);
+    const [hold, clear] = this.boardLoss(board !== null, nowMs);
 
     // 2. Qubit-wire blocks, read in the rectangle's own board frame (#95), then
     //    measurement blocks refining them (#97). The pre-wire model supplies the
@@ -333,9 +380,11 @@ export class PocketPipeline {
         undefined,
         paired.spans,
       );
-    } else {
+    } else if (!hold) {
       this.model = base;
     }
+    // (hold: the last board's model stays, so the lattice and qubit count do
+    // not flicker while the board is briefly out of sight)
     const grid = new GridMapper(this.model.grid);
 
     // Grid-guided redetection: recover markers the blind front end missed in
@@ -359,10 +408,27 @@ export class PocketPipeline {
     );
     if (strayTiles > 0) offGridWarnings.push(strayTilesWarning(strayTiles));
 
-    const result = this.stabilizer.update(observations);
+    let stable: ReadonlySet<Tile>;
+    let stableChanged: boolean;
+    if (hold) {
+      // Board out of sight, grace not over: the tile stabilizer is not fed at
+      // all, so no tile's absence streak advances and the board comes back
+      // exactly as it left.
+      stable = this.stabilizer.stable;
+      stableChanged = false;
+    } else {
+      // Grace over: clear the stable set once — what the 12-frame wipe did, now
+      // on the clock. A forced rebuild only when there was something to clear,
+      // so an already-empty board emits nothing.
+      const cleared = clear && this.stabilizer.stable.size > 0;
+      if (clear) this.stabilizer.reset();
+      const result = this.stabilizer.update(observations);
+      stable = result.stable;
+      stableChanged = result.changed || cleared;
+    }
     let changed = false;
-    if (result.changed || wireChanged || !this.emitted) {
-      changed = this.rebuild(result.stable);
+    if (stableChanged || wireChanged || !this.emitted) {
+      changed = this.rebuild(stable);
     }
 
     const warnings = this.composeWarnings([...offGridWarnings, ...furnitureWarnings]);

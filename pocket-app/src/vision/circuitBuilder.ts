@@ -50,25 +50,34 @@ export interface TilePlacement {
   readonly rotation?: number;
 }
 
-// 'off_grid' is emitted by the pipeline (not the builder) but shares the shape.
-export type WarningKind =
-  | 'cell_conflict'
-  | 'lone_control'
-  | 'lone_target'
-  | 'lone_swap'
-  | 'control_ambiguous'
-  | 'off_grid'
+/**
+ * Every warning kind the pipeline can emit — the canonical runtime list
+ * (mirrors `circuit_builder.WARNING_KINDS`). Each one must be classified for
+ * visitors in `@shared/display/warnings` (`WARNING_AUDIENCE`); the totality
+ * tests on both sides fail until a new kind is.
+ */
+export const WARNING_KINDS = [
+  'cell_conflict',
+  'lone_control',
+  'lone_target',
+  'lone_swap',
+  'control_ambiguous',
+  // Emitted by the pipeline (not the builder) but shares the shape.
+  'off_grid',
   // Board furniture (#97): a measurement block that matched no wire block, and
   // a measured left→right run that disagrees with the corner blocks' span.
   // Both are informational — neither changes the emitted circuit.
-  | 'unpaired_measure'
-  | 'measure_span_mismatch'
+  'unpaired_measure',
+  'measure_span_mismatch',
   // Pieces seen OFF the board and dropped before they could reach cell mapping
   // or the stabilizers — at a booth the unused kit lies on the table right next
   // to the board. One counted line per frame, never one per piece, and never
   // `off_grid`: those tiles ARE on the board and missed a row.
-  | 'stray_furniture'
-  | 'stray_tiles';
+  'stray_furniture',
+  'stray_tiles',
+] as const;
+
+export type WarningKind = (typeof WARNING_KINDS)[number];
 
 export interface BuildWarning {
   readonly kind: WarningKind;

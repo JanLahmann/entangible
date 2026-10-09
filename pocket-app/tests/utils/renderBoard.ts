@@ -68,6 +68,11 @@ export interface RenderExtras {
   readonly loose?: readonly LoosePiece[];
   /** Blank margin around the board rectangle (board mm, default 24). */
   readonly padMm?: number;
+  /**
+   * Which corner blocks to paint (default all four) — fewer than three is a
+   * board the pipeline cannot fit, e.g. a visitor's arm across the table.
+   */
+  readonly corners?: readonly number[];
 }
 
 /**
@@ -98,7 +103,7 @@ export function renderBoard(
     yMm * ppm + pad,
   ];
 
-  for (const id of [0, 1, 2, 3]) {
+  for (const id of opts.corners ?? [0, 1, 2, 3]) {
     const square = cornerMarkerSquare(id, model.board);
     const [x0, y0] = at(square[0][0], square[0][1]);
     paintMarker(cv, id, x0, y0, BOARD.cornerMarkerSize * ppm);

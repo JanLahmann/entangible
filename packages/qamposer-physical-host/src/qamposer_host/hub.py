@@ -57,7 +57,11 @@ def serialize_detection(event: Any) -> dict:
 
     warnings: list[dict] = []
     for w in event.warnings:
-        entry: dict[str, Any] = {"code": w.code, "message": w.message}
+        # The pipeline's BuildWarning names its discriminant ``kind``; the wire
+        # calls it ``code``. Accept either so a real warning can never make the
+        # whole detection message unserializable.
+        code = getattr(w, "code", None) or getattr(w, "kind", "")
+        entry: dict[str, Any] = {"code": code, "message": w.message}
         if getattr(w, "row", None) is not None:
             entry["row"] = w.row
         if getattr(w, "col", None) is not None:
@@ -115,6 +119,9 @@ class Hub:
         self._latest_served: dict | None = None
         self._last_detection_sent = 0.0
         self._camera: dict = {"kind": "none", "name": "", "connected": False}
+        #: The pipeline reported the camera stalled (``camera_lost``); surfaced
+        #: as ``status.camera.lost`` so every screen can say so plainly.
+        self._camera_lost = False
         self._backend: dict = {"enabled": False, "healthy": False}
 
     # -- loop binding ------------------------------------------------------
@@ -126,13 +133,15 @@ class Hub:
     # -- status pieces -----------------------------------------------------
 
     def set_camera(self, camera: dict) -> None:
+        """Record a (new) camera source; a fresh source starts not-lost."""
         self._camera = dict(camera)
+        self._camera_lost = False
 
     def set_backend(self, *, enabled: bool, healthy: bool) -> None:
         self._backend = {"enabled": bool(enabled), "healthy": bool(healthy)}
 
     def camera_status(self) -> dict:
-        return dict(self._camera)
+        return {**self._camera, "lost": self._camera_lost}
 
     def backend_status(self) -> dict:
         return dict(self._backend)
@@ -143,7 +152,7 @@ class Hub:
     def _status_message(self) -> dict:
         return {
             "type": "status",
-            "camera": dict(self._camera),
+            "camera": self.camera_status(),
             "backend": dict(self._backend),
             "clients": len(self._clients),
         }
@@ -209,14 +218,25 @@ class Hub:
         await self._broadcast(message)
 
     async def publish_detection(self, event: Any) -> None:
-        """Store latest detection; broadcast at most 5 Hz (drop intermediates)."""
+        """Store latest detection; broadcast at most 5 Hz (drop intermediates).
+
+        A camera-lost transition (``event.camera_lost`` flipping either way)
+        bypasses the throttle — the ``fps: 0`` detection must not be the frame
+        that gets dropped — and is followed by a ``status`` broadcast carrying
+        ``camera.lost``, so pills turn red (and back) at once.
+        """
         message = serialize_detection(event)
         self._latest_detection = message  # keep replay fresh even when throttled
+        lost = bool(getattr(event, "camera_lost", False))
+        transition = lost != self._camera_lost
         now = time.monotonic()
-        if now - self._last_detection_sent < DETECTION_MIN_INTERVAL:
+        if not transition and now - self._last_detection_sent < DETECTION_MIN_INTERVAL:
             return
         self._last_detection_sent = now
         await self._broadcast(message)
+        if transition:
+            self._camera_lost = lost
+            await self._broadcast(self._status_message())
 
     async def publish_status(self) -> None:
         """Broadcast the current status to all clients (camera/backend change)."""

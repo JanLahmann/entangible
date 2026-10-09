@@ -74,6 +74,11 @@ export interface StateUpdate {
   readonly boothServed?: ServedMessage;
   /** Connection phase (booth only). */
   readonly connection?: ConnectionPhase;
+  /**
+   * The booth host reports its camera lost (`status.camera.lost`: no frames for
+   * 2 s, reopening). Booth only; absent/false otherwise and on older hosts.
+   */
+  readonly boothCameraLost?: boolean;
 }
 
 export type StateListener = (update: StateUpdate) => void;
