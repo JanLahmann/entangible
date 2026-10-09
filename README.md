@@ -11,8 +11,11 @@ editor (controlled mode, in-browser `localAdapter`, OpenQASM 2 export). An
 optional in-browser noise model pairs realistic results beside the ideal ones
 with zero infrastructure — presets are calibration snapshots of four IBM chip
 generations (Falcon → Eagle → Heron → Nighthawk), so the "why quantum is hard"
-contrast works offline. Hosts: Raspberry Pi 4/5 and macOS; cameras: USB / Pi
-Camera / Continuity Camera / iPhone browser streaming.
+contrast works offline. Hosts: macOS (documented, see
+[`docs/mac-booth.md`](docs/mac-booth.md)) and Raspberry Pi 4/5 — the host is
+the same `uv sync` + `qamposer-physical run` on Pi OS, but a packaged
+RasQberry image and Pi-specific setup guide are still to come. Cameras: USB /
+Pi Camera / Continuity Camera / iPhone browser streaming.
 
 **Quantina** — the built-in successor to
 [Qoffee-Maker](https://github.com/JanLahmann/Qoffee-Maker) and quantum-mixer:

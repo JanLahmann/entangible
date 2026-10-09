@@ -93,6 +93,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
     # (and `make demo`) launch it already asking to connect to this host.
     kiosk_url = f"{url}?kiosk&connect=1"
     print(f"Entangible host → {url}  (source: {config.source}, backend: {config.backend})")
+    if config.source.startswith("replay:"):
+        print("  NOTE: replay source — this is the recorded DEMO loop, not a live camera")
     print(f"  kiosk screen:  {kiosk_url}")
     print(f"  debug preview: {scheme}://{display_host}:{config.port}/debug/snapshot.jpg")
 

@@ -19,7 +19,12 @@ from typing import Mapping
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8443
-DEFAULT_SOURCE = "replay:tests/fixtures/recordings/bell-sequence"
+# The default is a REAL camera: an unattended `qamposer-physical run` at a
+# booth must never silently play the recorded Bell demo loop (operators
+# followed the cheat sheet straight into it). The demo is an explicit opt-in:
+# `make demo`, or `--source replay:tests/fixtures/recordings/bell-sequence`.
+# No camera attached is fine — the pipeline reports it lost and keeps retrying.
+DEFAULT_SOURCE = "cv2:0"
 DEFAULT_BACKEND = "off"
 DEFAULT_POCKET_DIST = Path("pocket-app/dist")
 DEFAULT_CONFIG_DIR = Path.home() / ".qamposer-physical"
