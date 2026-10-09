@@ -223,7 +223,7 @@ then re-clone the checkout. This leaves `/data` alone.
 
 1. **Install, cold:** start with an empty `/data/rasqberry/cache/entangible`,
    then run `entangible install --kiosk`. Expect exit 0; note the duration; `status` shows
-   `installed:true, running:true, bundle:"booth-v1"`.
+   `installed:true, running:true, bundle:"<BUNDLE_TAG>"`.
 2. **Install, warm after a simulated wipe**, with networking **off**. Expect
    exit 0; note the duration; no downloads in the log.
 3. **Repeat install** with nothing changed. Expect a quick no-op apart from the
