@@ -23,12 +23,12 @@ _TS_WARNINGS = _REPO / "shared" / "display" / "warnings.ts"
 def _python_kinds() -> set[str]:
     kinds: set[str] = set()
     for path in _PY_SRC.glob("*.py"):
-        kinds |= set(re.findall(r'BuildWarning\(\s*kind="([a-z_]+)"', path.read_text()))
+        kinds |= set(re.findall(r'BuildWarning\(\s*kind="([a-z_]+)"', path.read_text(encoding="utf-8")))
     return kinds
 
 
 def _ts_const_list(path: Path, name: str) -> set[str]:
-    body = re.search(rf"export const {name} = \[(.*?)\] as const;", path.read_text(), re.S)
+    body = re.search(rf"export const {name} = \[(.*?)\] as const;", path.read_text(encoding="utf-8"), re.S)
     assert body, f"{name} not found in {path}"
     code = re.sub(r"//.*", "", body.group(1))
     return set(re.findall(r"'([a-z_]+)'", code))
@@ -36,7 +36,7 @@ def _ts_const_list(path: Path, name: str) -> set[str]:
 
 def _ts_audience() -> dict[str, str]:
     body = re.search(
-        r"export const WARNING_AUDIENCE = \{(.*?)\} as const", _TS_WARNINGS.read_text(), re.S
+        r"export const WARNING_AUDIENCE = \{(.*?)\} as const", _TS_WARNINGS.read_text(encoding="utf-8"), re.S
     )
     assert body, "WARNING_AUDIENCE not found in shared/display/warnings.ts"
     code = re.sub(r"//.*", "", body.group(1))
