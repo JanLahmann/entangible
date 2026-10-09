@@ -17,6 +17,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { qiskitAdapter, type Circuit, type CircuitRequest } from '@qamposer/react';
 import { statevector, DIM } from '@quantum/statevector';
+import { useT } from '@shared/i18n';
 
 const BACKEND_BASE = '/qamposer-api';
 const HEALTH_URL = '/api/health';
@@ -58,6 +59,7 @@ export function NoisyRun({
   circuit: Circuit;
   onMessage: (text: string) => void;
 }) {
+  const t = useT().kiosk;
   const [healthy, setHealthy] = useState(false);
   const backendNameRef = useRef<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -132,7 +134,7 @@ export function NoisyRun({
         .sort((a, b) => b.ideal - a.ideal || b.noisy - a.noisy)
         .slice(0, 8);
       setRows(merged);
-      onMessage('Real quantum computers are noisy — see the difference');
+      onMessage(t.noisyMessage);
     } catch (err) {
       console.warn('[NoisyRun] simulation failed:', err);
       setHealthy(false);
@@ -147,14 +149,14 @@ export function NoisyRun({
   return (
     <div className="ent-noisy">
       <button className="ent-noisy__btn" type="button" onClick={run} disabled={running}>
-        {running ? 'Running…' : 'Run on a noisy simulator'}
+        {running ? t.noisyRunning : t.noisyRun}
       </button>
 
       {rows && rows.length > 0 && (
         <div className="ent-noisy__panel">
           <div className="ent-noisy__legend">
-            <span><i style={{ background: IDEAL_COLOR }} /> ideal</span>
-            <span><i style={{ background: NOISY_COLOR }} /> noisy</span>
+            <span><i style={{ background: IDEAL_COLOR }} /> {t.noisyIdeal}</span>
+            <span><i style={{ background: NOISY_COLOR }} /> {t.noisyNoisy}</span>
           </div>
           <div className="ent-noisy__bars">
             {rows.map((r) => (
@@ -163,12 +165,12 @@ export function NoisyRun({
                   <span
                     className="ent-noisy__bar"
                     style={{ height: `${Math.round(r.ideal * 100)}%`, background: IDEAL_COLOR }}
-                    title={`ideal ${(r.ideal * 100).toFixed(1)}%`}
+                    title={t.noisyIdealTitle((r.ideal * 100).toFixed(1))}
                   />
                   <span
                     className="ent-noisy__bar"
                     style={{ height: `${Math.round(r.noisy * 100)}%`, background: NOISY_COLOR }}
-                    title={`noisy ${(r.noisy * 100).toFixed(1)}%`}
+                    title={t.noisyNoisyTitle((r.noisy * 100).toFixed(1))}
                   />
                 </div>
                 <div className="ent-noisy__label">{r.state}</div>

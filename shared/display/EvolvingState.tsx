@@ -37,6 +37,8 @@ import { layout, type Vec3 } from '@quantum/qsphere';
 import { bestBlochQubit, blochVector, type BlochVector } from '@quantum/bloch';
 import type { StateVector } from '@quantum/statevector';
 import { KetDisplay } from './KetDisplay';
+import { useT } from '@shared/i18n';
+import type { Messages } from '@shared/i18n/en';
 import { basisVisuals } from '@quantum/qsphere';
 import {
   easeInOutCubic,
@@ -84,8 +86,8 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-function stepLabel(i: number): string {
-  return i <= 0 ? 'start' : `after layer ${i}`;
+function stepLabel(i: number, t: Messages['evolving']): string {
+  return i <= 0 ? t.start : t.afterLayer(i);
 }
 
 export function EvolvingState({
@@ -98,6 +100,7 @@ export function EvolvingState({
   classPrefix,
 }: EvolvingStateProps) {
   const p = classPrefix;
+  const t = useT().evolving;
   const reduced = usePrefersReducedMotion();
 
   // Column snapshots. Keyed on a structural signature so a genuine circuit
@@ -274,7 +277,7 @@ export function EvolvingState({
       {/* Name what the visitor is looking at — a Bloch sphere (one qubit) and
           a Q-sphere (many) read identically to a newcomer. */}
       <span className={`${p}-view-label`}>
-        {view === 'bloch' ? 'Bloch sphere' : 'Q-sphere'}
+        {view === 'bloch' ? t.bloch : t.qsphere}
       </span>
       {view === 'bloch' ? (
         <BlochView statevector={sv} qubit={blochQubit} target={blochTarget} classPrefix={p} />
@@ -290,7 +293,7 @@ export function EvolvingState({
       )}
       {/* The notation is fed the ANIMATED `sv`, so it moves with the balls. */}
       {showKet && (
-        <KetDisplay statevector={sv} n={n} classPrefix={p} label={targetState ? 'State' : undefined} maxTerms={16} />
+        <KetDisplay statevector={sv} n={n} classPrefix={p} label={targetState ? t.state : undefined} maxTerms={16} />
       )}
       {/* The goal, clearly labelled right under the live state (Jan: the target
           must be readable next to the actual state, not only as sphere ghosts). */}
@@ -299,17 +302,17 @@ export function EvolvingState({
           statevector={targetState}
           n={n}
           classPrefix={p}
-          label="Target"
+          label={t.target}
           highlight={ketDiff}
           maxTerms={16}
         />
       )}
       {showScrubber && (
-        <div className={`${p}-evo-scrubber`} role="group" aria-label="State evolution steps">
+        <div className={`${p}-evo-scrubber`} role="group" aria-label={t.stepsAria}>
           <button
             type="button"
             className={`${p}-evo-replay`}
-            aria-label="Replay animation"
+            aria-label={t.replay}
             onClick={() => animateTo(lastIndex, 0)}
           >
             ↻
@@ -317,7 +320,7 @@ export function EvolvingState({
           <button
             type="button"
             className={`${p}-evo-nav`}
-            aria-label="Previous step"
+            aria-label={t.prev}
             disabled={visibleStep <= 0}
             onClick={() => animateTo(Math.round(posRef.current) - 1)}
           >
@@ -329,7 +332,7 @@ export function EvolvingState({
                 key={i}
                 type="button"
                 className={`${p}-evo-dot${i === visibleStep ? ` ${p}-evo-dot--active` : ''}`}
-                aria-label={`Go to ${stepLabel(i)}`}
+                aria-label={t.goTo(stepLabel(i, t))}
                 aria-current={i === visibleStep ? 'step' : undefined}
                 onClick={() => animateTo(i)}
               />
@@ -338,13 +341,13 @@ export function EvolvingState({
           <button
             type="button"
             className={`${p}-evo-nav`}
-            aria-label="Next step"
+            aria-label={t.next}
             disabled={visibleStep >= lastIndex}
             onClick={() => animateTo(Math.round(posRef.current) + 1)}
           >
             ›
           </button>
-          <span className={`${p}-evo-label`}>{stepLabel(visibleStep)}</span>
+          <span className={`${p}-evo-label`}>{stepLabel(visibleStep, t)}</span>
         </div>
       )}
     </div>

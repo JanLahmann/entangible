@@ -11,7 +11,7 @@
  * exit (React removes it synchronously on the next paint).
  */
 import { VisitorQr } from './VisitorQr';
-import { ATTRACT_TAGLINES } from './attract';
+import { useT } from '@shared/i18n';
 
 const MINI_CONFETTI = ['#fa4d56', '#002d9c', '#9f1853', '#33b1ff'];
 
@@ -23,17 +23,16 @@ export interface AttractBranding {
 
 export function AttractMode({ branding }: { branding?: AttractBranding | null }) {
   // Co-brand only when an event name is configured (docs/booth-ux.md → branding).
+  const t = useT().kiosk;
   const eventName = branding?.name?.trim() || null;
-  const label = eventName
-    ? `Entangible at ${eventName} — place a tile on the table to begin`
-    : 'Entangible — place a tile on the table to begin';
+  const label = t.attractLabel(eventName);
   return (
     <div className="ent-attract" role="img" aria-label={label}>
       <div className="ent-attract__stage">
         <div className="ent-attract__wordmark">Entangible</div>
         {eventName && (
           <div className="ent-attract__cobrand">
-            <span className="ent-attract__cobrand-at">at</span>
+            <span className="ent-attract__cobrand-at">{t.attractAt}</span>
             {branding?.logoUrl ? (
               <img src={branding.logoUrl} alt={eventName} />
             ) : (
@@ -70,7 +69,7 @@ export function AttractMode({ branding }: { branding?: AttractBranding | null })
             Quantina "order your coffee" line (QN2). Both stay in the DOM; CSS
             animates opacity and reduced-motion shows them stacked. */}
         <div className="ent-attract__cta">
-          {ATTRACT_TAGLINES.map((line, i) => (
+          {t.attractTaglines.map((line, i) => (
             <span key={i} className={`ent-attract__cta-line ent-attract__cta-line--${i}`}>
               {line}
             </span>
@@ -82,7 +81,7 @@ export function AttractMode({ branding }: { branding?: AttractBranding | null })
 
         {/* site + family credit — the booth's public face at events */}
         <div className="ent-attract__site">
-          entangible.org · a Fun with Quantum project
+          {t.attractSite}
         </div>
       </div>
     </div>

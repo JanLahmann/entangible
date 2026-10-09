@@ -44,6 +44,7 @@ import { statevector, type StateVector } from './statevector';
 import { useSphereRotation } from './useSphereRotation';
 import { PhaseLegend } from './PhaseLegend';
 import { ResetOrientationButton } from './ResetOrientationButton';
+import { useT } from '@shared/i18n';
 
 const MARGIN = 24;
 const FAINT_NODE = 1; // tiny dot for p ≈ 0 lattice points
@@ -126,9 +127,11 @@ export function QSphereView({
   travelers,
   size = 220,
   classPrefix,
-  title = 'Q-sphere state projection',
+  title: titleProp,
 }: QSphereViewProps) {
   const p = classPrefix;
+  const evolving = useT().evolving;
+  const title = titleProp ?? evolving.qsphereTitle;
   const sv = useMemo<StateVector>(
     () => svProp ?? (circuit ? statevector(circuit) : statevector({ qubits: n, gates: [] } as Circuit)),
     [svProp, circuit, n],

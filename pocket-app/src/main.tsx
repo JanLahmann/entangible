@@ -10,6 +10,7 @@ import '@shared/tokens.css';
 import { App } from './app/App';
 import { BootSplash, LazyBoundary } from './app/LazyBoundary';
 import { currentSurface } from './app/surface';
+import { LangProvider } from '@shared/i18n';
 
 // The kiosk and /debug surfaces are separate chunks (with kiosk.css / debug.css),
 // so a visitor on `/` never downloads them. Keep them out of the static imports
@@ -20,7 +21,9 @@ const DebugView = lazy(() => import('./debug/DebugView'));
 // Entangible One (U3): one app, three surfaces. The host serves this build at
 // `/` (standalone/viewer/camera), `/?kiosk` (big-screen booth skin) and
 // `/debug` (staff). The default standalone behavior is unchanged — the kiosk /
-// debug surfaces are additive code paths selected only by URL.
+// debug surfaces are additive code paths selected only by URL. The language
+// (English / German, shared/i18n) wraps every surface; the staff debug view
+// simply never reads it.
 function surfaceElement(): ReactElement {
   switch (currentSurface()) {
     case 'kiosk':
@@ -42,5 +45,7 @@ function surfaceElement(): ReactElement {
 
 // React replaces the static boot splash inside #root (index.html) on mount.
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>{surfaceElement()}</StrictMode>,
+  <StrictMode>
+    <LangProvider>{surfaceElement()}</LangProvider>
+  </StrictMode>,
 );

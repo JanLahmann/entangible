@@ -16,7 +16,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Circuit } from '@qamposer/react';
 import { qasmForCircuit } from './qasm';
 import { canTransfer } from './composerTransfer';
-import { ComposerSync, SYNC_ENABLED_MESSAGE } from './composerSync';
+import { ComposerSync } from './composerSync';
+import { useT } from '@shared/i18n';
 
 /** QASM for a circuit, or `''` for an empty board (sync's empty sentinel). */
 function syncQasm(circuit: Circuit): string {
@@ -30,6 +31,7 @@ export function LiveComposerButton({
   circuit: Circuit;
   onToast: (text: string) => void;
 }) {
+  const t = useT().composer;
   const sync = useMemo(() => new ComposerSync(), []);
   const [on, setOn] = useState(false);
 
@@ -51,8 +53,8 @@ export function LiveComposerButton({
     // First open happens in this user gesture (popup blockers).
     sync.start(syncQasm(circuit));
     setOn(true);
-    onToast(SYNC_ENABLED_MESSAGE);
-  }, [sync, circuit, onToast]);
+    onToast(t.syncEnabled);
+  }, [sync, circuit, onToast, t]);
 
   if (!canTransfer(circuit)) return null;
 
@@ -62,14 +64,10 @@ export function LiveComposerButton({
       className={`pk-livesync ${on ? 'is-on' : ''}`}
       onClick={toggle}
       aria-pressed={on}
-      title={
-        on
-          ? 'The Composer tab is following the table — tap to stop'
-          : 'Open a Composer tab that follows the table live'
-      }
+      title={on ? t.liveOnTitle : t.liveOffTitle}
     >
       <span className={`pk-livesync-dot ${on ? 'is-on' : ''}`} aria-hidden="true" />
-      {on ? 'Live Composer · syncing' : 'Live Composer'}
+      {on ? t.liveSyncing : t.live}
     </button>
   );
 }

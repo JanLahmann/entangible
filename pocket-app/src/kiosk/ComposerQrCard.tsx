@@ -13,7 +13,8 @@
  * URL as everywhere else (composerTransfer.ts); the QR is a canvas-free SVG.
  */
 import type { Circuit } from '@qamposer/react';
-import { canTransfer, usedQubits, SIGN_IN_HINT } from '../app/composerTransfer';
+import { canTransfer, usedQubits } from '../app/composerTransfer';
+import { useT } from '@shared/i18n';
 import { qasmForCircuit } from '../app/qasm';
 import { QR_DEBOUNCE_MS, useComposerQr, useStable } from '../app/composerQrCode';
 
@@ -25,6 +26,7 @@ export function ComposerQrCard({
   /** Host-supplied QASM (authoritative); falls back to a local emission. */
   qasm?: string | undefined;
 }) {
+  const t = useT().composer;
   // Empty board → '' sentinel; otherwise prefer the host's QASM.
   const live = canTransfer(circuit) ? qasm ?? qasmForCircuit(circuit) : '';
   // Only surface a code once the circuit has settled (no flicker mid-build).
@@ -38,7 +40,7 @@ export function ComposerQrCard({
 
   return (
     <div className="bo-composer-qr">
-      <div className="bo-label">Your circuit → IBM Composer</div>
+      <div className="bo-label">{t.kioskLabel}</div>
       <div className="bo-composer-qr__body">
         <div
           className="bo-composer-qr__code"
@@ -46,9 +48,8 @@ export function ComposerQrCard({
           dangerouslySetInnerHTML={{ __html: svg }}
         />
         <span className="bo-composer-qr__label">
-          Scan to open this circuit in the IBM Quantum Composer — independent
-          project, not affiliated with IBM.
-          {usesAll5 && ` ${SIGN_IN_HINT}`}
+          {t.kioskCaption}
+          {usesAll5 && ` ${t.signIn}`}
         </span>
       </div>
     </div>

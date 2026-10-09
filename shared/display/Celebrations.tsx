@@ -19,6 +19,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import type { Celebration } from '@quantum/moments';
+import { useT } from '@shared/i18n';
 
 /** The four gate colours (H / X / Y / Z). */
 const COLORS = ['#fa4d56', '#002d9c', '#9f1853', '#33b1ff'] as const;
@@ -63,6 +64,7 @@ export function Celebrations({
   particleBudget: (kind: Celebration['kind']) => number;
   maxParticles: number;
 }) {
+  const t = useT();
   const p = classPrefix;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const budgetRef = useRef(particleBudget);
@@ -90,8 +92,8 @@ export function Celebrations({
     const text =
       celebration.banner ??
       (celebration.kind === 'ghz'
-        ? `GHZ STATE — ${celebration.k} QUBITS ENTANGLED!`
-        : 'ENTANGLEMENT!');
+        ? t.celebrations.ghz(celebration.k)
+        : t.celebrations.entanglement);
     setBanner({ text, kind: celebration.kind, token: celebration.token });
     setBannerPhase('in');
 

@@ -11,6 +11,7 @@ import { useCallback } from 'react';
 import type { Circuit } from '@qamposer/react';
 import { qasmForCircuit } from './qasm';
 import { canTransfer, transferToComposer } from './composerTransfer';
+import { useT } from '@shared/i18n';
 
 export function TransferButton({
   circuit,
@@ -19,11 +20,13 @@ export function TransferButton({
   circuit: Circuit;
   onToast: (text: string) => void;
 }) {
+  const t = useT().composer;
   const onClick = useCallback(() => {
     const qasm = qasmForCircuit(circuit);
-    // Fire-and-forget: the tab always opens; the toast reports the copy result.
-    void transferToComposer(qasm).then((r) => onToast(r.message));
-  }, [circuit, onToast]);
+    // Fire-and-forget: the tab always opens; the toast reports the copy result
+    // (worded in the visitor's language — `r.message` is the English one).
+    void transferToComposer(qasm).then((r) => onToast(r.copied ? t.copied : t.noCopy));
+  }, [circuit, onToast, t]);
 
   if (!canTransfer(circuit)) return null;
 
@@ -33,9 +36,9 @@ export function TransferButton({
         <span className="pk-transfer-glyph" aria-hidden="true">
           ⚛
         </span>
-        Transfer to IBM Composer
+        {t.transfer}
       </button>
-      <p className="pk-transfer-note">Copies your circuit and opens it on IBM Quantum.</p>
+      <p className="pk-transfer-note">{t.transferNote}</p>
     </div>
   );
 }

@@ -21,6 +21,8 @@ import {
 import { evaluateMoment, initialMomentState, type MomentState } from '@quantum/moments';
 import { defaultStateUrl } from '@shared/ws/stateSocket';
 import { friendlyWarning, kioskVisible } from '@shared/display/warnings';
+import { useT } from '@shared/i18n';
+import type { Messages } from '@shared/i18n/en';
 import type { WarningInput } from '@shared/display/warnings';
 import type { Wires } from '@shared/display/wires';
 import type { NoisePreset } from '@quantum/noise';
@@ -37,7 +39,7 @@ import { cameraRoleOffered, framesUrlFromStateUrl, roleRequested } from '../sour
 import { getOperatorKey, withKey } from '@shared/ws/operatorKey';
 import { framesSocketUrl } from '@shared/capture/streamController';
 import type { FrameStreamerStatus } from '@shared/capture/frameStreamer';
-import { useCamera } from './useCamera';
+import { useCamera, type CameraError } from './useCamera';
 import { pinchZoom, pointerDistance, cropRect, type Point as PinchPoint } from './zoom';
 import type { Rect } from '@shared/capture/matRoi';
 import { MessageStrip, type StripMessage } from './MessageStrip';
@@ -64,13 +66,14 @@ import {
 import { useQuantinaPack } from './quantinaPack';
 import { LazyBoundary } from './LazyBoundary';
 import { displayCircuit, highestUsedRow } from '@shared/display/displayWires';
-import { HINTS, HINT_ROTATE_MS } from '@shared/display/hints';
+import { HINT_ROTATE_MS } from '@shared/display/hints';
 import { editorFit, editorNaturalHeight, type EditorFit } from './editorFit';
 import {
   golfStep,
   completionCelebration,
   courseTotals,
   initialGolfState,
+  scoreName,
   loadBest,
   saveBest,
   loadRevealed,
@@ -259,8 +262,9 @@ function useEditorFit(displayQubits: number): {
 
 function FullscreenButton({ variant }: { variant: 'bar' | 'cam' }) {
   const { supported, active, toggle } = useFullscreen();
+  const t = useT().app;
   if (!supported) return null;
-  const label = active ? 'Exit fullscreen' : 'Fullscreen';
+  const label = active ? t.exitFullscreen : t.fullscreen;
   return (
     <button
       type="button"
@@ -282,7 +286,7 @@ function FullscreenButton({ variant }: { variant: 'bar' | 'cam' }) {
           />
         )}
       </svg>
-      {variant === 'bar' && <span className="pk-fs-label">{active ? 'Exit' : 'Fullscreen'}</span>}
+      {variant === 'bar' && <span className="pk-fs-label">{active ? t.exit : t.fullscreen}</span>}
     </button>
   );
 }
@@ -291,16 +295,17 @@ function FullscreenButton({ variant }: { variant: 'bar' | 'cam' }) {
 function InstallHint({ cameraStarted }: { cameraStarted: boolean }) {
   const env = useMemo(() => detectEnv(window as Window & typeof globalThis), []);
   const [dismissed, setDismissed] = useState(() => loadHintDismissed(storage));
+  const t = useT().app;
   if (!shouldShowInstallHint(env, { cameraStarted, dismissed })) return null;
   return (
     <div className="pk-install-hint" role="note">
       <span>
-        For fullscreen, add Entangible to your Home Screen: <b>Share → Add to Home Screen</b>.
+        {t.installHintLead} <b>{t.installHintAction}</b>.
       </span>
       <button
         type="button"
         className="pk-install-hint-x"
-        aria-label="Dismiss"
+        aria-label={t.dismiss}
         onClick={() => {
           saveHintDismissed(storage);
           setDismissed(true);
@@ -416,17 +421,34 @@ function clearCanvas(canvas: HTMLCanvasElement | null): void {
 }
 
 /** Status-pill label + style hook for the CAMERA role's streaming connection. */
-function cameraStreamPill(status: FrameStreamerStatus | null): { label: string; cls: string } {
+function cameraStreamPill(
+  status: FrameStreamerStatus | null,
+  t: Messages['app'],
+): { label: string; cls: string } {
   if (!status || status.connection === 'connecting')
-    return { label: 'Connecting to booth…', cls: 'is-searching' };
-  if (status.connection === 'reconnecting') return { label: 'Reconnecting…', cls: 'is-searching' };
-  if (status.connection === 'closed') return { label: 'Stream stopped', cls: 'is-off' };
-  return { label: `Streaming to booth · ${Math.round(status.fps)} fps`, cls: 'is-live' };
+    return { label: t.streamConnecting, cls: 'is-searching' };
+  if (status.connection === 'reconnecting') {
+    return { label: t.streamReconnecting, cls: 'is-searching' };
+  }
+  if (status.connection === 'closed') return { label: t.streamStopped, cls: 'is-off' };
+  return { label: t.streaming(Math.round(status.fps)), cls: 'is-live' };
+}
+
+/** The start card's camera error, worded in the visitor's language. */
+function cameraErrorText(error: CameraError | null, t: Messages['camera']): string {
+  if (error === null) return '';
+  if (error.kind === 'other') return t.errors.other(error.name ?? t.errors.unknown);
+  return t.errors[error.kind];
 }
 
 export function App() {
   const settings = useSettings();
   const route = useRoute();
+  // The visitor's language. Callbacks and effects read it through a ref, so a
+  // switch re-words the next message without re-subscribing anything.
+  const t = useT();
+  const tRef = useRef(t);
+  tRef.current = t;
   const boothUrl = useBoothLink().url;
   // Connected as a booth viewer when a link target is set (design: read-only
   // Display role — the visitor QR is view-only).
@@ -613,6 +635,7 @@ export function App() {
               scopeHoles(courseHoles(step.state), step.state.scope),
             ).vsPar,
             courseElapsed(timing, Date.now()),
+            tRef.current,
           );
           setCelebration({
             kind: 'ghz',
@@ -631,7 +654,7 @@ export function App() {
           setCelebration({
             kind: step.hole.qubits >= 3 ? 'ghz' : 'bell',
             k: step.hole.qubits,
-            banner: `${step.scoreName}!`,
+            banner: `${scoreName(step.score, step.hole.par, tRef.current)}!`,
             token: ++tokenRef.current,
           });
         }
@@ -640,7 +663,13 @@ export function App() {
       }
 
       // Composer moment engine — identical to BoothView, on live changes only.
-      const outcome = evaluateMoment(prevCircuitRef.current, next, momentStateRef.current, Date.now());
+      const outcome = evaluateMoment(
+        prevCircuitRef.current,
+        next,
+        momentStateRef.current,
+        Date.now(),
+        tRef.current,
+      );
       momentStateRef.current = outcome.state;
       prevCircuitRef.current = next;
       if (outcome.stripMessage) pushStrip(outcome.stripMessage);
@@ -697,7 +726,7 @@ export function App() {
   // to the default device — clear the stale id and give a gentle heads-up.
   const onCameraFallback = useCallback(() => {
     settingsStore.update({ cameraId: null });
-    pushStrip('Selected camera unavailable — using default');
+    pushStrip(tRef.current.app.cameraFallback);
   }, [pushStrip]);
 
   // CAMERA role sink: hand each zoomed camera frame to the streaming controller
@@ -752,7 +781,7 @@ export function App() {
       ({ detectMatRoi }) => {
         const result = detectMatRoi(video, crop);
         if (!result.ok) {
-          pushStrip("Can't find the mat — all four corners in view?");
+          pushStrip(tRef.current.app.matNotFound);
           return;
         }
         setMatLock(result.roi);
@@ -763,7 +792,7 @@ export function App() {
           clearCanvas(overlayRef.current);
         }, 1500);
       },
-      () => pushStrip("Couldn't load the mat finder — check the connection and reload."),
+      () => pushStrip(tRef.current.app.matLoadFailed),
     );
   }, [camera.videoRef, camera.zoom, camera.zoomMode, pushStrip]);
 
@@ -950,7 +979,7 @@ export function App() {
 
   useEffect(() => {
     const id = window.setInterval(
-      () => setHintIndex((i) => (i + 1) % HINTS.length),
+      () => setHintIndex((i) => (i + 1) % tRef.current.hints.length),
       HINT_ROTATE_MS,
     );
     return () => window.clearInterval(id);
@@ -1009,9 +1038,9 @@ export function App() {
   const boardLocked = corners >= 3;
   const camPill = running
     ? boardLocked
-      ? { cls: 'is-live', label: `board locked · ${camera.fps} fps` }
-      : { cls: 'is-searching', label: 'searching…' }
-    : { cls: 'is-off', label: 'camera off' };
+      ? { cls: 'is-live', label: t.app.camBoardLocked(camera.fps) }
+      : { cls: 'is-searching', label: t.app.camSearching }
+    : { cls: 'is-off', label: t.app.camOff };
 
   const isGolf = effectiveMode === 'golf';
   const isQuantina = effectiveMode === 'quantina';
@@ -1040,17 +1069,17 @@ export function App() {
   // Viewer policy (design: read-only Display role): while connected to a booth
   // — or building on screen in manual mode — the camera UI is hidden entirely.
   const showCamera = showCameraUi(cameraHidden, hasPanel('camera'), camera.status !== 'idle');
-  const boothPill = connectionPill(conn ?? 'connecting', boothCameraLost);
+  const boothPill = connectionPill(conn ?? 'connecting', boothCameraLost, t);
   // Camera-role offer gating (design: "connected to a host, camera role
   // selected"): only when a host is known AND an operator key is present.
   const hostKnown = servedByHost || settings.boothUrl != null;
   const cameraRoleAvailable = cameraRoleOffered({ hostKnown, hasKey: operatorKeyPresent });
-  const streamPill = cameraStreamPill(streamStatus);
+  const streamPill = cameraStreamPill(streamStatus, t.app);
   const golfTargets = useMemo(() => holeHighlight(currentLevel), [currentLevel]);
   const golfTargetState = useMemo(() => holeTargetState(currentLevel), [currentLevel]);
   // The hole's goal in plain words, under the target (derived from the target
   // state alone, so a generated hole reads exactly like a classic one).
-  const golfGoal = useMemo(() => holeGoal(currentLevel), [currentLevel]);
+  const golfGoal = useMemo(() => holeGoal(currentLevel, t), [currentLevel, t]);
   // The Q-sphere and the bra-ket line show the HOLE's state space, not the full
   // five qubits: a level-2 hole gets a 4-node sphere and 2-bit kets. Untouched
   // qubits are exactly |0⟩, so restricting to the first 2^n amplitudes is
@@ -1328,21 +1357,21 @@ export function App() {
               className="pk-golf-next pk-golf-next--sphere"
               onClick={advanceHole}
             >
-              {golfState.complete ? 'Play again ▸' : 'Next hole ▸'}
+              {golfState.complete ? t.golf.playAgain : t.golf.nextHole}
             </button>
           )}
         </div>
       </div>
       <div key="golfcourse">
-        <div className="pk-label">Course</div>
-        <div className="pk-course-pick" role="group" aria-label="golf course">
+        <div className="pk-label">{t.golf.course}</div>
+        <div className="pk-course-pick" role="group" aria-label={t.golf.courseAria}>
           <button
             type="button"
             className={`pk-course-btn${golfState.course === 'classic' ? ' is-active' : ''}`}
             aria-pressed={golfState.course === 'classic'}
             onClick={() => pickCourse('classic')}
           >
-            Classic 18
+            {t.golf.classic18}
           </button>
           <button
             type="button"
@@ -1350,12 +1379,12 @@ export function App() {
             aria-pressed={golfState.course === 'random'}
             onClick={() => pickCourse('random')}
           >
-            {golfState.course === 'random' ? 'New random 18' : 'Random 18'}
+            {golfState.course === 'random' ? t.golf.newRandom18 : t.golf.random18}
           </button>
         </div>
         {/* What the round is a competition OVER (#102) — the full course, or
             one of its four rounds played as a contest of its own. */}
-        <div className="pk-scope-pick" role="group" aria-label="competition scope">
+        <div className="pk-scope-pick" role="group" aria-label={t.golf.scopeAria}>
           {GOLF_SCOPES.map((s) => (
             <button
               key={s}
@@ -1364,7 +1393,7 @@ export function App() {
               aria-pressed={golfState.scope === s}
               onClick={() => pickScope(s)}
             >
-              {scopeLabel(s)}
+              {scopeLabel(s, t)}
             </button>
           ))}
         </div>
@@ -1452,13 +1481,13 @@ export function App() {
             <span className="pk-dot" aria-hidden="true" />
             <span className="pk-pill-label">{streamPill.label}</span>
           </span>
-          <a className="pk-help" href="#guide" aria-label="Guide and about" title="Guide & about">
+          <a className="pk-help" href="#guide" aria-label={t.app.guideAria} title={t.app.guideTitle}>
             ?
           </a>
           <FullscreenButton variant="bar" />
           <SettingsControl cameraRoleAvailable={cameraRoleAvailable} />
           <button className="pk-btn is-stop" onClick={() => cameraRoleLink.exit()}>
-            Stop
+            {t.app.stop}
           </button>
         </header>
         <main className="pk-main pk-camera-role-main">
@@ -1494,13 +1523,13 @@ export function App() {
           <span className="pk-brand-rest">tangible</span>
           <small>pocket</small>
         </div>
-        {isGolf && <span className="pk-pill pk-pill--mode">Quantum Golf</span>}
+        {isGolf && <span className="pk-pill pk-pill--mode">{t.app.modeGolf}</span>}
         {isQuantina && (
           <span className="pk-pill pk-pill--mode">
             {quantina.loading ? 'Quantina' : quantina.pack.title}
           </span>
         )}
-        {isRunner && <span className="pk-pill pk-pill--mode">Quantum Runner</span>}
+        {isRunner && <span className="pk-pill pk-pill--mode">{t.app.modeRunner}</span>}
         <span className="pk-spacer" />
         {connected ? (
           // Viewer: booth status pill (never a camera pill — no local pipeline).
@@ -1515,8 +1544,12 @@ export function App() {
         ) : manual ? (
           // Manual build: no camera — the pill states the mode (switch back via
           // the "Use camera" action button).
-          <span className="pk-pill pk-pill--mode" aria-label="Manual build" title="Manual build">
-            <span className="pk-pill-label">Manual build</span>
+          <span
+            className="pk-pill pk-pill--mode"
+            aria-label={t.app.manualBuild}
+            title={t.app.manualBuild}
+          >
+            <span className="pk-pill-label">{t.app.manualBuild}</span>
           </span>
         ) : (
           <span className={`pk-pill ${camPill.cls}`} aria-label={camPill.label} title={camPill.label}>
@@ -1524,7 +1557,7 @@ export function App() {
             <span className="pk-pill-label">{camPill.label}</span>
           </span>
         )}
-        <a className="pk-help" href="#guide" aria-label="Guide and about" title="Guide & about">
+        <a className="pk-help" href="#guide" aria-label={t.app.guideAria} title={t.app.guideTitle}>
           ?
         </a>
         <FullscreenButton variant="bar" />
@@ -1534,24 +1567,24 @@ export function App() {
             Start ↔ Stop camera toggle. */}
         {connected ? (
           <button className="pk-btn is-stop" onClick={() => boothLink.disconnect()}>
-            Disconnect
+            {t.app.disconnect}
           </button>
         ) : manual ? (
           // Switch-back-to-camera action (returns to the local pipeline).
           <button className="pk-btn" onClick={() => settingsStore.update({ input: 'camera' })}>
-            Use camera
+            {t.app.useCamera}
           </button>
         ) : servedByHost ? (
           <button className="pk-btn" onClick={() => boothLink.connect(defaultStateUrl())}>
-            Connect to booth
+            {t.app.connectToBooth}
           </button>
         ) : running ? (
           <button className="pk-btn is-stop" onClick={camera.stop}>
-            Stop
+            {t.app.stop}
           </button>
         ) : (
           <button className="pk-btn" onClick={camera.start} disabled={camera.status === 'starting'}>
-            {camera.status === 'starting' ? 'Starting…' : 'Start camera'}
+            {camera.status === 'starting' ? t.app.starting : t.app.startCamera}
           </button>
         )}
       </header>
@@ -1585,7 +1618,7 @@ export function App() {
                 <span className="pk-warnicon" aria-hidden="true">
                   ⚠
                 </span>
-                <span>{warnings.map((w) => friendlyWarning(w)).join('  ·  ')}</span>
+                <span>{warnings.map((w) => friendlyWarning(w, t)).join('  ·  ')}</span>
               </div>
             )}
             {/* `pk-stage--manual` scopes the phone-only editor min-height + no-shrink
@@ -1627,10 +1660,10 @@ export function App() {
             <span className="pk-warnicon" aria-hidden="true">
               ⚠
             </span>
-            <div role="status">{warnings.map((w) => friendlyWarning(w)).join('  ·  ')}</div>
+            <div role="status">{warnings.map((w) => friendlyWarning(w, t)).join('  ·  ')}</div>
           </>
         ) : (
-          <div key={hintIndex}>{HINTS[hintIndex]}</div>
+          <div key={hintIndex}>{t.hints[hintIndex % t.hints.length]}</div>
         )}
       </footer>
 
@@ -1664,8 +1697,9 @@ export function App() {
  *  swaps the docked 22vh strip for the desktop 4/3 geometry. */
 function CamExpandButton({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
   const { supported } = useFullscreen();
+  const t = useT().camera;
   if (supported) return null;
-  const label = expanded ? 'Shrink camera' : 'Expand camera';
+  const label = expanded ? t.shrink : t.expand;
   return (
     <button type="button" className="pk-fs pk-fs--cam" onClick={onToggle} aria-label={label} title={label}>
       <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
@@ -1744,6 +1778,7 @@ function CameraPanel({
 }) {
   const { status, error, fps, videoRef, zoom, zoomRange, previewScale, setZoom, stepZoom, resetZoom } =
     camera;
+  const t = useT();
   const streaming = stream != null;
   const canFrameMat = onFrameMat != null;
 
@@ -1813,7 +1848,7 @@ function CameraPanel({
 
   return (
     <div>
-      <div className="pk-label">Camera</div>
+      <div className="pk-label">{t.camera.label}</div>
       {status === 'running' ? (
         <div
           className={`pk-cam ${frozen ? 'is-frozen' : ''} ${camExpanded ? 'is-expanded' : ''}`}
@@ -1844,17 +1879,15 @@ function CameraPanel({
           )}
           {frozen ? (
             <div className="pk-frozen-msg" role="status">
-              <span aria-hidden="true">❄</span> Frozen — {streaming ? 'stream paused' : 'circuit locked'}
+              <span aria-hidden="true">❄</span> {t.camera.frozenMsg(streaming)}
             </div>
           ) : streaming ? (
             <div className="pk-cam-hint">
-              {stream!.connection === 'open'
-                ? 'Streaming to the booth — this phone is the camera'
-                : 'Connecting to the booth…'}
+              {stream!.connection === 'open' ? t.camera.streamingHint : t.camera.connectingBooth}
             </div>
           ) : (
             !boardLocked && (
-              <div className="pk-cam-hint">Point at the board — all four corners in view</div>
+              <div className="pk-cam-hint">{t.camera.pointHint}</div>
             )
           )}
         </div>
@@ -1876,35 +1909,35 @@ function CameraPanel({
           <div className={`pk-startcard ${status === 'error' ? 'is-error' : ''}`}>
             {/* Most visitors arrive from a QR code with no context: say what
                 this is before asking for the camera. */}
-            {!streaming && <p className="pk-startcard-intro">{START_INTRO}</p>}
+            {!streaming && <p className="pk-startcard-intro">{t.start.intro}</p>}
             <h2>
               {status === 'error'
-                ? 'Camera unavailable'
+                ? t.start.unavailable
                 : streaming
-                  ? 'Starting the booth camera…'
-                  : 'Point your iPad at the board'}
+                  ? t.start.startingBooth
+                  : t.start.pointIpad}
             </h2>
             <p>
               {status === 'error'
-                ? error
+                ? cameraErrorText(error, t.camera)
                 : streaming
-                  ? 'This phone is streaming its camera to the booth. Point it at the board from above; the booth screen shows the recognized circuit.'
-                  : 'Start the camera, then frame the printed mat so all four corner markers are visible. Place tiles and watch the circuit build itself.'}
+                  ? t.start.streamingBody
+                  : t.start.body}
             </p>
             {!streaming && (
               <a className="pk-startcard-link" href="#guide">
-                New here? Read the guide
+                {t.start.guideLink}
               </a>
             )}
             {!streaming && onBuildOnScreen && status !== 'error' && (
               <button type="button" className="pk-startcard-alt" onClick={onBuildOnScreen}>
-                No camera? Build on screen
+                {t.start.noCamera}
               </button>
             )}
             {/* Permission denied / no camera: still offer the on-screen fallback. */}
             {!streaming && onBuildOnScreen && status === 'error' && (
               <button type="button" className="pk-startcard-alt" onClick={onBuildOnScreen}>
-                Build on screen instead
+                {t.start.buildInstead}
               </button>
             )}
           </div>
@@ -1913,13 +1946,6 @@ function CameraPanel({
     </div>
   );
 }
-
-/* Most visitors arrive from a QR code with no context: say what this is before
-   asking for anything. One string, shared by the plain card and the welcome. */
-const START_INTRO =
-  'Entangible lets you build a quantum circuit with your hands: lay printed tiles on the ' +
-  'mat, point a camera at them, and watch the results appear live. No tiles or camera at ' +
-  'hand — tap to build it on screen instead.';
 
 /**
  * The welcome card: what Entangible is (the same two sentences the plain card
@@ -1940,10 +1966,14 @@ export function WelcomeCard({
   onBuildOnScreen: () => void;
   onPlayGolf: () => void;
 }) {
+  const t = useT();
+  const w = t.welcome;
+  // Most visitors arrive from a QR code with no context: say what this is
+  // before asking for anything (the same intro as the plain card).
   return (
     <div className="pk-startcard pk-welcome">
-      <p className="pk-startcard-intro">{START_INTRO}</p>
-      <div className="pk-welcome-paths" role="group" aria-label="Choose how to start">
+      <p className="pk-startcard-intro">{t.start.intro}</p>
+      <div className="pk-welcome-paths" role="group" aria-label={w.aria}>
         <button
           type="button"
           className="pk-welcome-path pk-welcome-path--primary"
@@ -1951,23 +1981,23 @@ export function WelcomeCard({
           disabled={starting}
         >
           <span className="pk-welcome-path-title">
-            {starting ? 'Starting the camera…' : 'Point your camera at the board'}
+            {starting ? w.startingCamera : w.camera}
           </span>
-          <span className="pk-welcome-path-sub">All four corner markers in view</span>
+          <span className="pk-welcome-path-sub">{w.cameraSub}</span>
         </button>
         <div className="pk-welcome-alts">
           <button type="button" className="pk-welcome-path" onClick={onBuildOnScreen}>
-            <span className="pk-welcome-path-title">Build on screen</span>
-            <span className="pk-welcome-path-sub">No tiles needed</span>
+            <span className="pk-welcome-path-title">{w.build}</span>
+            <span className="pk-welcome-path-sub">{w.buildSub}</span>
           </button>
           <button type="button" className="pk-welcome-path" onClick={onPlayGolf}>
-            <span className="pk-welcome-path-title">Play Quantum Golf</span>
-            <span className="pk-welcome-path-sub">Hole by hole, on screen</span>
+            <span className="pk-welcome-path-title">{w.golf}</span>
+            <span className="pk-welcome-path-sub">{w.golfSub}</span>
           </button>
         </div>
       </div>
       <a className="pk-startcard-link" href="#guide">
-        New here? Read the guide
+        {t.start.guideLink}
       </a>
     </div>
   );
@@ -1977,7 +2007,8 @@ export function WelcomeCard({
 function FreezePill({ frozen, onToggle }: { frozen: boolean; onToggle: () => void }) {
   // Swallow pointer events so the pinch handler on the preview never sees them.
   const swallow = (e: React.PointerEvent) => e.stopPropagation();
-  const label = frozen ? 'Unfreeze camera' : 'Freeze camera';
+  const t = useT().camera;
+  const label = frozen ? t.unfreezeCamera : t.freezeCamera;
   return (
     <button
       type="button"
@@ -1992,7 +2023,7 @@ function FreezePill({ frozen, onToggle }: { frozen: boolean; onToggle: () => voi
       <span className="pk-freeze__glyph" aria-hidden="true">
         ❄
       </span>
-      <span className="pk-freeze__label">{frozen ? 'Frozen' : 'Freeze'}</span>
+      <span className="pk-freeze__label">{frozen ? t.frozen : t.freeze}</span>
     </button>
   );
 }
@@ -2000,7 +2031,8 @@ function FreezePill({ frozen, onToggle }: { frozen: boolean; onToggle: () => voi
 /** "Frame the mat" trigger — top-centre pill; re-tapping while locked re-detects. */
 function MatButton({ locked, onFrame }: { locked: boolean; onFrame: () => void }) {
   const swallow = (e: React.PointerEvent) => e.stopPropagation();
-  const label = locked ? 'Re-frame the mat' : 'Frame the mat';
+  const t = useT().camera;
+  const label = locked ? t.reframeMat : t.frameMat;
   return (
     <button
       type="button"
@@ -2022,17 +2054,18 @@ function MatButton({ locked, onFrame }: { locked: boolean; onFrame: () => void }
 /** "Mat only" badge (top-left) shown while locked; its ✕ returns the full frame. */
 function MatBadge({ onUnlock }: { onUnlock?: () => void }) {
   const swallow = (e: React.PointerEvent) => e.stopPropagation();
+  const t = useT().camera;
   return (
     <div className="pk-mat-badge" role="status" onPointerDown={swallow} onPointerUp={swallow}>
       <span className="pk-mat-badge__glyph" aria-hidden="true">
         ▣
       </span>
-      <span>Mat only</span>
+      <span>{t.matOnly}</span>
       <button
         type="button"
         className="pk-mat-badge__x"
-        aria-label="Unlock — stream the full frame"
-        title="Unlock — stream the full frame"
+        aria-label={t.unlockMat}
+        title={t.unlockMat}
         onClick={onUnlock}
       >
         ✕
@@ -2056,12 +2089,13 @@ function ZoomPill({
 }) {
   // Stop pointer events from reaching the pinch handler on the preview.
   const swallow = (e: React.PointerEvent) => e.stopPropagation();
+  const t = useT().camera;
   return (
     <div className="pk-zoom" onPointerDown={swallow} onPointerUp={swallow}>
       <button
         type="button"
         className="pk-zoom__btn"
-        aria-label="Zoom out"
+        aria-label={t.zoomOut}
         onClick={onOut}
         disabled={zoom <= min + 1e-6}
       >
@@ -2071,7 +2105,7 @@ function ZoomPill({
       <button
         type="button"
         className="pk-zoom__btn"
-        aria-label="Zoom in"
+        aria-label={t.zoomIn}
         onClick={onIn}
         disabled={zoom >= max - 1e-6}
       >

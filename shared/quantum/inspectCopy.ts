@@ -10,6 +10,7 @@
  * `?touch` enable decision stays booth-local (touch is always on in pocket).
  */
 import type { Gate } from '@qamposer/react';
+import { en, type Messages } from '@shared/i18n/en';
 
 /** How long a popover stays before auto-dismissing. */
 export const POPOVER_MS = 6000;
@@ -31,43 +32,37 @@ function near(a: number, b: number): boolean {
  * `RZ` with a fixed angle (π/2, π/4), which we name back for the visitor, while
  * the on-screen palette drops native `S`/`T` gates — both get the same sentence.
  */
-export function gateInspectCopy(gate: Gate): string {
-  const q = gate.qubit ?? 0;
+export function gateInspectCopy(gate: Gate, t: Messages = en): string {
+  const m = t.inspect;
+  const q = `q${gate.qubit ?? 0}`;
   switch (gate.type) {
     case 'H':
-      return `H puts q${q} into superposition — it is 0 and 1 at once.`;
+      return m.h(q);
     case 'X':
-      return `X flips q${q}: |0⟩ becomes |1⟩ (a quantum NOT).`;
+      return m.x(q);
     case 'Y':
-      return `Y flips q${q} and adds a phase — a bit-flip and phase-flip together.`;
+      return m.y(q);
     case 'Z':
-      return `Z leaves 0 alone but flips the phase of 1 on q${q} (a phase flip).`;
+      return m.z(q);
     case 'S':
-      return `S adds a quarter-turn phase to q${q} (a √Z gate).`;
+      return m.s(q);
     case 'T':
-      return `T adds an eighth-turn phase to q${q} (a √S gate).`;
-    case 'CNOT': {
-      const c = gate.control ?? 0;
-      const t = gate.target ?? 0;
-      return `A ●⊕ pair is a CNOT: it flips q${t} whenever q${c} is 1 — the move that entangles them.`;
-    }
+      return m.t(q);
+    case 'CNOT':
+      return m.cnot(`q${gate.control ?? 0}`, `q${gate.target ?? 0}`);
     case 'RX':
-      return `RX turns q${q} around the X axis by ${formatAngle(gate.parameter)} — a tunable bit-flip.`;
+      return m.rx(q, formatAngle(gate.parameter));
     case 'RY':
-      return `RY turns q${q} around the Y axis by ${formatAngle(gate.parameter)} — dials in a partial superposition.`;
+      return m.ry(q, formatAngle(gate.parameter));
     case 'RZ': {
       const p = gate.parameter ?? 0;
-      if (near(p, Math.PI / 2)) {
-        return `S adds a quarter-turn phase to q${q} (a √Z gate, sent as RZ ${formatAngle(p)}).`;
-      }
-      if (near(p, Math.PI / 4)) {
-        return `T adds an eighth-turn phase to q${q} (a √S gate, sent as RZ ${formatAngle(p)}).`;
-      }
-      return `RZ rotates q${q}'s phase by ${formatAngle(p)} around the Z axis.`;
+      if (near(p, Math.PI / 2)) return m.sAsRz(q, formatAngle(p));
+      if (near(p, Math.PI / 4)) return m.tAsRz(q, formatAngle(p));
+      return m.rz(q, formatAngle(p));
     }
     default:
       // Forward-compatible: an unknown gate type still gets a sane sentence.
-      return `This gate acts on q${q}.`;
+      return m.other(q);
   }
 }
 
@@ -85,7 +80,7 @@ function percentPhrase(prob: number): string {
  * onto the first D physical rows). Example:
  *   ("110", 0.5) → "110: q0=1, q1=1, q2=0 — seen in 50% of runs".
  */
-export function outcomeInspectCopy(bits: string, prob: number): string {
+export function outcomeInspectCopy(bits: string, prob: number, t: Messages = en): string {
   const pairs = bits.split('').map((b, i) => `q${i}=${b}`);
-  return `${bits}: ${pairs.join(', ')} — seen in ${percentPhrase(prob)} of runs.`;
+  return t.inspect.outcome(bits, pairs.join(', '), percentPhrase(prob));
 }

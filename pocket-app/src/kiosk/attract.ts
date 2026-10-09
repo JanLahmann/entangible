@@ -11,6 +11,7 @@
  * last activity; this helper decides, given that gap, whether attract is due.
  * Kept pure so the 90 s boundary is unit-testable without timers.
  */
+import { en } from '@shared/i18n/en';
 
 /** Idle window before attract mode engages. */
 export const ATTRACT_IDLE_MS = 90_000;
@@ -20,11 +21,9 @@ export const ATTRACT_IDLE_MS = 90_000;
  * line ("Order your coffee with a quantum computer", QN2) joins the original
  * build prompt; `AttractMode` cross-fades between them (CSS, reduced-motion
  * shows them stacked). First is the general prompt so a cold booth reads right.
+ * The English set; the screen shows the active language's (`t.kiosk`).
  */
-export const ATTRACT_TAGLINES = [
-  'Build a quantum circuit with your hands — place a tile on the table',
-  'Order your coffee with a quantum computer',
-] as const;
+export const ATTRACT_TAGLINES: readonly string[] = en.kiosk.attractTaglines;
 
 export interface AttractInput {
   /** The live circuit currently has no gates. */

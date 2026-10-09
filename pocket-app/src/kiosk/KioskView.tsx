@@ -36,13 +36,15 @@ import {
 import { getKioskSocket, kioskStanding, useKioskState } from './kioskSocket';
 import { sendServe } from './serve';
 import { withKey } from '@shared/ws/operatorKey';
-import { CAMERA_LOST_LABEL, friendlyWarning, kioskVisible } from '@shared/display/warnings';
+import { friendlyWarning, kioskVisible } from '@shared/display/warnings';
+import { useT } from '@shared/i18n';
+import type { Messages } from '@shared/i18n/en';
 import type { ConnectionState } from '@shared/ws/stateSocket';
 import type { CircuitMessage, NoisePreset, ShotSource, SidebarSide, Wires } from '@shared/ws/messages';
 import { MenuGrid } from '@shared/menu/MenuGrid';
 import { OrderCard } from '@shared/menu/OrderCard';
 import { ServeReveal } from '@shared/menu/ServeReveal';
-import { builtinPack } from '@shared/menu/builtinPacks';
+import { builtinPack, localizePack } from '@shared/menu/builtinPacks';
 import { cryptoRng } from '@shared/menu/sample';
 import { menuOutcomes, orderLines, serveFrom } from '../app/quantina';
 import { useResolvedPack } from '../app/packSource';
@@ -67,13 +69,14 @@ import { TouchInspector } from './TouchInspector';
 import { Scorecard } from './Scorecard';
 import { isTouchEnabled } from './touch';
 import { displayCircuit, highestUsedRow } from '@shared/display/displayWires';
-import { HINTS, HINT_ROTATE_MS } from '@shared/display/hints';
+import { HINT_ROTATE_MS } from '@shared/display/hints';
 import { EvolvingState } from '@shared/display/EvolvingState';
 import {
   golfStep,
   completionCelebration,
   courseTotals,
   initialGolfState,
+  scoreName,
   HOLES,
   holeHighlight,
   holeTargetState,
@@ -91,15 +94,15 @@ interface Branding {
   logoUrl?: string | null;
 }
 
-function connectionInfo(state: ConnectionState): { label: string; cls: string } {
+function connectionInfo(state: ConnectionState, t: Messages): { label: string; cls: string } {
   switch (state) {
     case 'open':
-      return { label: 'live', cls: '' };
+      return { label: t.kiosk.live, cls: '' };
     case 'connecting':
     case 'reconnecting':
-      return { label: 'reconnecting', cls: 'is-pending' };
+      return { label: t.kiosk.reconnecting, cls: 'is-pending' };
     default:
-      return { label: 'offline', cls: 'is-down' };
+      return { label: t.kiosk.offline, cls: 'is-down' };
   }
 }
 
@@ -118,10 +121,8 @@ function QasmPanel({ qasm }: { qasm: string | undefined }) {
 
 /** Full-screen connect-pending screen while the booth source is not yet live. */
 function ConnectPending({ state }: { state: ConnectionState }) {
-  const message =
-    state === 'closed'
-      ? 'Booth disconnected — retrying…'
-      : 'Connecting to the booth…';
+  const t = useT().kiosk;
+  const message = state === 'closed' ? t.disconnectedRetrying : t.connecting;
   return (
     <div className="bo bo--pending">
       <div className="bo-connect" role="status">
@@ -129,9 +130,7 @@ function ConnectPending({ state }: { state: ConnectionState }) {
           <span className="en">En</span>tangible
         </div>
         <div className="bo-connect__msg">{message}</div>
-        <div className="bo-connect__hint">
-          The big screen mirrors the booth. Waiting for the host to come online.
-        </div>
+        <div className="bo-connect__hint">{t.pendingHint}</div>
       </div>
     </div>
   );
@@ -139,6 +138,11 @@ function ConnectPending({ state }: { state: ConnectionState }) {
 
 export function KioskView() {
   const snapshot = useKioskState();
+  // The kiosk has no drawer: its language comes from `?lang=` (or the
+  // browser). Effects read it through a ref so they need no extra deps.
+  const t = useT();
+  const tRef = useRef(t);
+  tRef.current = t;
   const { circuit, detection, status, connectionState } = snapshot;
   // Layout arrives via an additive message; tolerate its absence.
   const layout = (
@@ -205,7 +209,7 @@ export function KioskView() {
   const warnings = (detection?.warnings ?? []).filter(kioskVisible);
   const cameraLost = status?.camera?.lost === true;
   const markersPresent = (detection?.markers?.length ?? 0) > 0;
-  const conn = connectionInfo(connectionState);
+  const conn = connectionInfo(connectionState, t);
 
   // --- event branding (config-gated; absent endpoint → hidden) -------------
   const [branding, setBranding] = useState<Branding | null>(null);
@@ -281,6 +285,7 @@ export function KioskView() {
         const done = completionCelebration(
           courseTotals(step.state.best).vsPar,
           courseElapsed(timing, Date.now()),
+          tRef.current,
         );
         setCelebration({
           kind: 'ghz',
@@ -295,7 +300,7 @@ export function KioskView() {
         setCelebration({
           kind: step.hole.qubits >= 3 ? 'ghz' : 'bell',
           k: step.hole.qubits,
-          banner: `${step.scoreName}!`,
+          banner: `${scoreName(step.score, step.hole.par, tRef.current)}!`,
           token: ++tokenRef.current,
         });
       }
@@ -310,6 +315,7 @@ export function KioskView() {
       next,
       momentStateRef.current,
       Date.now(),
+      tRef.current,
     );
     momentStateRef.current = result.state;
     prevCircuitRef.current = next;
@@ -345,7 +351,10 @@ export function KioskView() {
 
   const [hintIndex, setHintIndex] = useState(0);
   useEffect(() => {
-    const id = window.setInterval(() => setHintIndex((i) => (i + 1) % HINTS.length), HINT_ROTATE_MS);
+    const id = window.setInterval(
+      () => setHintIndex((i) => (i + 1) % tRef.current.hints.length),
+      HINT_ROTATE_MS,
+    );
     return () => window.clearInterval(id);
   }, []);
 
@@ -370,15 +379,20 @@ export function KioskView() {
   // synchronously; a custom host-served id is fetched same-origin (the kiosk is
   // always host-served), with coffee shown until it lands or fails (QN3).
   const menuId = layout?.menu ?? null;
-  const { pack } = useResolvedPack(menuId);
+  const { pack: authoredPack } = useResolvedPack(menuId);
+  // A built-in menu reads in the screen's language; custom packs as authored.
+  const pack = useMemo(() => localizePack(authoredPack, t), [authoredPack, t]);
   const menuVec = useMemo(
     () => menuOutcomes(liveCircuit, pack, noisyProbs),
     [liveCircuit, pack, noisyProbs],
   );
   const served = snapshot.served;
   const servedPack = useMemo(
-    () => (served ? (builtinPack(served.packId) ?? pack) : pack),
-    [served, pack],
+    () => {
+      const builtin = served ? builtinPack(served.packId) : undefined;
+      return builtin ? localizePack(builtin, t) : pack;
+    },
+    [served, pack, t],
   );
   const servedLines = useMemo(
     () =>
@@ -396,8 +410,8 @@ export function KioskView() {
   // Shot count for shots-mode packs; resets to the pack default on a pack switch.
   const [serveShots, setServeShots] = useState<number>(pack.serve.shots?.default ?? 1);
   useEffect(() => {
-    setServeShots(pack.serve.shots?.default ?? 1);
-  }, [pack]);
+    setServeShots(authoredPack.serve.shots?.default ?? 1);
+  }, [authoredPack]);
 
   // Serve: sample where the simulation runs (the SAME menu vector), then send —
   // the host stamps + broadcasts `served` and every screen reveals in sync. A
@@ -436,12 +450,14 @@ export function KioskView() {
   const golfTargets = useMemo(() => holeHighlight(currentLevel), [currentLevel]);
   const golfTargetState = useMemo(() => holeTargetState(currentLevel), [currentLevel]);
   // The hole's goal in plain words (same line as pocket's golf well).
-  const golfGoal = useMemo(() => holeGoal(currentLevel), [currentLevel]);
+  const golfGoal = useMemo(() => holeGoal(currentLevel, t), [currentLevel, t]);
   const GOLF_STRUCTURAL = new Set(['scorecard', 'minicircuit', 'qsphere', 'bloch']);
   const golfSidebar = (
     <>
       <div key="golfview">
-        <div className="bo-label">{currentLevel.view === 'bloch' ? 'Bloch sphere' : 'Q-sphere'}</div>
+        <div className="bo-label">
+          {currentLevel.view === 'bloch' ? t.evolving.bloch : t.evolving.qsphere}
+        </div>
         <div className="bo-well">
           <EvolvingState
             circuit={liveCircuit}
@@ -485,7 +501,7 @@ export function KioskView() {
             />
           )}
           <button type="button" className="bo-serve-btn" onClick={onServe}>
-            Serve
+            {t.quantina.serve}
           </button>
         </div>
       )}
@@ -500,10 +516,7 @@ export function KioskView() {
             />
           </ServeReveal>
         )}
-        <div className="bo-order-real">
-          Want it from real hardware? Scan the circuit QR, run it with ONE shot on
-          your own device, and tell the staff your bitstring.
-        </div>
+        <div className="bo-order-real">{t.quantina.realHardware}</div>
       </div>
       {panels.includes('results') && (
         <div key="results">
@@ -522,9 +535,9 @@ export function KioskView() {
   const cameraPanel =
     standing === 'operator' && panels.includes('camera') ? (
       <div key="camera" className="bo-camera">
-        <div className="bo-label">Camera</div>
+        <div className="bo-label">{t.kiosk.camera}</div>
         <div className="bo-well">
-          <img className="bo-camera-img" src={withKey('/debug/stream')} alt="Live booth camera" />
+          <img className="bo-camera-img" src={withKey('/debug/stream')} alt={t.kiosk.liveCamera} />
         </div>
       </div>
     ) : null;
@@ -550,7 +563,7 @@ export function KioskView() {
         <div className="bo-brand">
           <span className="en">En</span>tangible
         </div>
-        <span className="bo-pill">{mode}</span>
+        <span className="bo-pill">{t.kiosk.modes[mode] ?? mode}</span>
         <span className="bo-spacer" />
         {status?.camera && (
           // Camera lost (no frames for 2 s; the host is reopening it): the pill
@@ -561,9 +574,9 @@ export function KioskView() {
           >
             <span className="bo-dot" aria-hidden="true" />
             {cameraLost
-              ? CAMERA_LOST_LABEL
+              ? t.warnings.cameraLost
               : status.camera.kind === 'push'
-                ? 'iPhone camera'
+                ? t.kiosk.iphoneCamera
                 : status.camera.kind}
           </span>
         )}
@@ -572,13 +585,13 @@ export function KioskView() {
           {conn.label}
         </span>
         {(status?.clients ?? 0) > 1 && (
-          <span className="bo-pill">{status?.clients} viewers</span>
+          <span className="bo-pill">{t.kiosk.viewers(status?.clients ?? 0)}</span>
         )}
         {branding && (
           <div className="bo-evbrand">
-            <span className="bo-ev-eyebrow">presented at</span>
+            <span className="bo-ev-eyebrow">{t.kiosk.presentedAt}</span>
             {branding.logoUrl ? (
-              <img src={branding.logoUrl} alt={branding.name ?? 'event logo'} />
+              <img src={branding.logoUrl} alt={branding.name ?? t.kiosk.eventLogo} />
             ) : (
               <span className="bo-ev-name">{branding.name}</span>
             )}
@@ -617,10 +630,10 @@ export function KioskView() {
         {warnings.length > 0 ? (
           <>
             <span className="bo-warnicon" aria-hidden="true">⚠</span>
-            <div role="status">{warnings.map((w) => friendlyWarning(w)).join('  ·  ')}</div>
+            <div role="status">{warnings.map((w) => friendlyWarning(w, t)).join('  ·  ')}</div>
           </>
         ) : (
-          <div key={hintIndex}>{HINTS[hintIndex]}</div>
+          <div key={hintIndex}>{t.hints[hintIndex % t.hints.length]}</div>
         )}
         {/* Visitor QR — subtle, footer-sized (take-it-home T2). */}
         <VisitorQr variant="footer" />
@@ -645,13 +658,14 @@ function ServeStepper({
   max: number;
   onChange: (n: number) => void;
 }) {
+  const t = useT().quantina;
   return (
-    <div className="bo-serve-shots" role="group" aria-label="Number of shots">
-      <span className="bo-serve-shots-label">Scoops</span>
+    <div className="bo-serve-shots" role="group" aria-label={t.shotsAria}>
+      <span className="bo-serve-shots-label">{t.scoops}</span>
       <button
         type="button"
         className="bo-serve-step"
-        aria-label="Fewer"
+        aria-label={t.fewer}
         disabled={value <= min}
         onClick={() => onChange(Math.max(min, value - 1))}
       >
@@ -663,7 +677,7 @@ function ServeStepper({
       <button
         type="button"
         className="bo-serve-step"
-        aria-label="More"
+        aria-label={t.more}
         disabled={value >= max}
         onClick={() => onChange(Math.min(max, value + 1))}
       >

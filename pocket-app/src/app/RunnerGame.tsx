@@ -28,6 +28,7 @@ import {
   type RunnerState,
 } from '@quantum/runner';
 import './runnerGame.css';
+import { useT } from '@shared/i18n';
 
 /** Live `(prefers-reduced-motion: reduce)` match (mirrors the shared idiom). */
 function usePrefersReducedMotion(): boolean {
@@ -85,6 +86,7 @@ export function RunnerGame({
   initialLevel = 1,
   initialState,
 }: RunnerGameProps) {
+  const t = useT().runner;
   const reduced = usePrefersReducedMotion();
   const rngRef = useRef<Rng>(rng ?? cryptoRng());
   const [state, setState] = useState<RunnerState>(() => initialState ?? initRunner(initialLevel));
@@ -147,19 +149,19 @@ export function RunnerGame({
     <div className={`pk-runner ${flashActive ? 'is-flash' : ''}`} data-status={state.status}>
       <div className="pk-runner-hud">
         <div className="pk-runner-stat">
-          <span className="pk-runner-stat-label">Score</span>
+          <span className="pk-runner-stat-label">{t.score}</span>
           <span className="pk-runner-score" aria-live="polite">
             {state.score.toFixed(1)}
           </span>
         </div>
-        <div className="pk-runner-lives" aria-label={`${state.lives} lives`}>
+        <div className="pk-runner-lives" aria-label={t.lives(state.lives)}>
           {Array.from({ length: Math.max(state.lives, 0) }, (_, i) => (
             <span key={i} className="pk-runner-heart" aria-hidden="true">
               ♥
             </span>
           ))}
         </div>
-        <div className="pk-runner-levelpick" role="group" aria-label="Level">
+        <div className="pk-runner-levelpick" role="group" aria-label={t.level}>
           {([1, 2] as Level[]).map((lv) => (
             <button
               key={lv}
@@ -168,7 +170,7 @@ export function RunnerGame({
               aria-pressed={level === lv}
               onClick={() => dispatch({ type: 'setLevel', level: lv })}
             >
-              {lv === 1 ? '1 qubit' : '2 qubits'}
+              {lv === 1 ? t.oneQubit : t.twoQubits}
             </button>
           ))}
         </div>
@@ -232,7 +234,7 @@ export function RunnerGame({
       </div>
 
       {/* Gate thumb-row (bottom): the whole control surface for the game. */}
-      <div className="pk-runner-gates" role="group" aria-label="Gates">
+      <div className="pk-runner-gates" role="group" aria-label={t.gates}>
         {GATE_BUTTONS[level].map((g) => (
           <button
             key={g}
@@ -247,20 +249,20 @@ export function RunnerGame({
       </div>
 
       {state.status === 'over' && (
-        <div className="pk-runner-over" role="dialog" aria-label="Game over">
+        <div className="pk-runner-over" role="dialog" aria-label={t.gameOver}>
           <div className="pk-runner-over-card">
-            <h2>Measurement got you</h2>
+            <h2>{t.overTitle}</h2>
             <p className="pk-runner-over-flavour">
-              A projective measurement collapsed you into an obstacle one time too many.
+              {t.overFlavour}
             </p>
             <div className="pk-runner-over-stats">
               <div>
-                <span className="pk-runner-stat-label">Score</span>
+                <span className="pk-runner-stat-label">{t.score}</span>
                 <strong>{state.score.toFixed(1)}</strong>
               </div>
               <div>
-                <span className="pk-runner-stat-label">Distance</span>
-                <strong>{Math.round(state.distance * DIST_SCALE)} m</strong>
+                <span className="pk-runner-stat-label">{t.distance}</span>
+                <strong>{t.meters(Math.round(state.distance * DIST_SCALE))}</strong>
               </div>
             </div>
             <button
@@ -268,7 +270,7 @@ export function RunnerGame({
               className="pk-btn pk-runner-restart"
               onClick={() => dispatch({ type: 'restart' })}
             >
-              Run again
+              {t.runAgain}
             </button>
           </div>
         </div>

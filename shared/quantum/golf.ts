@@ -58,6 +58,7 @@
  */
 import type { Circuit, Gate, GateType } from '@qamposer/react';
 import { fidelity, statevector, DIM, NUM_QUBITS, type Complex, type StateVector } from './statevector';
+import { en, type Messages } from '@shared/i18n/en';
 
 export const HOLE_IN_THRESHOLD = 0.99;
 /** Legacy per-LEVEL best key (the original 5-level course). Read once, migrated. */
@@ -673,18 +674,10 @@ export function holeScore(strokes: number, par: number, revealed: boolean): numb
   return revealed ? Math.max(strokes, 2 * par) : strokes;
 }
 
-/** Golf score name for a completed hole (strokes vs par). */
-export function scoreName(strokes: number, par: number): string {
-  switch (scoreKind(strokes, par)) {
-    case 'eagle':
-      return 'EAGLE';
-    case 'birdie':
-      return 'BIRDIE';
-    case 'par':
-      return 'PAR';
-    default:
-      return `HOLE IN +${strokes - par}`;
-  }
+/** Golf score name for a completed hole (strokes vs par); `t` picks the language. */
+export function scoreName(strokes: number, par: number, t: Messages = en): string {
+  const kind = scoreKind(strokes, par);
+  return kind === 'over' ? t.golf.score.over(strokes - par) : t.golf.score[kind];
 }
 
 // ---------------------------------------------------------------------------
@@ -771,28 +764,30 @@ export interface CompletionCelebration {
 export function completionCelebration(
   vsPar: number,
   elapsedMs: number | null = null,
+  t: Messages = en,
 ): CompletionCelebration {
+  const c = t.golf.completion;
   // The time is the other half of a result (#83): "12 under" says how well,
   // "in 12:34" says how it was earned, and together they are what one player
   // compares with another.
-  const time = elapsedMs === null ? '' : ` in ${formatDuration(elapsedMs)}`;
+  const time = elapsedMs === null ? '' : c.inTime(formatDuration(elapsedMs));
   if (vsPar <= LEGENDARY_VS_PAR) {
     return {
       tier: 'legendary',
       intensity: 2,
-      copy: `Legendary round — ${Math.abs(vsPar)} under par${time}!`,
+      copy: c.legendary(Math.abs(vsPar), time),
     };
   }
   if (vsPar < 0) {
-    return { tier: 'under', intensity: 1.5, copy: `${Math.abs(vsPar)} under par${time}!` };
+    return { tier: 'under', intensity: 1.5, copy: c.under(Math.abs(vsPar), time) };
   }
   if (vsPar === 0) {
-    return { tier: 'even', intensity: 1, copy: `Even par — course complete${time}!` };
+    return { tier: 'even', intensity: 1, copy: c.even(time) };
   }
   return {
     tier: 'over',
     intensity: 0.6,
-    copy: `Course complete — ${formatVsPar(vsPar)}${time}.`,
+    copy: c.over(formatVsPar(vsPar), time),
   };
 }
 
@@ -840,9 +835,9 @@ export type GolfScope = 'full' | GolfRound;
 /** Every scope, in picker order. */
 export const GOLF_SCOPES: readonly GolfScope[] = ['full', 'easy', 'medium', 'difficult', 'extra'];
 
-/** What a scope is called on the card and in the picker. */
-export function scopeLabel(scope: GolfScope): string {
-  return scope === 'full' ? 'Full 18' : ROUND_LABEL[scope];
+/** What a scope is called on the card and in the picker (`t`: the language). */
+export function scopeLabel(scope: GolfScope, t: Messages = en): string {
+  return scope === 'full' ? t.golf.full18 : t.golf.rounds[scope];
 }
 
 /** Is this hole part of the round being competed over? */

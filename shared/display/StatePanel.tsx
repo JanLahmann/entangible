@@ -8,6 +8,7 @@
  */
 import type { Circuit } from '@qamposer/react';
 import { activeQubits } from '@quantum/statevector';
+import { useT } from '@shared/i18n';
 
 export function StatePanel({
   circuit,
@@ -17,20 +18,21 @@ export function StatePanel({
   classPrefix: string;
 }) {
   const p = classPrefix;
+  const t = useT().statePanel;
   const touched = activeQubits(circuit).length;
   const columns = new Set(circuit.gates.map((g) => g.position)).size;
   return (
     <div>
-      <div className={`${p}-label`}>State</div>
+      <div className={`${p}-label`}>{t.label}</div>
       <div className={`${p}-stats`}>
         <div className={`${p}-stat`}>
-          qubits touched <b>{touched}</b>
+          {t.touched} <b>{touched}</b>
         </div>
         <div className={`${p}-stat`}>
-          gates <b>{circuit.gates.length}</b>
+          {t.gates} <b>{circuit.gates.length}</b>
         </div>
         <div className={`${p}-stat`}>
-          columns <b>{columns}</b>
+          {t.columns} <b>{columns}</b>
         </div>
       </div>
     </div>

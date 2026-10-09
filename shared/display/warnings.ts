@@ -16,6 +16,7 @@
  * Unknown codes (a newer host) still fall back to the caller's `message`
  * verbatim, or a generic prompt when none is present.
  */
+import { en, type Messages } from '@shared/i18n/en';
 
 /** Minimal structural shape both apps' warnings satisfy after adaptation. */
 export interface WarningInput {
@@ -62,26 +63,29 @@ export function kioskVisible(w: Pick<WarningInput, 'code'>): boolean {
   return (WARNING_AUDIENCE as Record<string, WarningAudience | undefined>)[w.code] === 'visitor';
 }
 
-function columnPhrase(w: WarningInput): string {
-  return typeof w.col === 'number' ? ` in column ${w.col + 1}` : '';
-}
-
-export function friendlyWarning(w: WarningInput): string {
+/**
+ * The warning in the visitor's words. `t` picks the language (default
+ * English); the STAFF-audience codes stay English — they only ever reach the
+ * staff /debug view, which is not translated.
+ */
+export function friendlyWarning(w: WarningInput, t: Messages = en): string {
+  const m = t.warnings;
+  const at = typeof w.col === 'number' ? m.inColumn(w.col + 1) : '';
   switch (w.code) {
     case 'lone_control':
-      return `A ● control tile is missing its ⊕ partner${columnPhrase(w)}.`;
+      return m.loneControl(at);
     case 'lone_target':
-      return `A ⊕ target tile is missing its ● partner${columnPhrase(w)}.`;
+      return m.loneTarget(at);
     case 'cell_conflict':
-      return `Two tiles are competing for the same cell${columnPhrase(w)} — nudge one aside.`;
+      return m.cellConflict(at);
     case 'off_grid':
-      return 'A tile is off the grid — slide it onto a cell.';
+      return m.offGrid;
     case 'lone_swap':
-      return `A SWAP tile is missing its partner${columnPhrase(w)} — SWAPs work in pairs.`;
+      return m.loneSwap(at);
     case 'control_ambiguous':
-      return `A ● control has too many gates to choose from${columnPhrase(w)} — give it just one.`;
+      return m.controlAmbiguous(at);
     case 'unpaired_measure':
-      return 'A measurement block has no wire block across from it — line it up with a wire.';
+      return m.unpairedMeasure;
     case 'measure_span_mismatch':
       return "The wire and measurement blocks don't match the corner blocks — check they sit on the board's edges.";
     case 'stray_furniture':
@@ -90,9 +94,9 @@ export function friendlyWarning(w: WarningInput): string {
       return 'Tiles beside the board are ignored — only tiles between the corner blocks count.';
     default:
       // Unknown/new code: trust the caller's own human-readable message.
-      return w.message || `Check the board${columnPhrase(w)}.`;
+      return w.message || m.checkBoard(at);
   }
 }
 
-/** Status-pill line when the booth camera stopped delivering frames. */
-export const CAMERA_LOST_LABEL = 'Camera lost — check the cable';
+/** Status-pill line when the booth camera stopped delivering frames (English). */
+export const CAMERA_LOST_LABEL = en.warnings.cameraLost;

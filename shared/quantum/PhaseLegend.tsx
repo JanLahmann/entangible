@@ -5,6 +5,7 @@
  * same `hsl(φ, 70%, 60%)` mapping as the nodes, with ticks at 0, π/2, π and
  * -π/2. Structural SVG only; `${classPrefix}-qs-legend*` classes carry styling.
  */
+import { useT } from '@shared/i18n';
 
 const WEDGES = 24; // 15° each
 const TICKS: Array<{ deg: number; label: string }> = [
@@ -28,6 +29,7 @@ export function PhaseLegend({
   size?: number;
 }) {
   const p = classPrefix;
+  const legendLabel = useT().evolving.phaseLegend;
   const cx = size / 2;
   const cy = size / 2;
   const r = size / 2 - 12;
@@ -55,7 +57,7 @@ export function PhaseLegend({
       height={size}
       className={`${p}-qs-legend`}
       role="img"
-      aria-label="phase color legend"
+      aria-label={legendLabel}
     >
       <g className={`${p}-qs-legend-wheel`}>{wedges}</g>
       <circle cx={cx} cy={cy} r={r * 0.42} className={`${p}-qs-legend-hub`} />

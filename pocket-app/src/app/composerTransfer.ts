@@ -17,17 +17,16 @@
  */
 import LZString from 'lz-string';
 import type { Circuit } from '@qamposer/react';
+import { en } from '@shared/i18n/en';
 
 /** IBM Quantum Composer (cloud). */
 export const COMPOSER_BASE = 'https://quantum.cloud.ibm.com/composer';
 
 /** Toast shown when the Composer opened with the circuit + clipboard copy. */
-export const COPIED_MESSAGE =
-  'Composer opened with your circuit — sign in (free) to run it on a real quantum computer.';
+export const COPIED_MESSAGE = en.composer.copied;
 
 /** Toast shown when copying failed: the pre-loaded tab still opened. */
-export const NO_COPY_MESSAGE =
-  'Composer opened with your circuit — sign in (free) to run it on real hardware.';
+export const NO_COPY_MESSAGE = en.composer.noCopy;
 
 /**
  * Muted hint surfaced at the handoff UIs when the circuit uses all five wires
@@ -36,8 +35,7 @@ export const NO_COPY_MESSAGE =
  * sign-in to run/simulate there. Kept in one place so every surface says it the
  * same way.
  */
-export const SIGN_IN_HINT =
-  'Uses all 5 qubits — sign in to IBM Quantum to simulate it there (up to 4 without an account).';
+export const SIGN_IN_HINT = en.composer.signIn;
 
 /**
  * How many qubit wires a circuit's QASM actually uses: one past the highest

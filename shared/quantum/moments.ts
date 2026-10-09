@@ -22,6 +22,7 @@ import {
   probOne,
   statevector,
 } from './statevector';
+import { en, type Messages } from '@shared/i18n/en';
 
 /** Minimum state fidelity to accept a canonical (Bell / GHZ) match. */
 export const FIDELITY_THRESHOLD = 0.99;
@@ -95,12 +96,15 @@ function everyRowHasH(circuit: Circuit): boolean {
  *   5. Uniform superposition (all five rows carry an H).
  *   6. Superposition (an H was just placed, that qubit is now 50/50).
  *   7. Bit flip (an X was just placed, that qubit is now |1⟩).
+ *
+ * `t` words the strip messages (default English; see shared/i18n).
  */
 export function evaluateMoment(
   prev: Circuit,
   next: Circuit,
   state: MomentState,
   now: number,
+  t: Messages = en,
 ): MomentResult {
   const prevCount = prev.gates.length;
   const nextCount = next.gates.length;
@@ -109,7 +113,7 @@ export function evaluateMoment(
   if (nextCount === 0) {
     if (prevCount > 0) {
       return {
-        stripMessage: 'Ready for the next quantum architect',
+        stripMessage: t.moments.ready,
         state: { ...initialMomentState, lastCelebrationAt: state.lastCelebrationAt },
       };
     }
@@ -138,8 +142,7 @@ export function evaluateMoment(
     if (!state.bellCelebrated && cooldownReady) {
       return {
         celebration: { kind: 'bell', k: 2 },
-        stripMessage:
-          'These qubits now answer together — measure one, know the other',
+        stripMessage: t.moments.bell,
         state: { ...state, bellCelebrated: true, lastCelebrationAt: now },
       };
     }
@@ -151,7 +154,7 @@ export function evaluateMoment(
     const g = next.gates[0];
     const q = g?.qubit ?? g?.control ?? 0;
     return {
-      stripMessage: `${label(q)} is alive!`,
+      stripMessage: t.moments.alive(label(q)),
       state: { ...state, firstGateSeen: true },
     };
   }
@@ -159,7 +162,7 @@ export function evaluateMoment(
   // 5. Uniform superposition — every row carries an H.
   if (k === 5 && everyRowHasH(next)) {
     if (!state.uniformShown) {
-      return { stripMessage: '32 possibilities at once', state: { ...state, uniformShown: true } };
+      return { stripMessage: t.moments.uniform, state: { ...state, uniformShown: true } };
     }
     return { state };
   }
@@ -170,7 +173,7 @@ export function evaluateMoment(
   const addedH = added.find((g) => g.type === 'H' && g.qubit != null);
   if (addedH && addedH.qubit != null && Math.abs(probOne(sv, addedH.qubit) - 0.5) < 0.01) {
     return {
-      stripMessage: `Superposition — ${label(addedH.qubit)} is 0 and 1`,
+      stripMessage: t.moments.superposition(label(addedH.qubit)),
       state,
     };
   }
@@ -179,7 +182,7 @@ export function evaluateMoment(
   const addedX = added.find((g) => g.type === 'X' && g.qubit != null);
   if (addedX && addedX.qubit != null && probOne(sv, addedX.qubit) > 0.99) {
     return {
-      stripMessage: `Bit flip — ${label(addedX.qubit)} is now 1`,
+      stripMessage: t.moments.bitFlip(label(addedX.qubit)),
       state,
     };
   }

@@ -36,6 +36,7 @@
  */
 import type { Circuit, Gate } from '@qamposer/react';
 import { formatAngle } from '@quantum/inspectCopy';
+import { useT } from '@shared/i18n';
 
 /** Gate colours by family — the editor's `GATE_COLORS`, mirrored (see header). */
 const GATE_COLOR: Readonly<Record<string, string>> = {
@@ -228,6 +229,7 @@ export function MiniCircuit({
   classPrefix: string;
 }) {
   const p = classPrefix;
+  const ariaLabel = useT().scorecard.solutionCircuit;
   const gates = circuit.gates;
   // Never clip a gate: a drawing that silently drops one is worse than a wide one.
   const highest = gates.reduce((m, g) => Math.max(m, ...touched(g)), -1);
@@ -248,7 +250,7 @@ export function MiniCircuit({
       width={width}
       height={height}
       role="img"
-      aria-label="solution circuit"
+      aria-label={ariaLabel}
       // Correctness, not styling: these gates are an illustration, and neither
       // tap-to-inspect nor the editor may ever pick one up. See the header.
       style={{ pointerEvents: 'none' }}

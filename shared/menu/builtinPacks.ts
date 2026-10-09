@@ -16,6 +16,7 @@
  *   (k scoops per serve), and `juice` is the new `subset`/entanglement showcase.
  */
 import type { MenuPack } from './pack';
+import type { Messages } from '@shared/i18n/en';
 
 /** Home Connect program-key prefix shared by the coffee items. */
 const CM = 'ConsumerProducts.CoffeeMaker.Program';
@@ -128,4 +129,30 @@ export const BUILTIN_PACKS: readonly MenuPack[] = [coffee, cocktails, icecream, 
 /** Look up a bundled pack by id. */
 export function builtinPack(id: string): MenuPack | undefined {
   return BUILTIN_PACKS.find((p) => p.id === id);
+}
+
+/**
+ * A BUILT-IN pack in the visitor's language: its tagline, item names and
+ * subtitles from `t.quantina.packs` (keyed by item code, or `q<n>` for a subset
+ * pack's qubit items); anything without a translation stays as authored. The
+ * pack title is a brand and never changes. Custom and remote packs — anything
+ * that is not one of the bundled objects — are returned untouched: they are
+ * shown exactly as their author wrote them.
+ */
+export function localizePack(pack: MenuPack, t: Messages): MenuPack {
+  if (!BUILTIN_PACKS.includes(pack)) return pack;
+  const copy = t.quantina.packs[pack.id];
+  if (!copy) return pack;
+  return {
+    ...pack,
+    tagline: copy.tagline,
+    items: pack.items.map((item) => {
+      const key = item.code ?? `q${item.qubit}`;
+      const name = copy.items[key];
+      const subtitle = copy.subtitles[key];
+      return name === undefined && subtitle === undefined
+        ? item
+        : { ...item, name: name ?? item.name, subtitle: subtitle ?? item.subtitle };
+    }),
+  };
 }

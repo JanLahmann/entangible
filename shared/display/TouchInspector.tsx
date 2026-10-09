@@ -36,6 +36,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Circuit } from '@qamposer/react';
 import { POPOVER_MS, gateInspectCopy, outcomeInspectCopy } from '@quantum/inspectCopy';
+import { useT } from '@shared/i18n';
+import { en, type Messages } from '@shared/i18n/en';
 
 interface Popover {
   text: string;
@@ -53,9 +55,9 @@ interface Popover {
  * `circuit.gates`), or null when the index is out of range. Pure — testable
  * without a DOM.
  */
-export function gateInspectAt(circuit: Circuit, index: number): string | null {
+export function gateInspectAt(circuit: Circuit, index: number, t: Messages = en): string | null {
   const gate = index >= 0 ? circuit.gates[index] : undefined;
-  return gate ? gateInspectCopy(gate) : null;
+  return gate ? gateInspectCopy(gate, t) : null;
 }
 
 /**
@@ -65,18 +67,19 @@ export function gateInspectAt(circuit: Circuit, index: number): string | null {
 export function outcomeInspectFromAttrs(
   bits: string | null,
   probAttr: string | null,
+  t: Messages = en,
 ): string | null {
   if (bits === null || probAttr === null) return null;
   const prob = Number(probAttr);
   if (!Number.isFinite(prob)) return null;
-  return outcomeInspectCopy(bits, prob);
+  return outcomeInspectCopy(bits, prob, t);
 }
 
 /** The editor's per-gate elements: a plain box, or a controlled-gate shape. */
 export const GATE_ELEMENT_SELECTOR = '.circuit-editor__gate, .circuit-editor__controlled';
 
 /** Resolve a tapped gate element to its Gate copy via sibling index order. */
-function gateFromElement(el: Element, circuit: Circuit): string | null {
+function gateFromElement(el: Element, circuit: Circuit, t: Messages): string | null {
   const container = el.closest('.circuit-editor__gates');
   if (!container) return null; // preview / toolbar gate — not a real gate
   const siblings = Array.from(
@@ -84,7 +87,7 @@ function gateFromElement(el: Element, circuit: Circuit): string | null {
       ':scope > .circuit-editor__gate, :scope > .circuit-editor__controlled',
     ),
   );
-  return gateInspectAt(circuit, siblings.indexOf(el));
+  return gateInspectAt(circuit, siblings.indexOf(el), t);
 }
 
 export function TouchInspector({
@@ -115,6 +118,11 @@ export function TouchInspector({
   const p = classPrefix;
   const circuitRef = useRef(circuit);
   circuitRef.current = circuit;
+  // The popover copy follows the active language; read through a ref so a
+  // language switch does not re-register the document listener.
+  const t = useT();
+  const tRef = useRef(t);
+  tRef.current = t;
 
   const [popover, setPopover] = useState<Popover | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -152,7 +160,7 @@ export function TouchInspector({
 
       const gateEl = inspectGates ? target.closest(GATE_ELEMENT_SELECTOR) : null;
       if (gateEl) {
-        const text = gateFromElement(gateEl, circuitRef.current);
+        const text = gateFromElement(gateEl, circuitRef.current, tRef.current);
         if (text) {
           show(text, gateEl.getBoundingClientRect());
           return;
@@ -164,6 +172,7 @@ export function TouchInspector({
         const text = outcomeInspectFromAttrs(
           colEl.getAttribute('data-bits'),
           colEl.getAttribute('data-prob'),
+          tRef.current,
         );
         if (text) {
           show(text, colEl.getBoundingClientRect());

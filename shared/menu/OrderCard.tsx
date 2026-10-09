@@ -13,6 +13,7 @@
  * union for QN2's staff-entered real-hardware serves.
  */
 import type { MenuItem, MenuPack, ShotSource } from './pack';
+import { useT } from '@shared/i18n';
 
 export type { ShotSource };
 
@@ -28,13 +29,6 @@ export interface OrderLine {
   count: number;
 }
 
-/** Human tag for where the serve was sampled — the teaching moment on the card. */
-const SHOT_SOURCE_TAG: Record<ShotSource, string> = {
-  ideal: 'sampled from the ideal state',
-  noisy: 'sampled with hardware noise',
-  real: 'measured on real hardware',
-};
-
 export function OrderCard({
   result,
   lines,
@@ -47,14 +41,16 @@ export function OrderCard({
   classPrefix: string;
 }) {
   const p = classPrefix;
+  // The shot-source tag (`t.shotSource`) is the teaching moment on the card.
+  const t = useT().quantina;
   const empty = lines.length === 0;
   return (
     <div className={`${p}-order`}>
-      <div className={`${p}-order-head`}>You ordered</div>
+      <div className={`${p}-order-head`}>{t.youOrdered}</div>
       {empty ? (
         // subset serve with no set bits — an honest, friendly "nothing in the glass".
         <div className={`${p}-order-empty`}>
-          <span aria-hidden="true">🥛</span> just the glass
+          <span aria-hidden="true">🥛</span> {t.justTheGlass}
         </div>
       ) : (
         <ul className={`${p}-order-lines`}>
@@ -76,7 +72,7 @@ export function OrderCard({
           </span>
         ))}
       </div>
-      <div className={`${p}-order-tag`}>{SHOT_SOURCE_TAG[result.shotSource]}</div>
+      <div className={`${p}-order-tag`}>{t.shotSource[result.shotSource]}</div>
     </div>
   );
 }

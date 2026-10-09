@@ -6,7 +6,7 @@
  * status-pill label, and the camera hand-off when switching local ⇄ booth.
  */
 import type { ConnectionPhase } from './StateSource';
-import { CAMERA_LOST_LABEL } from '@shared/display/warnings';
+import { en, type Messages } from '@shared/i18n/en';
 
 /**
  * Normalize a user-entered booth address into a `ws(s)://host/ws/state` URL,
@@ -51,20 +51,22 @@ export function connectRequested(search: string): boolean {
 /**
  * Status-pill label + style hook for the current booth connection phase. A live
  * connection whose host reports its camera lost (`status.camera.lost`) turns
- * the pill red with the shared camera-lost line instead of "viewing".
+ * the pill red with the shared camera-lost line instead of "viewing". `t` picks
+ * the language (default English).
  */
 export function connectionPill(
   phase: ConnectionPhase,
   cameraLost = false,
+  t: Messages = en,
 ): { label: string; cls: string } {
-  if (phase === 'open' && cameraLost) return { label: CAMERA_LOST_LABEL, cls: 'is-off' };
+  if (phase === 'open' && cameraLost) return { label: t.warnings.cameraLost, cls: 'is-off' };
   switch (phase) {
     case 'open':
-      return { label: 'Connected to booth · viewing', cls: 'is-live' };
+      return { label: t.booth.viewing, cls: 'is-live' };
     case 'connecting':
-      return { label: 'Connecting to booth…', cls: 'is-searching' };
+      return { label: t.booth.connecting, cls: 'is-searching' };
     case 'closed':
-      return { label: 'Booth disconnected', cls: 'is-off' };
+      return { label: t.booth.disconnected, cls: 'is-off' };
   }
 }
 

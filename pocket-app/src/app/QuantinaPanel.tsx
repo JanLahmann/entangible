@@ -18,6 +18,8 @@ import { OrderCard } from '@shared/menu/OrderCard';
 import { ServeReveal } from '@shared/menu/ServeReveal';
 import type { MenuPack } from '@shared/menu/pack';
 import { cryptoRng } from '@shared/menu/sample';
+import { localizePack } from '@shared/menu/builtinPacks';
+import { useT } from '@shared/i18n';
 import {
   menuOutcomes,
   orderLines,
@@ -38,14 +40,15 @@ function ShotsStepper({
   max: number;
   onChange: (n: number) => void;
 }) {
+  const t = useT().quantina;
   return (
     <div className="pk-quantina-shots">
-      <span className="pk-quantina-shots-label">Scoops</span>
-      <div className="pk-quantina-stepper" role="group" aria-label="Number of shots">
+      <span className="pk-quantina-shots-label">{t.scoops}</span>
+      <div className="pk-quantina-stepper" role="group" aria-label={t.shotsAria}>
         <button
           type="button"
           className="pk-quantina-step"
-          aria-label="Fewer"
+          aria-label={t.fewer}
           disabled={value <= min}
           onClick={() => onChange(Math.max(min, value - 1))}
         >
@@ -57,7 +60,7 @@ function ShotsStepper({
         <button
           type="button"
           className="pk-quantina-step"
-          aria-label="More"
+          aria-label={t.more}
           disabled={value >= max}
           onClick={() => onChange(Math.min(max, value + 1))}
         >
@@ -69,7 +72,7 @@ function ShotsStepper({
 }
 
 export function QuantinaPanel({
-  pack,
+  pack: authoredPack,
   error = null,
   circuit,
   noisyProbs,
@@ -97,6 +100,9 @@ export function QuantinaPanel({
    */
   canServe?: boolean;
 }) {
+  const t = useT();
+  // A built-in menu reads in the visitor's language; custom packs as authored.
+  const pack = useMemo(() => localizePack(authoredPack, t), [authoredPack, t]);
   const shotsBounds = pack.serve.shots;
   const [shots, setShots] = useState(shotsBounds?.default ?? 1);
   const [result, setResult] = useState<ServeResult | null>(null);
@@ -107,12 +113,13 @@ export function QuantinaPanel({
   const shownResult = externalResult ?? result;
   const shownSeq = externalResult ? externalSeq : seq;
 
-  // A pack switch invalidates the shot count and any prior order.
+  // A pack switch invalidates the shot count and any prior order (a language
+  // switch re-words the same pack and keeps both).
   useEffect(() => {
-    setShots(pack.serve.shots?.default ?? 1);
+    setShots(authoredPack.serve.shots?.default ?? 1);
     setResult(null);
     setSeq(0);
-  }, [pack]);
+  }, [authoredPack]);
 
   // The live menu vector — ideal or (preset active) noisy — marginalized to the
   // pack's qubits. One simulation feeds both this panel and the histogram.
@@ -141,7 +148,7 @@ export function QuantinaPanel({
     <div className="pk-quantina" style={accentStyle}>
       {error && (
         <p className="pk-quantina-error" role="status">
-          Couldn’t load that menu ({error}) — showing {pack.title}.
+          {t.quantina.loadError(error, pack.title)}
         </p>
       )}
 
@@ -158,7 +165,7 @@ export function QuantinaPanel({
             />
           )}
           <button type="button" className="pk-btn pk-quantina-serve-btn" onClick={serve}>
-            Serve
+            {t.quantina.serve}
           </button>
         </div>
       )}

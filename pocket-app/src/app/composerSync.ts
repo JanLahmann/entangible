@@ -23,6 +23,7 @@
  * choreography is unit-testable with fake timers and no real DOM.
  */
 import { COMPOSER_BASE, composerUrl } from './composerTransfer';
+import { en } from '@shared/i18n/en';
 
 /** The named tab reused across navigations (see the header's named-target note). */
 export const COMPOSER_SYNC_TARGET = 'entangible-composer';
@@ -37,8 +38,7 @@ export const SYNC_DEBOUNCE_MS = 2000;
 export const SYNC_MIN_INTERVAL_MS = 3000;
 
 /** Toast shown when live-sync is switched on (first, gesture-driven, open). */
-export const SYNC_ENABLED_MESSAGE =
-  'Composer tab opened — it will follow the table. Sign in (free) to run on real hardware.';
+export const SYNC_ENABLED_MESSAGE = en.composer.syncEnabled;
 
 type TimerHandle = ReturnType<typeof setTimeout>;
 

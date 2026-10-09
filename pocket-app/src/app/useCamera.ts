@@ -34,9 +34,18 @@ export type CameraStatus = 'idle' | 'starting' | 'running' | 'error';
 /** 'native' = sensor zoom via applyConstraints; 'digital' = center-crop fallback. */
 export type ZoomMode = 'native' | 'digital';
 
+/**
+ * Why the camera could not start — language-free; the start card words it
+ * (`t.camera.errors`). `name` is the browser's DOMException name, if any.
+ */
+export interface CameraError {
+  readonly kind: 'insecure' | 'denied' | 'notFound' | 'other' | 'chunk';
+  readonly name: string | null;
+}
+
 export interface CameraState {
   status: CameraStatus;
-  error: string | null;
+  error: CameraError | null;
   fps: number;
   start: () => void;
   stop: () => void;
@@ -146,7 +155,7 @@ export function useCamera({
   onResultRef.current = onResult;
 
   const [status, setStatus] = useState<CameraStatus>('idle');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<CameraError | null>(null);
   const [fps, setFps] = useState(0);
   const fpsEmaRef = useRef(0);
 
@@ -296,9 +305,7 @@ export function useCamera({
     setError(null);
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
       setStatus('error');
-      setError(
-        'Camera needs a secure context (HTTPS or localhost). Open this page over HTTPS and allow camera access.',
-      );
+      setError({ kind: 'insecure', name: null });
       return;
     }
     setStatus('starting');
@@ -366,7 +373,7 @@ export function useCamera({
         streamRef.current = null;
         trackRef.current = null;
         setStatus('error');
-        setError("The camera code didn't load — check the connection and reload the page.");
+        setError({ kind: 'chunk', name: null });
         return;
       }
       pipeline.reset();
@@ -379,13 +386,11 @@ export function useCamera({
     } catch (err) {
       setStatus('error');
       const name = (err as DOMException)?.name;
-      setError(
-        name === 'NotAllowedError'
-          ? 'Camera permission was denied. Allow camera access in your browser settings and try again.'
-          : name === 'NotFoundError'
-            ? 'No camera was found on this device.'
-            : `Could not start the camera (${name ?? 'unknown error'}).`,
-      );
+      setError({
+        kind:
+          name === 'NotAllowedError' ? 'denied' : name === 'NotFoundError' ? 'notFound' : 'other',
+        name: name ?? null,
+      });
     }
   }, [loop, requestWakeLock, zoom, applyZoom, ensurePipeline]);
 

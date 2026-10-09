@@ -14,15 +14,15 @@
 import { useEffect, useState } from 'react';
 import { scopeLabel, type GolfScope } from '@quantum/golf';
 import { renderQrSvg } from './composerQrCode';
-
-const SUBHINT = 'Compare strokes and time when you both finish.';
+import { useT } from '@shared/i18n';
+import type { Messages } from '@shared/i18n/en';
 
 /** What the invitation promises — the same holes, whichever set of them the
  *  challenger is competing over (#102). */
-function hint(scope: GolfScope): string {
+function hint(scope: GolfScope, t: Messages): string {
   return scope === 'full'
-    ? 'Scan to play the same course — same 18 holes, same pars.'
-    : `Scan to play the same ${scopeLabel(scope).toLowerCase()} round — same holes, same pars.`;
+    ? t.challenge.hintFull
+    : t.challenge.hintRound(scopeLabel(scope, t));
 }
 
 export function CourseChallenge({
@@ -35,6 +35,8 @@ export function CourseChallenge({
   /** The competition the QR opens (#102); the link carries it too. */
   scope?: GolfScope;
 }) {
+  const t = useT();
+  const c = t.challenge;
   const [open, setOpen] = useState(false);
   const [svg, setSvg] = useState('');
 
@@ -59,21 +61,21 @@ export function CourseChallenge({
         type="button"
         className="pk-golf-challenge"
         onClick={() => setOpen(true)}
-        aria-label="Multi player — share this course"
-        title="Show a QR code for this course"
+        aria-label={c.aria}
+        title={c.title}
       >
-        Multi player
+        {c.button}
       </button>
 
       {open && (
         <div
           className="pk-qr-overlay"
           role="dialog"
-          aria-label="Multi player — QR code for this course"
+          aria-label={c.dialog}
           onClick={close}
         >
           <div className="pk-qr-card" onClick={(e) => e.stopPropagation()}>
-            <button type="button" className="pk-qr-close" aria-label="Close" onClick={close}>
+            <button type="button" className="pk-qr-close" aria-label={c.close} onClick={close}>
               ✕
             </button>
             <div
@@ -81,12 +83,11 @@ export function CourseChallenge({
               // qrcode emits a self-contained SVG string; safe, locally generated.
               dangerouslySetInnerHTML={{ __html: svg }}
             />
-            <p className="pk-qr-caption">{hint(scope)}</p>
+            <p className="pk-qr-caption">{hint(scope, t)}</p>
             <p className="pk-golf-challenge-code">
-              Course #{code}
-              {scope !== 'full' && ` · ${scopeLabel(scope)} round`}
+              {c.code(code, scope === 'full' ? null : scopeLabel(scope, t))}
             </p>
-            <p className="pk-qr-disclaimer">{SUBHINT}</p>
+            <p className="pk-qr-disclaimer">{c.subhint}</p>
           </div>
         </div>
       )}

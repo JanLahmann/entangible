@@ -141,6 +141,42 @@ Serverless equivalents of the booth's /debug controls — all local
     into **Settings → Golf course code** deals the identical eighteen holes.
     Random bests are session-only (never written to the device card).
 
+## Language — English · Deutsch
+
+The whole visitor surface speaks English (default) or German, with informal
+"du" in German. No i18n library: the copy is a typed messages object —
+`shared/i18n/en.ts` is the source of truth, `de.ts` must match its type, and
+`shared/i18n/i18n.test.ts` checks the two trees key for key (plus a guard that
+nothing German was left in English by accident).
+
+- **Which language a page opens in**: `?lang=de` / `?lang=en` in the URL wins
+  (so a booth link like `/?kiosk&lang=de` or a printed QR can name it), then the
+  visitor's own choice (localStorage `entangible.lang`), then the browser (first
+  preferred language starting with `de` — de-DE, de-AT, de-CH… — opens German),
+  else English. `?lang=` means nothing else: it is not a welcome-card bypass.
+  `<html lang>` follows the active language.
+- **Switching**: Settings → **Language / Sprache** (first in the visitor group,
+  labelled in both languages) — English · Deutsch. The choice is stored, takes
+  effect immediately, and drops any `?lang=` from the address bar so a reload
+  keeps it. The kiosk has no drawer; it follows `?lang=` (or the browser).
+- **Translated**: welcome and start cards, camera states and errors, the whole
+  settings drawer (Staff & advanced included), panels, histogram and noise
+  labels, golf (course picker, dealing, scorecard, challenge QR, celebrations,
+  and the plain-language goal line — same template classification in both
+  languages), hints, moments, visitor warnings, tap-to-inspect, Quantum Runner,
+  Quantina UI and the built-in menus' item names and taglines, the Composer
+  hand-off and QR copy, the Guide (full prose in `pocket-app/src/app/guide/`),
+  and the kiosk view.
+- **Stays English**: the staff `/debug` view and the debug panel, staff-only
+  warnings, console/log text, docs, the printed kit, gate symbols and names
+  (H, X, CNOT, RX…), ket notation, menu titles and custom/remote menu packs (as
+  authored), the circuit title sent to the Composer, and brand names
+  (Entangible, Quantina, Quantum Runner, IBM Quantum Composer, Qiskit). The
+  circuit editor and gate palette come from `@qamposer/react` and keep that
+  library's own English labels.
+- **Adding a string**: key in `en.ts` first, then `de.ts`; values that need
+  numbers or names are functions (`(n: number) => …`), never template syntax.
+
 ## Input modes — camera · manual · booth-connected
 
 The standalone pocket app has three ways in to the *same* downstream (editor,

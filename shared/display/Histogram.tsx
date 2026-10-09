@@ -39,6 +39,7 @@
 import { useMemo } from 'react';
 import type { Circuit } from '@qamposer/react';
 import { activeQubits } from '@quantum/statevector';
+import { useT } from '@shared/i18n';
 import {
   displayOutcomes,
   outcomesFromProbabilities,
@@ -140,8 +141,8 @@ export function Histogram({
   microColData = false,
   uniformSuffix = '',
   noisy,
-  idealLabel = 'ideal',
-  noisyLabel = 'with noise',
+  idealLabel: idealProp,
+  noisyLabel: noisyProp,
 }: {
   circuit: Circuit;
   displayQubits: number;
@@ -161,6 +162,10 @@ export function Histogram({
   noisyLabel?: string;
 }) {
   const p = classPrefix;
+  const t = useT().histogram;
+  // Legend labels default to the active language's ("ideal" / "with noise").
+  const idealLabel = idealProp ?? t.ideal;
+  const noisyLabel = noisyProp ?? t.withNoise;
   const D = displayQubits;
   const outcomes = useMemo(() => displayOutcomes(circuit, D), [circuit, D]);
   const rows = useMemo(() => Array.from({ length: D }, (_, r) => r), [D]);
@@ -182,7 +187,7 @@ export function Histogram({
       ) || 1;
     return (
       <div>
-        <div className={`${p}-label`}>Results · 8 outcomes</div>
+        <div className={`${p}-label`}>{t.eightOutcomes}</div>
         <div className={`${p}-well`}>
           <div className={`${p}-h-plot`}>
             <Guide rows={rows} classPrefix={p} />
@@ -232,9 +237,9 @@ export function Histogram({
   if (active.length === 0 && !paired) {
     return (
       <div>
-        <div className={`${p}-label`}>Results</div>
+        <div className={`${p}-label`}>{t.results}</div>
         <div className={`${p}-well`}>
-          <div className={`${p}-h-empty`}>Place a tile to see outcomes</div>
+          <div className={`${p}-h-empty`}>{t.placeTile}</div>
         </div>
       </div>
     );
@@ -258,7 +263,7 @@ export function Histogram({
     return (
       <div>
         <div className={`${p}-label`}>
-          {tail.length > 0 ? `Results · top ${shown.length}` : `Results · ${shown.length} outcomes`}
+          {tail.length > 0 ? t.top(shown.length) : t.outcomes(shown.length)}
         </div>
         <div className={`${p}-well`}>
           <div className={`${p}-h-plot`}>
@@ -280,7 +285,7 @@ export function Histogram({
             ))}
           </div>
           {tail.length > 0 && (
-            <div className={`${p}-h-tail`}>+ {tail.length} more outcomes</div>
+            <div className={`${p}-h-tail`}>{t.more(tail.length)}</div>
           )}
           <Legend classPrefix={p} idealLabel={idealLabel} noisyLabel={noisyLabel} />
         </div>
@@ -301,7 +306,7 @@ export function Histogram({
   if (isUniform) {
     return (
       <div>
-        <div className={`${p}-label`}>Results · {total} outcomes</div>
+        <div className={`${p}-label`}>{t.outcomes(total)}</div>
         <div className={`${p}-well`}>
           <div className={`${p}-h-plot is-micro`}>
             {outcomes.map((o) =>
@@ -317,7 +322,7 @@ export function Histogram({
             )}
           </div>
           <div className={`${p}-h-note`}>
-            all outcomes ≈ {(100 / total).toFixed(1)}% — {total} equally likely{uniformSuffix}
+            {t.uniform((100 / total).toFixed(1), total, uniformSuffix)}
           </div>
         </div>
       </div>
@@ -336,8 +341,8 @@ export function Histogram({
     <div>
       <div className={`${p}-label`}>
         {nonzero.length > MAX_PLAIN
-          ? `Results · top ${shown.length} of ${nonzero.length}`
-          : `Results · ${shown.length} of ${total} outcomes`}
+          ? t.topOf(shown.length, nonzero.length)
+          : t.shownOf(shown.length, total)}
       </div>
       <div className={`${p}-well`}>
         <div className={`${p}-h-plot`}>
@@ -360,7 +365,7 @@ export function Histogram({
         </div>
         {tail.length > 0 && (
           <div className={`${p}-h-tail`}>
-            + {tail.length} more outcomes ≤ {(tail[0].prob * 100).toFixed(1)}% each
+            {t.moreEach(tail.length, (tail[0].prob * 100).toFixed(1))}
           </div>
         )}
       </div>

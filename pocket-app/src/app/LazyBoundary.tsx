@@ -17,12 +17,14 @@
  * except the browser's own module fetch.
  */
 import { Component, Suspense, type ErrorInfo, type ReactNode } from 'react';
+import { useT } from '@shared/i18n';
 
 /** The default Suspense fallback: a quiet, accessible loading note. */
 export function LoadingNote({ overlay = false }: { overlay?: boolean }) {
+  const t = useT().lazy;
   return (
     <div className={`pk-lazy-loading${overlay ? ' pk-lazy-loading--overlay' : ''}`} role="status">
-      Loading…
+      {t.loading}
     </div>
   );
 }
@@ -45,11 +47,12 @@ export function BootSplash() {
 
 /** What a failed chunk load leaves behind: a short note and a way back. */
 export function LoadFailed({ overlay = false }: { overlay?: boolean }) {
+  const t = useT().lazy;
   return (
     <div className={`pk-lazy-error${overlay ? ' pk-lazy-error--overlay' : ''}`} role="alert">
-      <span>This part of Entangible didn’t load — the connection dropped, or the site was just updated.</span>
+      <span>{t.failed}</span>
       <button type="button" className="pk-btn" onClick={() => window.location.reload()}>
-        Reload
+        {t.reload}
       </button>
     </div>
   );

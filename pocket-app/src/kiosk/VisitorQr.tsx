@@ -10,11 +10,12 @@
  * never shows a broken image.
  */
 import { useEffect, useState } from 'react';
+import { useT } from '@shared/i18n';
 
 const VISITOR_QR_SRC = '/api/visitor-qr';
-const LABEL = 'Scan to follow along + take your circuit home';
 
 export function VisitorQr({ variant }: { variant: 'footer' | 'attract' }) {
+  const label = useT().kiosk.visitorQr;
   const [available, setAvailable] = useState(false);
   useEffect(() => {
     let alive = true;
@@ -36,16 +37,16 @@ export function VisitorQr({ variant }: { variant: 'footer' | 'attract' }) {
   if (variant === 'attract') {
     return (
       <div className="ent-attract__qr">
-        <img src={VISITOR_QR_SRC} alt={LABEL} />
-        <span className="ent-attract__qr-label">{LABEL}</span>
+        <img src={VISITOR_QR_SRC} alt={label} />
+        <span className="ent-attract__qr-label">{label}</span>
       </div>
     );
   }
 
   return (
-    <div className="bo-visitor-qr" title={LABEL}>
-      <img src={VISITOR_QR_SRC} alt={LABEL} />
-      <span className="bo-visitor-qr__label">{LABEL}</span>
+    <div className="bo-visitor-qr" title={label}>
+      <img src={VISITOR_QR_SRC} alt={label} />
+      <span className="bo-visitor-qr__label">{label}</span>
     </div>
   );
 }

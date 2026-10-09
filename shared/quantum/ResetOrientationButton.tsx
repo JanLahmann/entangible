@@ -1,3 +1,5 @@
+import { useT } from '@shared/i18n';
+
 /**
  * ResetOrientationButton — the Q-sphere/Bloch "return to default orientation"
  * control, shared by both apps. A small rewind-arrow icon button pinned to the
@@ -12,12 +14,13 @@ export function ResetOrientationButton({
   classPrefix: string;
   onReset: () => void;
 }) {
+  const label = useT().evolving.resetOrientation;
   return (
     <button
       type="button"
       className={`${classPrefix}-qs-reset`}
-      aria-label="Reset orientation"
-      title="Reset orientation"
+      aria-label={label}
+      title={label}
       onClick={onReset}
       onPointerDown={(e) => e.stopPropagation()}
     >

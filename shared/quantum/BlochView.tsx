@@ -28,6 +28,7 @@ import {
 import { statevector, type StateVector } from './statevector';
 import { useSphereRotation } from './useSphereRotation';
 import { ResetOrientationButton } from './ResetOrientationButton';
+import { useT } from '@shared/i18n';
 
 const MARGIN = 26;
 const GUIDE_SAMPLES = 48;
@@ -60,9 +61,11 @@ export function BlochView({
   target: targetVec = TARGET_PLUS,
   size = 220,
   classPrefix,
-  title = 'Bloch sphere state projection',
+  title: titleProp,
 }: BlochViewProps) {
   const p = classPrefix;
+  const evolving = useT().evolving;
+  const title = titleProp ?? evolving.blochTitle;
   const sv = useMemo<StateVector>(
     () => svProp ?? (circuit ? statevector(circuit) : statevector({ qubits: 5, gates: [] } as Circuit)),
     [svProp, circuit],

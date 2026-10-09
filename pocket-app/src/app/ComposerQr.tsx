@@ -15,16 +15,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Circuit } from '@qamposer/react';
 import { qasmForCircuit } from './qasm';
-import { canTransfer, usedQubits, SIGN_IN_HINT } from './composerTransfer';
+import { canTransfer, usedQubits } from './composerTransfer';
 import { useComposerQr } from './composerQrCode';
-
-const CAPTION =
-  'Scan to open YOUR circuit in the IBM Quantum Composer — sign in (free) to run it on a real quantum computer';
-const CAPTION_OVERLONG =
-  'This circuit is too large to pack into a QR — use the Transfer button (it also copies the QASM to your clipboard) to open it in the IBM Quantum Composer.';
-const DISCLAIMER = 'Independent project — not affiliated with IBM.';
+import { useT } from '@shared/i18n';
 
 export function ComposerQr({ circuit }: { circuit: Circuit }) {
+  const t = useT().composer;
   const [open, setOpen] = useState(false);
   const show = canTransfer(circuit);
   // Only compute QASM (and the QR) while the overlay is actually open.
@@ -53,8 +49,8 @@ export function ComposerQr({ circuit }: { circuit: Circuit }) {
         type="button"
         className="pk-qr-btn"
         onClick={() => setOpen(true)}
-        aria-label="Show a QR code for your circuit"
-        title="QR — open your circuit in the IBM Quantum Composer"
+        aria-label={t.qrAria}
+        title={t.qrTitle}
       >
         <span className="pk-qr-glyph" aria-hidden="true">
           ▦
@@ -66,14 +62,14 @@ export function ComposerQr({ circuit }: { circuit: Circuit }) {
         <div
           className="pk-qr-overlay"
           role="dialog"
-          aria-label="QR code — open your circuit in the IBM Quantum Composer"
+          aria-label={t.qrDialog}
           onClick={close}
         >
           <div className="pk-qr-card" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               className="pk-qr-close"
-              aria-label="Close"
+              aria-label={t.close}
               onClick={close}
             >
               ✕
@@ -83,9 +79,9 @@ export function ComposerQr({ circuit }: { circuit: Circuit }) {
               // qrcode emits a self-contained SVG string; safe, locally generated.
               dangerouslySetInnerHTML={{ __html: svg }}
             />
-            <p className="pk-qr-caption">{plan.overLong ? CAPTION_OVERLONG : CAPTION}</p>
-            {usesAll5 && <p className="pk-qr-disclaimer">{SIGN_IN_HINT}</p>}
-            <p className="pk-qr-disclaimer">{DISCLAIMER}</p>
+            <p className="pk-qr-caption">{plan.overLong ? t.qrCaptionOverlong : t.qrCaption}</p>
+            {usesAll5 && <p className="pk-qr-disclaimer">{t.signIn}</p>}
+            <p className="pk-qr-disclaimer">{t.disclaimer}</p>
           </div>
         </div>
       )}

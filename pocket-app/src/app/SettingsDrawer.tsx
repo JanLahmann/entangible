@@ -6,8 +6,9 @@
  *
  * Two groups, because a visitor who opens the gear should meet the settings a
  * visitor uses — not the booth's wiring:
- *   - VISITOR (always visible): mode (+ golf course code / Quantina menu),
- *     input, panels, wires, noise, camera, low-power, and the guide link.
+ *   - VISITOR (always visible): language (English · Deutsch), mode (+ golf
+ *     course code / Quantina menu), input, panels, wires, noise, camera,
+ *     low-power, and the guide link.
  *   - STAFF & ADVANCED (collapsed at the bottom): board layout, sidebar side,
  *     the booth host / camera role, and the debug panel. Collapsed by default;
  *     its open state is remembered for the page session only (module memory,
@@ -25,7 +26,6 @@ import {
   type InputMode,
   type Mode,
   type NoisePreset,
-  type PanelId,
   type Side,
   type Wires,
 } from './settings';
@@ -40,6 +40,7 @@ import { boothLink, useBoothLink } from './boothLink';
 import { cameraRoleLink, useCameraRole } from './cameraRoleLink';
 import { normalizeBoothUrl } from '../sources/boothUrl';
 import { courseCode, parseCourseCode } from '@quantum/golfRandom';
+import { LANGS, LANGUAGE_LABEL, LANG_NAMES, useLang, useT, type Lang } from '@shared/i18n';
 
 /** One glyph per built-in menu pack for the drawer's Menu picker. */
 const MENU_EMOJI: Record<string, string> = {
@@ -50,13 +51,6 @@ const MENU_EMOJI: Record<string, string> = {
   demo: '🍕',
 };
 
-const PANEL_LABELS: Record<PanelId, string> = {
-  camera: 'Camera preview',
-  results: 'Results',
-  state: 'State',
-  qasm: 'OpenQASM',
-};
-
 /**
  * Golf course code (#78). A random course is fully determined by its seed, so
  * the code IS the course: typing one a friend read out deals the identical
@@ -65,6 +59,7 @@ const PANEL_LABELS: Record<PanelId, string> = {
  */
 function GolfCourseSection() {
   const settings = useSettings();
+  const t = useT().settings;
   const [draft, setDraft] = useState(settings.courseCode ?? '');
   const trimmed = draft.trim();
   const valid = trimmed === '' || parseCourseCode(trimmed) !== null;
@@ -84,7 +79,7 @@ function GolfCourseSection() {
 
   return (
     <section className="pk-drawer-sec">
-      <div className="pk-label">Golf course code</div>
+      <div className="pk-label">{t.golfCode}</div>
       <input
         className={`pk-input${valid ? '' : ' is-invalid'}`}
         type="text"
@@ -92,8 +87,8 @@ function GolfCourseSection() {
         autoCapitalize="none"
         autoCorrect="off"
         spellCheck={false}
-        placeholder="classic course"
-        aria-label="Golf course code"
+        placeholder={t.golfCodePlaceholder}
+        aria-label={t.golfCode}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={apply}
@@ -102,9 +97,7 @@ function GolfCourseSection() {
         }}
       />
       <p className="pk-drawer-hint">
-        {settings.courseCode
-          ? 'Playing a shared random course. Clear the field for the classic 18.'
-          : 'Paste a course code to play someone else’s random 18.'}
+        {settings.courseCode ? t.golfCodeShared : t.golfCodeHint}
       </p>
     </section>
   );
@@ -196,15 +189,20 @@ function useCameraDevices(): CameraDevice[] {
 /** CAMERA section — pick the capture device (Automatic, or a specific camera). */
 function CameraSection() {
   const settings = useSettings();
+  const t = useT().settings;
   const devices = useCameraDevices();
+  // A placeholder ("Camera 2", before permission) is re-worded by its position.
   const options: Array<{ value: string | null; label: string }> = [
-    { value: null, label: 'Automatic (rear)' },
-    ...devices.map((d) => ({ value: d.deviceId, label: d.label })),
+    { value: null, label: t.cameraAuto },
+    ...devices.map((d, i) => ({
+      value: d.deviceId,
+      label: d.placeholder ? t.cameraPlaceholder(i + 1) : d.label,
+    })),
   ];
   return (
     <section className="pk-drawer-sec">
-      <div className="pk-label">Camera</div>
-      <div className="pk-radio" role="radiogroup" aria-label="Camera">
+      <div className="pk-label">{t.camera}</div>
+      <div className="pk-radio" role="radiogroup" aria-label={t.camera}>
         {options.map((o) => {
           const selected = settings.cameraId === o.value;
           return (
@@ -223,7 +221,7 @@ function CameraSection() {
         })}
       </div>
       {hasOnlyPlaceholders(devices) && (
-        <p className="pk-drawer-hint">Start the camera once to see camera names.</p>
+        <p className="pk-drawer-hint">{t.cameraNamesHint}</p>
       )}
     </section>
   );
@@ -247,6 +245,7 @@ function BoothSection({
   const settings = useSettings();
   const link = useBoothLink();
   const cameraRole = useCameraRole();
+  const t = useT().settings;
   const connected = link.url !== null;
   const [draft, setDraft] = useState(settings.boothUrl ?? '');
   const valid = normalizeBoothUrl(draft) !== null;
@@ -255,8 +254,8 @@ function BoothSection({
   if (cameraRole.active) {
     return (
       <section className="pk-drawer-sec">
-        <div className="pk-label">Booth</div>
-        <p className="pk-drawer-hint">This phone is the booth’s camera (streaming).</p>
+        <div className="pk-label">{t.booth}</div>
+        <p className="pk-drawer-hint">{t.boothIsCamera}</p>
         <button
           type="button"
           className="pk-btn is-stop"
@@ -265,7 +264,7 @@ function BoothSection({
             onClose();
           }}
         >
-          Stop being the camera
+          {t.stopBeingCamera}
         </button>
       </section>
     );
@@ -273,12 +272,12 @@ function BoothSection({
 
   return (
     <section className="pk-drawer-sec">
-      <div className="pk-label">Booth</div>
+      <div className="pk-label">{t.booth}</div>
       {connected ? (
         <>
-          <p className="pk-drawer-hint">Connected — viewing the booth (read-only).</p>
+          <p className="pk-drawer-hint">{t.boothConnected}</p>
           <button type="button" className="pk-btn is-stop" onClick={() => boothLink.disconnect()}>
-            Disconnect
+            {t.disconnect}
           </button>
         </>
       ) : (
@@ -292,7 +291,7 @@ function BoothSection({
             spellCheck={false}
             placeholder="wss://booth.local:8443"
             value={draft}
-            aria-label="Booth host"
+            aria-label={t.boothHost}
             onChange={(e) => setDraft(e.target.value)}
           />
           <button
@@ -304,9 +303,9 @@ function BoothSection({
               boothLink.connect(draft);
             }}
           >
-            Connect to booth
+            {t.connect}
           </button>
-          <p className="pk-drawer-hint">Follow a booth’s screen and take its circuit home.</p>
+          <p className="pk-drawer-hint">{t.boothHint}</p>
           {/* Staff CAMERA role (U2): operator-gated — shown only when a host is
               known AND an operator key is present. A visitor never sees this. */}
           {cameraRoleAvailable && (
@@ -320,15 +319,33 @@ function BoothSection({
                   onClose();
                 }}
               >
-                Use this phone as the camera
+                {t.useAsCamera}
               </button>
-              <p className="pk-drawer-hint">
-                Stream this camera to the booth (staff). The booth does the detection.
-              </p>
+              <p className="pk-drawer-hint">{t.useAsCameraHint}</p>
             </>
           )}
         </>
       )}
+    </section>
+  );
+}
+
+/**
+ * LANGUAGE — English · Deutsch. First in the visitor group, and labelled in
+ * both languages, so someone who reads only one of them still finds it. The
+ * choice is stored (`entangible.lang`) and wins over the browser's language;
+ * a `?lang=` link still wins over it on the page it opens (see shared/i18n).
+ */
+function LanguageSection() {
+  const { lang, setLang } = useLang();
+  return (
+    <section className="pk-drawer-sec">
+      <div className="pk-label">{LANGUAGE_LABEL}</div>
+      <Segmented<Lang>
+        value={lang}
+        options={LANGS.map((l) => ({ value: l, label: LANG_NAMES[l] }))}
+        onChange={setLang}
+      />
     </section>
   );
 }
@@ -351,6 +368,7 @@ export function resetAdvancedOpen(): void {
  * absent rather than merely hidden).
  */
 function AdvancedGroup({ children }: { children: ReactNode }) {
+  const label = useT().settings.advanced;
   const [open, setOpen] = useState(advancedOpen);
   const toggle = () => {
     advancedOpen = !open;
@@ -365,7 +383,7 @@ function AdvancedGroup({ children }: { children: ReactNode }) {
         aria-controls="pk-drawer-adv-body"
         onClick={toggle}
       >
-        <span>Staff &amp; advanced</span>
+        <span>{label}</span>
         <span aria-hidden="true" className="pk-drawer-adv-chevron">
           ▸
         </span>
@@ -375,7 +393,7 @@ function AdvancedGroup({ children }: { children: ReactNode }) {
           id="pk-drawer-adv-body"
           className="pk-drawer-adv-body"
           role="region"
-          aria-label="Staff & advanced"
+          aria-label={label}
         >
           {children}
         </div>
@@ -395,6 +413,7 @@ export function SettingsControl({
   // the local settings), so the PANELS section is shown read-only.
   const connected = useBoothLink().url !== null;
   const [open, setOpen] = useState(false);
+  const t = useT().settings;
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -412,7 +431,7 @@ export function SettingsControl({
       <button
         type="button"
         className="pk-gear"
-        aria-label="Settings"
+        aria-label={t.title}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
@@ -429,26 +448,28 @@ export function SettingsControl({
           <aside
             className="pk-drawer"
             role="dialog"
-            aria-label="Settings"
+            aria-label={t.title}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="pk-drawer-head">
-              <span className="pk-drawer-title">Settings</span>
-              <button type="button" className="pk-drawer-close" aria-label="Close" onClick={close}>
+              <span className="pk-drawer-title">{t.title}</span>
+              <button type="button" className="pk-drawer-close" aria-label={t.close} onClick={close}>
                 ✕
               </button>
             </div>
 
             <div className="pk-drawer-body">
+              <LanguageSection />
+
               <section className="pk-drawer-sec">
-                <div className="pk-label">Mode</div>
+                <div className="pk-label">{t.mode}</div>
                 <Segmented<Mode>
                   value={settings.mode}
                   options={[
-                    { value: 'composer', label: 'Composer' },
-                    { value: 'golf', label: 'Quantum Golf' },
-                    { value: 'quantina', label: 'Quantina' },
-                    { value: 'runner', label: 'Quantum Runner' },
+                    { value: 'composer', label: t.modes.composer },
+                    { value: 'golf', label: t.modes.golf },
+                    { value: 'quantina', label: t.modes.quantina },
+                    { value: 'runner', label: t.modes.runner },
                   ]}
                   onChange={(mode) => settingsStore.update({ mode })}
                 />
@@ -458,7 +479,7 @@ export function SettingsControl({
 
               {settings.mode === 'quantina' && (
                 <section className="pk-drawer-sec">
-                  <div className="pk-label">Menu</div>
+                  <div className="pk-label">{t.menu}</div>
                   <Segmented<string>
                     value={settings.menu}
                     options={BUILTIN_PACKS.map((p) => ({
@@ -467,80 +488,71 @@ export function SettingsControl({
                     }))}
                     onChange={(menu) => settingsStore.update({ menu })}
                   />
-                  <p className="pk-drawer-hint">
-                    What a serve orders. Custom menus arrive via a ?menu= or
-                    ?menupack= link (see the menu-packs guide).
-                  </p>
+                  <p className="pk-drawer-hint">{t.menuHint}</p>
                 </section>
               )}
 
               <section className="pk-drawer-sec">
-                <div className="pk-label">Input</div>
+                <div className="pk-label">{t.input}</div>
                 <Segmented<InputMode>
                   value={settings.input}
                   options={[
-                    { value: 'camera', label: 'Camera' },
-                    { value: 'manual', label: 'Build on screen' },
+                    { value: 'camera', label: t.inputCamera },
+                    { value: 'manual', label: t.inputManual },
                   ]}
                   onChange={(input) => settingsStore.update({ input })}
                 />
-                <p className="pk-drawer-hint">
-                  No printer, no camera? Build gates on screen and play golf.
-                </p>
+                <p className="pk-drawer-hint">{t.inputHint}</p>
               </section>
 
               <section className="pk-drawer-sec">
-                <div className="pk-label">Panels</div>
+                <div className="pk-label">{t.panels}</div>
                 {PANEL_IDS.map((p) => (
                   <Toggle
                     key={p}
-                    label={PANEL_LABELS[p]}
+                    label={t.panelLabels[p]}
                     checked={settings.panels.includes(p)}
                     disabled={connected}
                     onChange={() => settingsStore.togglePanel(p)}
                   />
                 ))}
-                {connected && <p className="pk-drawer-hint">Controlled by booth.</p>}
+                {connected && <p className="pk-drawer-hint">{t.controlledByBooth}</p>}
               </section>
 
               <section className="pk-drawer-sec">
-                <div className="pk-label">Wires</div>
+                <div className="pk-label">{t.wires}</div>
                 <Segmented<Wires>
                   value={settings.wires}
                   options={[
-                    { value: 'compact', label: 'auto' },
-                    { value: 'all', label: 'all 5' },
+                    { value: 'compact', label: t.wiresAuto },
+                    { value: 'all', label: t.wiresAll },
                   ]}
                   onChange={(wires) => settingsStore.update({ wires })}
                 />
               </section>
 
               <section className="pk-drawer-sec">
-                <div className="pk-label">Noise</div>
+                <div className="pk-label">{t.noise}</div>
                 <Segmented<NoisePreset>
                   value={settings.noise}
                   options={[
-                    { value: 'off', label: 'Off' },
-                    { value: 'falcon', label: 'Falcon (2021, 5 qubits)' },
-                    { value: 'eagle', label: 'Eagle (127 qubits)' },
-                    { value: 'heron', label: "Heron (156 qubits — today's workhorse)" },
-                    { value: 'nighthawk', label: 'Nighthawk (newest generation)' },
+                    { value: 'off', label: t.noiseOptions.off },
+                    { value: 'falcon', label: t.noiseOptions.falcon },
+                    { value: 'eagle', label: t.noiseOptions.eagle },
+                    { value: 'heron', label: t.noiseOptions.heron },
+                    { value: 'nighthawk', label: t.noiseOptions.nighthawk },
                   ]}
                   onChange={(noise) => settingsStore.update({ noise })}
                 />
-                <p className="pk-drawer-hint">
-                  Overlays results with a simulated-noise series — one preset per IBM chip
-                  generation, parameters from device calibration snapshots. Composer only — golf
-                  stays ideal.
-                </p>
+                <p className="pk-drawer-hint">{t.noiseHint}</p>
               </section>
 
               <CameraSection />
 
               <section className="pk-drawer-sec">
-                <div className="pk-label">Power</div>
+                <div className="pk-label">{t.power}</div>
                 <Toggle
-                  label="Low-power mode"
+                  label={t.lowPower}
                   checked={settings.lowpower}
                   onChange={(lowpower) => settingsStore.update({ lowpower })}
                 />
@@ -548,7 +560,7 @@ export function SettingsControl({
 
               <section className="pk-drawer-sec">
                 <a className="pk-drawer-row" href="#guide" onClick={close}>
-                  <span>Guide &amp; about</span>
+                  <span>{t.guide}</span>
                   <span aria-hidden="true" className="pk-drawer-row-chevron">
                     →
                   </span>
@@ -559,31 +571,28 @@ export function SettingsControl({
                   sidebar sits, the booth link / staff camera role, debugging. */}
               <AdvancedGroup>
                 <section className="pk-drawer-sec">
-                  <div className="pk-label">Board</div>
+                  <div className="pk-label">{t.board}</div>
                   <Segmented<BoardLayout>
                     value={settings.boardLayout}
                     options={[
-                      { value: 'grid', label: 'More columns' },
-                      { value: 'stretch', label: 'Bigger cells' },
+                      { value: 'grid', label: t.boardGrid },
+                      { value: 'stretch', label: t.boardStretch },
                     ]}
                     disabled={connected}
                     onChange={(boardLayout) => settingsStore.update({ boardLayout })}
                   />
                   <p className="pk-drawer-hint">
-                    Corner blocks may span any rectangle. On a table bigger than the printed
-                    mat, "More columns" keeps the tile pitch and gives you extra columns;
-                    "Bigger cells" stretches the 8-column board to fit. A mat-sized board
-                    ignores this. {connected ? 'Controlled by booth.' : null}
+                    {t.boardHint} {connected ? t.controlledByBooth : null}
                   </p>
                 </section>
 
                 <section className="pk-drawer-sec">
-                  <div className="pk-label">Sidebar side</div>
+                  <div className="pk-label">{t.sidebarSide}</div>
                   <Segmented<Side>
                     value={settings.side}
                     options={[
-                      { value: 'left', label: 'Left' },
-                      { value: 'right', label: 'Right' },
+                      { value: 'left', label: t.left },
+                      { value: 'right', label: t.right },
                     ]}
                     onChange={(side) => settingsStore.update({ side })}
                   />
@@ -592,9 +601,9 @@ export function SettingsControl({
                 <BoothSection cameraRoleAvailable={cameraRoleAvailable} onClose={close} />
 
                 <section className="pk-drawer-sec">
-                  <div className="pk-label">Developer</div>
+                  <div className="pk-label">{t.developer}</div>
                   <Toggle
-                    label="Debug panel"
+                    label={t.debugPanel}
                     checked={settings.debug}
                     onChange={(debug) => settingsStore.update({ debug })}
                   />

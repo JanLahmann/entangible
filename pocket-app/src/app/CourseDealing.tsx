@@ -22,6 +22,7 @@
  */
 import { useCallback, useRef, useState } from 'react';
 import { isCourseReady, prepareCourse } from '@quantum/golfRandom';
+import { useT } from '@shared/i18n';
 
 /** Holes on a course — the indicator's denominator. */
 const COURSE_HOLES = 18;
@@ -99,6 +100,7 @@ export function useCourseDealer(): CourseDealer {
  * usable, and picking Classic is how you call a deal off.
  */
 export function CourseDealing({ holesDone }: { holesDone: number }) {
+  const t = useT().golf;
   const current = Math.min(holesDone + 1, COURSE_HOLES);
   const pct = Math.round((holesDone / COURSE_HOLES) * 100);
   return (
@@ -106,12 +108,12 @@ export function CourseDealing({ holesDone }: { holesDone: number }) {
       <div className="pk-golf-dealing-card">
         <span className="pk-golf-dealing-text">
           <span className="pk-golf-dealing-dot" aria-hidden="true" />
-          Dealing course — hole {current}/{COURSE_HOLES}…
+          {t.dealing(current, COURSE_HOLES)}
         </span>
         <span
           className="pk-golf-dealing-bar"
           role="progressbar"
-          aria-label="holes dealt"
+          aria-label={t.dealingAria}
           aria-valuemin={0}
           aria-valuemax={COURSE_HOLES}
           aria-valuenow={holesDone}

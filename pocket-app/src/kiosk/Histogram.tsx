@@ -10,6 +10,7 @@
  */
 import type { Circuit } from '@qamposer/react';
 import { Histogram as SharedHistogram } from '@shared/display/Histogram';
+import { useT } from '@shared/i18n';
 
 export function Histogram({
   circuit,
@@ -21,13 +22,14 @@ export function Histogram({
   /** Optional noisy probability vector (from `@quantum/noise`) → paired bars. */
   noisy?: readonly number[];
 }) {
+  const t = useT();
   return (
     <SharedHistogram
       circuit={circuit}
       displayQubits={displayQubits}
       classPrefix="bo"
       microColData={false}
-      uniformSuffix=" possibilities"
+      uniformSuffix={t.histogram.possibilities}
       noisy={noisy}
     />
   );

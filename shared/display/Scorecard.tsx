@@ -62,7 +62,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { Circuit } from '@qamposer/react';
 import {
-  ROUND_LABEL,
   ROUND_CODE,
   COURSE_PAR,
   coursePar,
@@ -87,6 +86,18 @@ import { courseCode, courseHoles } from '@quantum/golfRandom';
 import { findOptimalAsync, type OptimalResult } from '@quantum/optimal';
 import { MiniCircuit } from './MiniCircuit';
 import { courseElapsed, tickCourseTimer, tickHoleTimer } from './courseTimer';
+import { useT } from '@shared/i18n';
+import type { Messages } from '@shared/i18n/en';
+
+/**
+ * A hole's name in the active language: the classic course's names are
+ * translated by their English name, a generated hole ("Random E3") is
+ * re-worded by its code, and anything else is shown as it is.
+ */
+export function holeDisplayName(hole: Hole, t: Messages): string {
+  if (/^Random /.test(hole.name)) return t.golf.randomHole(hole.code);
+  return t.golf.holeNames[hole.name] ?? hole.name;
+}
 
 const ROUNDS: readonly GolfRound[] = ['easy', 'medium', 'difficult', 'extra'];
 
@@ -174,8 +185,9 @@ export function courseShareLink(origin: string, code: string, scope: GolfScope =
 /** What is being competed over, when it is not the whole course (#102) — the
  *  card must never leave a player guessing which round their result is for. */
 function ScopeChip({ p, scope }: { p: string; scope: GolfScope }) {
+  const t = useT();
   if (scope === 'full') return null;
-  return <span className={`${p}-golf-scope`}>{scopeLabel(scope)} round only</span>;
+  return <span className={`${p}-golf-scope`}>{t.scorecard.scopeOnly(scopeLabel(scope, t))}</span>;
 }
 
 function CourseChip({
@@ -187,6 +199,7 @@ function CourseChip({
   state: GolfState;
   challenge?: ChallengeRenderer;
 }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -211,14 +224,14 @@ function CourseChip({
 
   return (
     <>
-      <span className={`${p}-golf-random`}>Random round</span>
+      <span className={`${p}-golf-random`}>{t.scorecard.randomRound}</span>
       <button
         type="button"
         className={`${p}-golf-code`}
         onClick={copy}
-        title="Copy a link to this course"
+        title={t.scorecard.copyLink}
       >
-        {copied ? 'link copied' : `Course #${code}`}
+        {copied ? t.scorecard.linkCopied : t.scorecard.courseCode(code)}
       </button>
       {challenge?.({ code, link: shareLink(), scope: state.scope })}
     </>
@@ -365,6 +378,8 @@ export function Scorecard({
   onJump?: (holeNumber: number) => void;
 }) {
   const p = classPrefix;
+  const t = useT();
+  const sc = t.scorecard;
   // Which hole's solution is currently revealed (#71). Keyed by hole NUMBER
   // rather than a boolean, so the reveal is scoped to the hole it was asked for
   // and the next hole starts hidden again without an effect to reset it.
@@ -397,40 +412,34 @@ export function Scorecard({
 
   // Course finished — show the final scorecard summary.
   if (state.complete) {
+    const roundName = state.scope === 'full' ? null : scopeLabel(state.scope, t);
     return (
       <div>
         <div className={`${p}-label`}>
-          Scorecard · {state.scope === 'full' ? 'course' : `${scopeLabel(state.scope)} round`}{' '}
-          complete
+          {sc.headerComplete(roundName)}
           <ScopeChip p={p} scope={state.scope} />
           <CourseChip p={p} state={state} challenge={challenge} />
         </div>
         <div className={`${p}-well ${p}-golf`}>
           <div className={`${p}-golf-hole`}>
-            <span className={`${p}-golf-name`}>
-              {state.scope === 'full'
-                ? 'Course complete! ⛳'
-                : `${scopeLabel(state.scope)} round complete! ⛳`}
-            </span>
-            <span className={`${p}-golf-qubits`}>
-              {totals.strokes} strokes · par {fullPar}
-            </span>
+            <span className={`${p}-golf-name`}>{sc.courseComplete(roundName)}</span>
+            <span className={`${p}-golf-qubits`}>{sc.strokesPar(totals.strokes, fullPar)}</span>
             {courseMs !== null && (
               <span className={`${p}-golf-time`}>
-                <b>{totals.strokes}</b> strokes in <b>{formatDuration(courseMs)}</b>
+                <b>{totals.strokes}</b> {sc.strokesIn} <b>{formatDuration(courseMs)}</b>
               </span>
             )}
             <span className={`${p}-golf-total`}>
-              {formatVsPar(totals.vsPar)} <small>vs par</small>
+              {formatVsPar(totals.vsPar)} <small>{sc.vsPar}</small>
             </span>
           </div>
           <div className={`${p}-golf-holed`}>
             {onNextLevel ? (
               <button type="button" className={`${p}-golf-next`} onClick={onNextLevel}>
-                Play again ▸
+                {sc.playAgain}
               </button>
             ) : (
-              'clear the board to play again'
+              sc.clearToPlayAgain
             )}
           </div>
           <ChipStrip
@@ -454,43 +463,46 @@ export function Scorecard({
   return (
     <div>
       <div className={`${p}-label`}>
-        Scorecard · {ROUND_LABEL[hole.round]} · hole{' '}
-        {playing.findIndex((h) => h.hole === hole.hole) + 1}/{playing.length}
+        {sc.header(
+          t.golf.rounds[hole.round],
+          playing.findIndex((h) => h.hole === hole.hole) + 1,
+          playing.length,
+        )}
         <ScopeChip p={p} scope={state.scope} />
         <CourseChip p={p} state={state} challenge={challenge} />
       </div>
       <div className={`${p}-well ${p}-golf`}>
         <div className={`${p}-golf-hole`}>
           <span className={`${p}-golf-name`}>
-            {hole.code} — {hole.name}
+            {hole.code} — {holeDisplayName(hole, t)}
           </span>
           <span className={`${p}-golf-qubits`}>
-            {hole.qubits} {hole.qubits === 1 ? 'qubit' : 'qubits'} · clubs: {hole.clubs.join(' · ')}
+            {sc.qubitsClubs(hole.qubits, hole.clubs.join(' · '))}
           </span>
           <span className={`${p}-golf-ket${monoKet ? ` ${p}-mono` : ''}`}>
-            <span className={`${p}-ket-label`}>Target</span>
+            <span className={`${p}-ket-label`}>{sc.target}</span>
             {hole.targetKet}
           </span>
         </div>
         <div className={`${p}-stats`}>
           <div className={`${p}-stat`}>
-            par <b>{hole.par}</b>
+            {sc.par} <b>{hole.par}</b>
           </div>
           <div className={`${p}-stat`}>
-            strokes <b>{state.strokes}</b>
+            {sc.strokes} <b>{state.strokes}</b>
           </div>
           <div className={`${p}-stat`}>
-            fidelity <b className={holedIn ? 'is-holed' : undefined}>{pct}%</b>
+            {sc.fidelity} <b className={holedIn ? 'is-holed' : undefined}>{pct}%</b>
           </div>
           <div className={`${p}-stat`}>
-            best <b>{bestStrokes === undefined ? '—' : bestStrokes}</b>
+            {sc.best} <b>{bestStrokes === undefined ? '—' : bestStrokes}</b>
           </div>
           <div className={`${p}-stat`}>
-            total <b>{totalLabel}</b>
+            {sc.total} <b>{totalLabel}</b>
           </div>
           {courseMs !== null && (
             <div className={`${p}-stat`}>
-              time <b>{formatDuration(courseMs)}</b>
+              {sc.time} <b>{formatDuration(courseMs)}</b>
             </div>
           )}
         </div>
@@ -500,19 +512,19 @@ export function Scorecard({
         {onWipe && !holedIn && circuit.gates.length > 0 && (
           <div className={`${p}-golf-wipe-row`}>
             <button type="button" className={`${p}-golf-wipe`} onClick={onWipe}>
-              Wipe board (+1 stroke)
+              {sc.wipe}
             </button>
           </div>
         )}
         {holedIn && (
           <div className={`${p}-golf-holed`}>
-            {scoreName(bestStrokes ?? state.strokes, hole.par)} —{' '}
+            {scoreName(bestStrokes ?? state.strokes, hole.par, t)} —{' '}
             {onNextLevel ? (
               <button type="button" className={`${p}-golf-next`} onClick={onNextLevel}>
-                Next hole ▸
+                {sc.nextHole}
               </button>
             ) : (
-              'clear the board for the next hole'
+              sc.clearForNext
             )}
             <SolutionToggle
               p={p}
@@ -541,9 +553,7 @@ export function Scorecard({
               }}
             />
             {paidFor && (
-              <span className={`${p}-golf-stuck-note`}>
-                this hole scores at least {2 * hole.par}
-              </span>
+              <span className={`${p}-golf-stuck-note`}>{sc.atLeast(2 * hole.par)}</span>
             )}
           </div>
         )}
@@ -588,14 +598,15 @@ function SolutionToggle({
   price?: number | null;
   onToggle: () => void;
 }) {
+  const sc = useT().scorecard;
   if (!hole.solution) return null;
   const label = shown
-    ? 'Hide solution'
+    ? sc.hideSolution
     : price !== null
-      ? `Show solution (scores double par — ${price})`
+      ? sc.showSolutionPrice(price)
       : stuck
-        ? 'Stuck? Show solution'
-        : 'Show solution';
+        ? sc.stuck
+        : sc.showSolution;
   return (
     <button
       type="button"
@@ -656,14 +667,15 @@ function Solutions({
   hole: Hole;
   optimal: OptimalResult | null;
 }) {
+  const sc = useT().scorecard;
   if (!hole.solution) return null;
   const storedLabel =
     optimal?.status === 'minimal'
-      ? 'Solution — optimal'
+      ? sc.solutionOptimal
       : optimal?.status === 'shorter'
         ? state.course === 'random'
-          ? 'Dealt solution'
-          : 'Solution'
+          ? sc.dealtSolution
+          : sc.solution
         : null;
   return (
     <>
@@ -678,9 +690,7 @@ function Solutions({
           p={p}
           circuit={{ qubits: hole.qubits, gates: optimal.gates }}
           n={hole.qubits}
-          label={`Optimal (${optimal.gates.length} ${
-            optimal.gates.length === 1 ? 'gate' : 'gates'
-          })`}
+          label={sc.optimal(optimal.gates.length)}
         />
       )}
     </>
@@ -716,8 +726,10 @@ function ChipStrip({
   /** When set, every IN-SCOPE chip is a way onto that hole (#101). */
   onJump?: (holeNumber: number) => void;
 }) {
+  const t = useT();
+  const sc = t.scorecard;
   return (
-    <div className={`${p}-golf-course`} aria-label="all holes">
+    <div className={`${p}-golf-course`} aria-label={sc.allHoles}>
       {ROUNDS.map((round) => (
         <div key={round} className={`${p}-golf-row`}>
           <span className={`${p}-golf-round`}>{ROUND_CODE[round]}</span>
@@ -738,9 +750,10 @@ function ChipStrip({
               ]
                 .filter(Boolean)
                 .join(' ');
+              const name = holeDisplayName(h, t);
               const title = done
-                ? `${h.code} · ${h.name} · par ${h.par} · best ${strokes} (${vsPar})`
-                : `${h.code} · ${h.name} · par ${h.par}`;
+                ? sc.chipTitleBest(h.code, name, h.par, strokes, vsPar!)
+                : sc.chipTitle(h.code, name, h.par);
               const body = (
                 <>
                   <span>{h.code}</span>
@@ -758,9 +771,9 @@ function ChipStrip({
                   key={h.hole}
                   type="button"
                   className={className}
-                  title={`${title} — tap to play`}
+                  title={`${title}${sc.tapToPlay}`}
                   aria-current={current ? 'true' : undefined}
-                  aria-label={`Play hole ${h.hole}, ${h.code}`}
+                  aria-label={sc.playHole(h.hole, h.code)}
                   onClick={() => onJump(h.hole)}
                 >
                   {body}

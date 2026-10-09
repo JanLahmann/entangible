@@ -33,6 +33,7 @@
  */
 import { basisVisuals } from '@quantum/qsphere';
 import type { StateVector } from '@quantum/statevector';
+import { useT } from '@shared/i18n';
 
 /** Phase tolerance (radians) for snapping to 0 / π / ±π/2. */
 const PHASE_TOL = 0.01;
@@ -208,6 +209,7 @@ export function KetDisplay({
   maxTerms = 6,
   minProb = 0.005,
 }: KetDisplayProps) {
+  const evolving = useT().evolving;
   const p = classPrefix;
   const { terms, truncated } = ketTerms(statevector, n, maxTerms, minProb);
   // A zero / empty state has nothing to say — render nothing at all.
@@ -216,7 +218,7 @@ export function KetDisplay({
   return (
     <div
       className={`${p}-ket`}
-      aria-label={label ? `${label} in bra-ket notation` : 'Current state in bra-ket notation'}
+      aria-label={label ? evolving.ketAria(label) : evolving.ketAriaCurrent}
     >
       {label && <span className={`${p}-ket-label`}>{label}</span>}
       {terms.map((t, i) => (
