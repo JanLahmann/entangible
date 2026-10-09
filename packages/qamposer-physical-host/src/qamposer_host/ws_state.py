@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from pathlib import Path
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -120,7 +121,7 @@ async def _handle_select_camera(websocket: WebSocket, msg: dict) -> None:
     hub = app.state.hub
     pipeline = app.state.pipeline
     factory = app.state.source_factory
-    spec = select_camera_to_spec(msg)
+    spec = _resolve_replay_name(select_camera_to_spec(msg), app.state.config.replay_dir)
     is_push = spec.split(":", 1)[0] == "push"
 
     source = None
@@ -139,11 +140,30 @@ async def _handle_select_camera(websocket: WebSocket, msg: dict) -> None:
     if pipeline is not None and source is not None:
         try:
             pipeline.swap_source(source)
+            app.state.source_spec = spec
         except Exception:
             logger.warning("pipeline.swap_source failed for %r", spec, exc_info=True)
+    elif pipeline is None and source is not None:
+        app.state.source_spec = spec  # no pipeline holds a device; record the choice
 
     hub.set_camera(camera_from_spec(spec, connected=source is not None))
     await hub.publish_status()
+
+
+def _resolve_replay_name(spec: str, replay_dir: Path) -> str:
+    """``replay:<name>`` → ``replay:<replay_dir>/<name>`` for a bare recording name.
+
+    The /debug picker sends the names ``/api/cameras`` lists; paths (anything
+    with a separator, or that already exists) pass through unchanged.
+    """
+    kind, _, rest = spec.partition(":")
+    # Only a bare name is joined onto replay_dir; it can never climb out of it.
+    if kind != "replay" or not rest or "/" in rest or "\\" in rest or rest in (".", ".."):
+        return spec
+    if Path(rest).exists():
+        return spec
+    candidate = Path(replay_dir) / rest
+    return f"replay:{candidate}" if candidate.is_dir() else spec
 
 
 async def _handle_select_mode(websocket: WebSocket, msg: dict) -> None:

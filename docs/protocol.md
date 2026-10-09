@@ -207,7 +207,9 @@ not send the `select_*` control messages.
 
 ```jsonc
 { "type": "select_camera", "kind": "cv2", "index": 0 }
-// kind: "cv2" | "picamera2" | "push" | "replay"; index only for cv2
+// kind: "cv2" | "picamera2" | "push" | "replay"; index only for cv2.
+// For "replay", an optional "name" names a recording listed by /api/cameras;
+// the host resolves a bare name (no path separators) against its replay dir.
 ```
 
 - `hello` is courtesy metadata (feeds `status.clients` labeling); the server
@@ -325,6 +327,35 @@ trigger a `layout` broadcast. REST siblings:
 
 Both respond `image/png` with `Cache-Control: no-store` and an `X-Encoded-URL`
 header carrying the encoded target (for the `/debug` card + tests).
+
+Every URL the host prints or encodes (CLI startup lines, both QRs, `/api/info`)
+carries the **advertised host**: `--advertise-host` / `QAMPOSER_ADVERTISE_HOST`
+when set (also added to the TLS cert SANs), else the detected LAN IP. On an
+offline hotspot the detection reads the interface addresses, so the loopback
+127.0.1.1 hostname mapping is never advertised.
+
+## `GET /api/cameras` — camera discovery (staff-gated)
+
+On-demand scan for the `/debug` camera picker; **never polled** (probing opens
+real devices). Requires the operator token like the other `/debug` data.
+Response:
+
+```json
+{
+  "active": "cv2:0",                  // the spec the pipeline runs on
+  "cameras": [                        // cv2 indices 0..5, one entry per found device
+    { "spec": "cv2:0", "kind": "cv2", "index": 0,
+      "ok": true, "width": 1280, "height": 720, "active": true }
+  ],
+  "picamera2": false,                 // importable on this host?
+  "replays": ["bell-sequence"],       // recording names under the replay dir
+  "push": true                        // the phone-camera intake always exists
+}
+```
+
+The index the live pipeline holds is reported from `status.camera` and never
+re-opened (a second open can wedge a V4L2 driver); probes run one at a time
+with a 2 s budget each.
 
 ## `/ws/frames` — phone capture (M4; server side lands in M2)
 

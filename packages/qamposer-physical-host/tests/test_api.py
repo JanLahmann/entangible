@@ -178,3 +178,42 @@ def test_debug_stream_requires_key():
     with TestClient(_app()) as client:
         resp = client.get("/debug/stream")
         assert resp.status_code == 403
+
+
+# --- advertise_host: one override, every URL-building site -----------------
+
+
+def test_advertise_host_flows_through_every_url(monkeypatch):
+    # Detection would say loopback (an offline hotspot); the override must win
+    # everywhere a URL is built, never half-applied.
+    import qamposer_host.certs as certs
+
+    monkeypatch.setattr(certs, "primary_lan_ip", lambda: "127.0.0.1")
+    app = _app(advertise_host="entangible.local")
+    token = app.state.operator_token
+    with TestClient(app) as client:
+        info = client.get("/api/info").json()
+        assert info["lanIp"] == "entangible.local"
+        assert info["captureUrl"].startswith("https://entangible.local:")
+
+        staff = client.get("/api/qr", params={"key": token}).headers["X-Encoded-URL"]
+        assert staff.startswith("https://entangible.local:")
+
+        visitor = client.get("/api/visitor-qr").headers["X-Encoded-URL"]
+        assert visitor.startswith("https://entangible.local:")
+
+
+def test_advertise_host_from_env(monkeypatch):
+    monkeypatch.setenv("QAMPOSER_ADVERTISE_HOST", " 10.42.0.1 ")
+    config = HostConfig.from_env()
+    assert config.advertise_host == "10.42.0.1"
+    monkeypatch.setenv("QAMPOSER_ADVERTISE_HOST", "")
+    assert HostConfig.from_env().advertise_host is None
+
+
+def test_without_advertise_host_urls_use_detected_ip(monkeypatch):
+    import qamposer_host.certs as certs
+
+    monkeypatch.setattr(certs, "primary_lan_ip", lambda: "192.168.4.1")
+    with TestClient(_app()) as client:
+        assert client.get("/api/info").json()["lanIp"] == "192.168.4.1"

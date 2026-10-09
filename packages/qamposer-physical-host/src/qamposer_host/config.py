@@ -60,6 +60,10 @@ class HostConfig:
     layout_file: Path | None = None
     branding_file: Path | None = None
     tls: bool = True
+    #: Host name or IP put into every printed URL / QR (and the cert SANs)
+    #: instead of the auto-detected LAN IP — for a hotspot or DNS name whose
+    #: address detection gets wrong. ``None`` → :func:`advertised_host` detects.
+    advertise_host: str | None = None
 
     def __post_init__(self) -> None:
         self.port = int(self.port)
@@ -72,6 +76,8 @@ class HostConfig:
             self.layout_file = Path(self.layout_file)
         if self.branding_file is not None:
             self.branding_file = Path(self.branding_file)
+        if self.advertise_host is not None:
+            self.advertise_host = str(self.advertise_host).strip() or None
 
     # --- booth-v2 config files --------------------------------------------
 
@@ -132,6 +138,7 @@ class HostConfig:
         take("replay_dir", "REPLAY_DIR")
         take("layout_file", "LAYOUT_FILE")
         take("branding_file", "BRANDING_FILE")
+        take("advertise_host", "ADVERTISE_HOST")
         if (raw := env.get(_ENV_PREFIX + "NO_TLS")) is not None:
             values["tls"] = raw.strip().lower() not in ("1", "true", "yes", "on")
 
@@ -144,6 +151,19 @@ class HostConfig:
             values[key] = val
 
         return cls(**values)  # type: ignore[arg-type]
+
+
+def advertised_host(config: HostConfig) -> str:
+    """The host every URL / QR must carry: ``advertise_host`` or the LAN IP.
+
+    Every URL-building site (CLI prints, ``qr``, ``/api/qr``, ``/api/visitor-qr``,
+    ``/api/info``) goes through here so an override can never be half-applied.
+    """
+    if config.advertise_host:
+        return config.advertise_host
+    from .certs import primary_lan_ip  # lazy: keeps config free of cryptography
+
+    return primary_lan_ip()
 
 
 # --- source-spec factories -------------------------------------------------

@@ -1,4 +1,4 @@
-"""Self-signed cert generation: SANs, reuse, and key file permissions."""
+"""Self-signed cert generation (SANs, reuse, key permissions) + LAN IP detection."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import stat
 
 from cryptography import x509
 
+from qamposer_host import certs
 from qamposer_host.certs import ensure_cert
 
 
@@ -52,3 +53,98 @@ def test_cert_regenerated_when_sans_change(tmp_path):
     dns_b, _ = _load_sans(cert_path2)
     assert "host-b" in dns_b
     assert "host-a" not in dns_b
+
+
+def test_cert_sans_include_advertised_hosts(tmp_path):
+    cert_path, _ = ensure_cert(
+        tmp_path, hostname="host-a", extra_hosts=["entangible.local", "10.42.0.1"]
+    )
+    dns, ips = _load_sans(cert_path)
+    assert "entangible.local" in dns
+    assert "10.42.0.1" in ips
+    # Stable: the same advertised set reuses the cert…
+    first = cert_path.read_bytes()
+    ensure_cert(tmp_path, hostname="host-a", extra_hosts=["entangible.local", "10.42.0.1"])
+    assert cert_path.read_bytes() == first
+    # …and dropping it regenerates without it.
+    ensure_cert(tmp_path, hostname="host-a")
+    dns2, ips2 = _load_sans(cert_path)
+    assert "entangible.local" not in dns2
+
+
+# --- LAN address detection -------------------------------------------------
+
+
+def _fake_getaddrinfo(*ips):
+    def getaddrinfo(host, port, family=0, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_DGRAM, 0, "", (ip, 0)) for ip in ips]
+
+    return getaddrinfo
+
+
+def test_lan_ipv4s_drops_the_whole_loopback_block(monkeypatch):
+    # Debian/Raspberry Pi OS map the hostname to 127.0.1.1 — never advertisable.
+    monkeypatch.setattr(
+        socket, "getaddrinfo", _fake_getaddrinfo("127.0.1.1", "127.0.0.1", "10.42.0.1")
+    )
+    monkeypatch.setattr(certs, "_primary_lan_ip_or_none", lambda: None)
+    monkeypatch.setattr(certs, "_interface_ipv4s", lambda: ["127.0.0.1"])
+    assert certs.lan_ipv4s() == ["10.42.0.1"]
+
+
+def test_offline_hotspot_never_advertises_loopback(monkeypatch):
+    # Offline Pi hotspot: no route anywhere, hostname → 127.0.1.1 only.
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo("127.0.1.1"))
+    monkeypatch.setattr(certs, "_primary_lan_ip_or_none", lambda: None)
+    monkeypatch.setattr(certs, "_interface_ipv4s", lambda: ["127.0.0.1", "10.42.0.1"])
+    assert certs.primary_lan_ip() == "10.42.0.1"
+
+
+class _FakeSock:
+    """UDP socket whose connect() succeeds only for targets in ``routes``."""
+
+    routes: dict[str, str] = {}
+    tried: list[str] = []
+
+    def __init__(self, *args, **kwargs):
+        self._ip = None
+
+    def setsockopt(self, *args):
+        pass
+
+    def connect(self, addr):
+        _FakeSock.tried.append(addr[0])
+        if addr[0] not in _FakeSock.routes:
+            raise OSError("Network is unreachable")
+        self._ip = _FakeSock.routes[addr[0]]
+
+    def getsockname(self):
+        return (self._ip, 54321)
+
+    def close(self):
+        pass
+
+
+def _route_probe(monkeypatch, routes):
+    _FakeSock.routes = routes
+    _FakeSock.tried = []
+    monkeypatch.setattr(socket, "socket", _FakeSock)
+    return certs._primary_lan_ip_or_none()
+
+
+def test_primary_ip_prefers_the_internet_route(monkeypatch):
+    ip = _route_probe(monkeypatch, {"8.8.8.8": "192.168.178.20", "10.255.255.255": "10.0.0.5"})
+    assert ip == "192.168.178.20"
+    assert _FakeSock.tried == ["8.8.8.8"]
+
+
+def test_primary_ip_falls_back_to_private_routes_offline(monkeypatch):
+    ip = _route_probe(monkeypatch, {"192.168.255.255": "192.168.4.1"})
+    assert ip == "192.168.4.1"
+    assert _FakeSock.tried == ["8.8.8.8", "10.255.255.255", "192.168.255.255"]
+
+
+def test_primary_ip_skips_loopback_answers(monkeypatch):
+    ip = _route_probe(monkeypatch, {"8.8.8.8": "127.0.1.1", "172.31.255.255": "172.20.0.1"})
+    assert ip == "172.20.0.1"
+    assert _route_probe(monkeypatch, {}) is None

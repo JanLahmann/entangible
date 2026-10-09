@@ -299,6 +299,9 @@ export interface SelectCamera {
   kind: CameraKind;
   /** Only meaningful for `cv2`. */
   index?: number;
+  /** Only meaningful for `replay`: a bare recording name from `/api/cameras`,
+   *  resolved by the host against its replay dir. */
+  name?: string;
 }
 
 /** `select_mode` — switch the booth's display mode (additive, booth-v2). */

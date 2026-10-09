@@ -19,7 +19,18 @@ import logging
 import httpx
 from fastapi import FastAPI
 
-from . import branding, dispatch, layout, menu, preview, proxy, static, ws_frames, ws_state
+from . import (
+    branding,
+    cameras,
+    dispatch,
+    layout,
+    menu,
+    preview,
+    proxy,
+    static,
+    ws_frames,
+    ws_state,
+)
 from .branding import load_branding
 from .config import HostConfig, build_frame_source, camera_from_spec, ensure_push_source
 from .dispatch import Dispatcher, load_dispatch_config
@@ -56,6 +67,10 @@ def create_app(
     app.state.pipeline = pipeline
     app.state.push_source = None
     app.state.source_factory = source_factory or build_frame_source
+    # The spec the pipeline is running on (updated by select_camera); the
+    # /api/cameras scan never re-opens the cv2 index it names.
+    app.state.source_spec = config.source
+    app.state.camera_prober = None  # test seam; None → cameras.probe_cv2_index
     app.state.http_client = None
     app.state.owns_pipeline = False
     app.state.backend_health = BackendHealth(
@@ -88,6 +103,7 @@ def create_app(
     app.include_router(branding.router)
     app.include_router(menu.router)
     app.include_router(dispatch.router)
+    app.include_router(cameras.router)
     app.include_router(static.router)
 
     return app

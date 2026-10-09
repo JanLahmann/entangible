@@ -4,6 +4,7 @@ Subcommands:
 
 * ``run``   — start the kiosk host under uvicorn, with self-signed TLS by
   default (``--no-tls`` for plain-HTTP dev). ``--open`` launches a browser.
+  Every URL it prints opens as-is (the staff ``/debug`` one carries the key).
 * ``qr``    — print the phone-capture URL (with the operator key embedded) as an
   ASCII QR code to the terminal.
 * ``token`` — print the shared operator token (generating it on first use);
@@ -17,8 +18,8 @@ import sys
 import threading
 import webbrowser
 
-from .certs import ensure_cert, primary_lan_ip
-from .config import HostConfig
+from .certs import ensure_cert
+from .config import HostConfig, advertised_host
 from .token import ensure_token, rotate_token
 
 
@@ -31,6 +32,12 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
         "--path",
         default="/pocket?connect=1&role=camera",
         help="target path for QR URLs (default: the camera role)",
+    )
+    parser.add_argument(
+        "--advertise-host",
+        default=None,
+        help="host name or IP to put in printed URLs / QR codes and the cert "
+        "(default: the detected LAN IP; env QAMPOSER_ADVERTISE_HOST)",
     )
 
 
@@ -75,7 +82,26 @@ def _config_from_run_args(args: argparse.Namespace) -> HostConfig:
         config_dir=args.config_dir,
         branding_file=args.branding,
         tls=False if args.no_tls else None,
+        advertise_host=args.advertise_host,
     )
+
+
+def _qr_command(args: argparse.Namespace, config: HostConfig) -> str:
+    """The ``qr`` invocation that encodes the same origin this ``run`` serves.
+
+    Printed verbatim at startup, so it repeats every flag that changes the URL
+    or the token location (``qr`` does not see ``run``'s arguments).
+    """
+    parts = ["qamposer-physical qr"]
+    if not config.tls:
+        parts.append("--no-tls")
+    if args.port is not None:
+        parts.append(f"--port {config.port}")
+    if args.cert_dir is not None:
+        parts.append(f"--cert-dir {config.cert_dir}")
+    if args.advertise_host is not None and config.advertise_host:
+        parts.append(f"--advertise-host {config.advertise_host}")
+    return " ".join(parts)
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
@@ -87,20 +113,29 @@ def _cmd_run(args: argparse.Namespace) -> int:
     app = create_app(config)
 
     scheme = "https" if config.tls else "http"
-    display_host = primary_lan_ip()
+    display_host = advertised_host(config)
     url = f"{scheme}://{display_host}:{config.port}/"
     # The big-screen booth skin is the `?kiosk` surface of the one app; --open
     # (and `make demo`) launch it already asking to connect to this host.
     kiosk_url = f"{url}?kiosk&connect=1"
+    # Staff /debug data endpoints are operator-gated: a keyless URL would 403 or
+    # prompt, so the printed one carries the key (the page stores it and strips
+    # it from the address bar).
+    token = app.state.operator_token
     print(f"Entangible host → {url}  (source: {config.source}, backend: {config.backend})")
     if config.source.startswith("replay:"):
         print("  NOTE: replay source — this is the recorded DEMO loop, not a live camera")
     print(f"  kiosk screen:  {kiosk_url}")
-    print(f"  debug preview: {scheme}://{display_host}:{config.port}/debug/snapshot.jpg")
+    print(f"  staff debug:   {scheme}://{display_host}:{config.port}/debug?key={token}")
+    print(f"  phone camera:  run `{_qr_command(args, config)}` for the staff QR (also on /debug)")
 
     kwargs: dict = {"host": config.host, "port": config.port}
     if config.tls:
-        cert_path, key_path = ensure_cert(config.cert_dir, hostname=display_host)
+        cert_path, key_path = ensure_cert(
+            config.cert_dir,
+            hostname=display_host,
+            extra_hosts=[config.advertise_host] if config.advertise_host else (),
+        )
         kwargs["ssl_certfile"] = str(cert_path)
         kwargs["ssl_keyfile"] = str(key_path)
 
@@ -114,7 +149,11 @@ def _cmd_run(args: argparse.Namespace) -> int:
 def _cmd_qr(args: argparse.Namespace) -> int:
     import qrcode
 
-    config = HostConfig.from_env(cert_dir=args.cert_dir, config_dir=args.config_dir)
+    config = HostConfig.from_env(
+        cert_dir=args.cert_dir,
+        config_dir=args.config_dir,
+        advertise_host=args.advertise_host,
+    )
     port = args.port or config.port
     scheme = "http" if args.no_tls else "https"
     path = args.path if args.path.startswith("/") else "/" + args.path
@@ -124,7 +163,7 @@ def _cmd_qr(args: argparse.Namespace) -> int:
     token = ensure_token(config.cert_dir)
     sep = "&" if "?" in path else "?"
     path = f"{path}{sep}key={token}"
-    url = f"{scheme}://{primary_lan_ip()}:{port}{path}"
+    url = f"{scheme}://{advertised_host(config)}:{port}{path}"
     qr = qrcode.QRCode(border=1)
     qr.add_data(url)
     qr.make(fit=True)

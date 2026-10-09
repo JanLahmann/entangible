@@ -5,6 +5,9 @@ Entangible One (U3): the host serves the ONE built app — the pocket build — 
 is retired; the big-screen booth skin is now the pocket app's ``?kiosk``
 surface and ``/debug`` is one of its routes.
 
+Every URL these endpoints build carries :func:`~qamposer_host.config.advertised_host`
+(``--advertise-host`` / ``QAMPOSER_ADVERTISE_HOST``, else the detected LAN IP).
+
 * ``GET /api/qr`` — a PNG QR encoding
   ``https://<lan-ip>:<port><path>&key=<operator-token>`` (``http`` when TLS is
   off). **Staff-gated:** requires the operator token (query param or
@@ -45,7 +48,7 @@ import qrcode
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 
-from .certs import primary_lan_ip
+from .config import advertised_host
 from .preview import require_operator_key
 
 logger = logging.getLogger("qamposer_host.static")
@@ -69,8 +72,9 @@ _NOT_BUILT_HTML = """<!doctype html>
  <h1><span class="en">En</span>tangible host is running</h1>
  <p>The app has not been built yet. Build it with:</p>
  <p><code>cd pocket-app &amp;&amp; npm ci &amp;&amp; npm run build</code></p>
- <p>The API, WebSocket and <a href="/debug/snapshot.jpg">/debug</a> endpoints are
-    already live — this page is served in place of <code>pocket-app/dist</code>.</p>
+ <p>The API, WebSocket and <code>/debug/stream?key=&lt;operator token&gt;</code>
+    endpoints are already live — this page is served in place of
+    <code>pocket-app/dist</code>.</p>
 </main></body></html>
 """
 
@@ -102,7 +106,7 @@ async def qr(request: Request, path: str = "/pocket?connect=1&role=camera") -> R
     # can enter the pocket camera role and connect to /ws/frames + /ws/state as
     # an operator (both token-gated). `/pocket` redirects to `/`.
     path = _with_key(path, request.app.state.operator_token)
-    url = f"{scheme}://{primary_lan_ip()}:{config.port}{path}"
+    url = f"{scheme}://{advertised_host(config)}:{config.port}{path}"
     return Response(
         content=_qr_png(url),
         media_type="image/png",
@@ -123,7 +127,7 @@ async def visitor_qr(request: Request) -> Response:
     """
     config = request.app.state.config
     scheme = "https" if config.tls else "http"
-    url = f"{scheme}://{primary_lan_ip()}:{config.port}/pocket?connect=1"
+    url = f"{scheme}://{advertised_host(config)}:{config.port}/pocket?connect=1"
     return Response(
         content=_qr_png(url),
         media_type="image/png",
@@ -141,7 +145,7 @@ async def info(request: Request) -> dict:
     """
     config = request.app.state.config
     scheme = "https" if config.tls else "http"
-    ip = primary_lan_ip()
+    ip = advertised_host(config)
     return {
         "lanIp": ip,
         "port": config.port,

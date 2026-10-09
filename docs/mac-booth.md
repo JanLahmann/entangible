@@ -27,14 +27,21 @@ On start the host prints the URLs:
 ```
 Entangible host → https://192.168.178.107:8443/   (source: cv2:0, backend: off)
   kiosk screen:  https://192.168.178.107:8443/?kiosk&connect=1
-  debug preview: https://192.168.178.107:8443/debug/snapshot.jpg
+  staff debug:   https://192.168.178.107:8443/debug?key=<operator token>
+  phone camera:  run `qamposer-physical qr` for the staff QR (also on /debug)
 ```
 
-Open `https://<that-ip>:8443/?kiosk&connect=1` on the booth screen for the
+Every printed URL opens as-is — the staff one carries the operator key. Open
+`https://<that-ip>:8443/?kiosk&connect=1` on the booth screen for the
 big-screen kiosk skin (or `https://<that-ip>:8443/` for the standard app).
-`/debug` shows the annotated
-camera preview, the marker table, and a **Phone camera** card with the QR code
-and cert-tap-through steps.
+`/debug` leads with a READY traffic light (host link · camera · frames ·
+board, each with its first fix), then the annotated camera preview, a camera
+picker ("Scan cameras" probes the host's devices), the marker table, and a
+**Phone camera** card with the QR code and cert-tap-through steps.
+
+On a hotspot, or when the detected LAN IP is not what phones should use, pin
+the address every URL/QR and the TLS cert carry:
+`--advertise-host <name-or-ip>` (env `QAMPOSER_ADVERTISE_HOST`).
 
 ## TLS: on by default, `--no-tls` for local dev
 

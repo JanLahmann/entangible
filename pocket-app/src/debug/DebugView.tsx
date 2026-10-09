@@ -5,12 +5,14 @@
  * component on `location.pathname` (see `../app/surface`).
  *
  * Left: the live annotated MJPEG preview served by the host at /debug/stream.
- * Right: a dense monospace dump of the latest `detection` + `status` frames,
- * plus the staff Layout card.
+ * Right: the READY traffic light, a dense monospace dump of the latest
+ * `detection` + `status` frames, then the staff Camera / Layout / Quantina /
+ * Dispatch cards.
  *
  * This is the ONLY pocket surface that authenticates as an OPERATOR and sends
- * `select_layout` / `select_mode` (via the isolated `./debugSocket`) — the
- * viewer-policy exception. Everything else here is read-only diagnostics.
+ * `select_camera` / `select_layout` / `select_mode` (via the isolated
+ * `./debugSocket`) — the viewer-policy exception. Everything else here is
+ * read-only diagnostics.
  */
 import { useEffect, useState, type CSSProperties } from 'react';
 import { useDebugState } from './debugSocket';
@@ -21,13 +23,21 @@ import {
   storeOperatorKey,
   withKey,
 } from '@shared/ws/operatorKey';
-import type { DisplayMode, NoisePreset, ShotSource, SidebarSide, Wires } from '@shared/ws/messages';
+import type {
+  CameraStatus,
+  DisplayMode,
+  NoisePreset,
+  ShotSource,
+  SidebarSide,
+  Wires,
+} from '@shared/ws/messages';
 import { BUILTIN_PACKS } from '@shared/menu/builtinPacks';
 import { cryptoRng } from '@shared/menu/sample';
 import { menuOutcomes, serveFrom } from '../app/quantina';
 import { useResolvedPack } from '../app/packSource';
 import { noiseSeries } from '../app/ResultsHistogram';
 import { markerLabel } from './markerLabels';
+import { readiness } from './readiness';
 import './debug.css';
 
 function fmt(n: number | null | undefined, digits = 2): string {
@@ -101,6 +111,211 @@ function PhoneCameraCard() {
           </div>
         </div>
       </div>
+    </section>
+  );
+}
+
+/** Re-render on a clock tick so ages ("seen 4s ago", stale frames) advance. */
+function useNow(intervalMs = 1000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), intervalMs);
+    return () => window.clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
+/**
+ * READY traffic light (first card, readable across the booth): READY only when
+ * the host link, camera, frames and board are ALL green; each red row carries
+ * the first fix to try. The detection/board timestamps are tracked here because
+ * a frozen host stops sending — the last snapshot alone would stay green.
+ */
+function ReadyCard() {
+  const { connectionState, status, detection } = useDebugState();
+  const now = useNow();
+  const [lastDetectionAt, setLastDetectionAt] = useState<number | null>(null);
+  const [lastBoardAt, setLastBoardAt] = useState<number | null>(null);
+
+  // Each `detection` message is a fresh object, so identity marks arrival.
+  useEffect(() => {
+    if (!detection) return;
+    const t = Date.now();
+    setLastDetectionAt(t);
+    if (detection.board?.found) setLastBoardAt(t);
+  }, [detection]);
+
+  const { ready, rows } = readiness({
+    connectionState,
+    camera: status?.camera,
+    fps: detection?.fps,
+    detectionAgeMs: lastDetectionAt === null ? null : Math.max(0, now - lastDetectionAt),
+    boardFound: !!detection?.board?.found,
+    boardSeenAgoMs: lastBoardAt === null ? null : Math.max(0, now - lastBoardAt),
+  });
+
+  return (
+    <section className="debug__section debug__ready" aria-label="booth readiness">
+      <div
+        role="status"
+        className={`debug__ready-banner ${ready ? 'debug__ready-banner--ok' : 'debug__ready-banner--no'}`}
+      >
+        {ready ? 'READY' : 'NOT READY'}
+      </div>
+      <ul className="debug__checks">
+        {rows.map((r) => (
+          <li key={r.key} className="debug__check" data-check={r.key} data-ok={r.ok}>
+            <span className={r.ok ? 'debug__check-mark--ok' : 'debug__check-mark--no'} aria-hidden>
+              {r.ok ? '✓' : '✗'}
+            </span>
+            <span className="debug__check-label">{r.label}</span>
+            <span className="debug__check-detail">{r.detail}</span>
+            {!r.ok && <span className="debug__check-hint">{r.hint}</span>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+interface CameraScan {
+  active: string;
+  cameras: {
+    spec: string;
+    kind: 'cv2';
+    index: number;
+    ok: boolean;
+    width: number | null;
+    height: number | null;
+    active: boolean;
+  }[];
+  picamera2: boolean;
+  replays: string[];
+  push: boolean;
+}
+
+/** Live `status.camera` as one line (shared by the camera + status cards). */
+function cameraLine(camera: CameraStatus | undefined): string {
+  if (!camera) return '—';
+  return `${camera.kind}${camera.name ? ` (${camera.name})` : ''} · ${
+    camera.lost
+      ? 'LOST — no frames for 2 s, reopening (check the cable)'
+      : camera.connected
+        ? 'connected'
+        : 'offline'
+  }`;
+}
+
+/**
+ * "Camera" card: pick the pipeline's frame source. Scanning opens real devices
+ * on the host, so it runs ONLY on the button (never on mount, never polled);
+ * the device the pipeline already holds is reported, not re-opened. Active
+ * marking follows the live `status.camera`, so it flips the moment the host
+ * swaps. Replays are labelled as the recorded demo loop — never a live camera.
+ */
+function CameraCard() {
+  const { status } = useDebugState();
+  const socket = getDebugSocket();
+  const camera = status?.camera;
+  const [scan, setScan] = useState<CameraScan | null>(null);
+  const [scanState, setScanState] = useState<'idle' | 'scanning' | 'failed'>('idle');
+
+  const doScan = () => {
+    setScanState('scanning');
+    fetch(withKey('/api/cameras'))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: CameraScan | null) => {
+        setScan(data);
+        setScanState(data ? 'idle' : 'failed');
+      })
+      .catch(() => setScanState('failed'));
+  };
+
+  const selectCv2 = (index: number) =>
+    socket.sendMessage({ type: 'select_camera', kind: 'cv2', index });
+  const selectKind = (kind: 'picamera2' | 'push') =>
+    socket.sendMessage({ type: 'select_camera', kind });
+  // The host resolves a bare recording name against its replay dir.
+  const selectReplay = (name: string) =>
+    socket.sendMessage({ type: 'select_camera', kind: 'replay', name });
+
+  const isActive = (kind: CameraStatus['kind'], name?: string) =>
+    camera?.kind === kind && (name === undefined || camera.name === name);
+
+  const pillStyle = (active: boolean): CSSProperties => ({
+    padding: '0.3rem 0.8rem',
+    borderRadius: 999,
+    border: '1px solid var(--ent-border, #333)',
+    background: active ? 'var(--ent-accent, #0f62fe)' : 'transparent',
+    color: active ? '#fff' : 'var(--ent-text, #e6e6ea)',
+    cursor: 'pointer',
+    fontSize: '0.85rem',
+  });
+
+  const row = (key: string, active: boolean, label: string, detail: string, onSelect: () => void) => (
+    <div key={key} data-source={key} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+      <button type="button" style={pillStyle(active)} aria-pressed={active} onClick={onSelect}>
+        {label}
+      </button>
+      <span className={active ? undefined : 'debug__muted'}>
+        {detail}
+        {active ? ' · active' : ''}
+      </span>
+    </div>
+  );
+
+  return (
+    <section className="debug__section">
+      <h2>camera</h2>
+      <div style={{ marginBottom: '0.6rem' }} className={camera?.lost ? 'debug__row-off' : undefined}>
+        {cameraLine(camera)}
+      </div>
+      <button
+        type="button"
+        style={{ ...pillStyle(false), opacity: scanState === 'scanning' ? 0.6 : 1 }}
+        disabled={scanState === 'scanning'}
+        onClick={doScan}
+      >
+        {scanState === 'scanning' ? 'Scanning…' : 'Scan cameras'}
+      </button>
+      {scanState === 'failed' && (
+        <div className="debug__row-off" style={{ marginTop: '0.4rem' }}>
+          scan failed — check the operator key / host
+        </div>
+      )}
+      {scan && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginTop: '0.6rem' }}>
+          {scan.cameras.length === 0 && <span className="debug__muted">no USB cameras found</span>}
+          {scan.cameras.map((c) =>
+            row(
+              c.spec,
+              isActive('cv2', c.spec),
+              c.spec,
+              c.active
+                ? `in use by the pipeline${c.ok ? '' : ' · no frames'}`
+                : c.ok
+                  ? c.width && c.height
+                    ? `${c.width}×${c.height}`
+                    : 'ok'
+                  : 'opens but no frame (busy?)',
+              () => selectCv2(c.index),
+            ),
+          )}
+          {scan.picamera2 &&
+            row('picamera2', isActive('picamera2'), 'picamera2', 'Pi camera module', () =>
+              selectKind('picamera2'),
+            )}
+          {scan.push &&
+            row('push', isActive('push'), 'phone', 'phone camera (scan the QR below)', () =>
+              selectKind('push'),
+            )}
+          {scan.replays.map((name) =>
+            row(`replay:${name}`, isActive('replay', name), name, 'recorded demo loop — not live', () =>
+              selectReplay(name),
+            ),
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -808,6 +1023,8 @@ export function DebugView() {
       </div>
 
       <div className="debug__right">
+        <ReadyCard />
+
         <section className="debug__section">
           <h2>pipeline</h2>
           <table className="debug__kv">
@@ -842,17 +1059,7 @@ export function DebugView() {
             <tbody>
               <tr className={status?.camera.lost ? 'debug__row-off' : undefined}>
                 <td>camera</td>
-                <td>
-                  {status
-                    ? `${status.camera.kind}${status.camera.name ? ` (${status.camera.name})` : ''} · ${
-                        status.camera.lost
-                          ? 'LOST — no frames for 2 s, reopening (check the cable)'
-                          : status.camera.connected
-                            ? 'connected'
-                            : 'offline'
-                      }`
-                    : '—'}
-                </td>
+                <td>{cameraLine(status?.camera)}</td>
               </tr>
               <tr>
                 <td>backend</td>
@@ -871,6 +1078,8 @@ export function DebugView() {
             </tbody>
           </table>
         </section>
+
+        <CameraCard />
 
         <LayoutCard />
 

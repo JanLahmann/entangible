@@ -1,11 +1,11 @@
-"""Self-signed TLS cert generation (SANs = hostname + LAN IPs).
+"""Self-signed TLS cert generation (SANs = hostname + LAN IPs + advertised host).
 
 The iPhone ``getUserMedia`` capture page and any LAN browser need a secure
 origin, so the host serves HTTPS from a self-signed certificate generated on
 first run. :func:`ensure_cert` is idempotent: it regenerates only when the cert
 is missing, expired, or its SAN set no longer matches the machine's current
-hostname + LAN IPv4s (e.g. after moving networks). The private key is written
-with ``0o600`` permissions.
+hostname + LAN IPv4s (e.g. after moving networks) + the configured
+``--advertise-host``. The private key is written with ``0o600`` permissions.
 """
 
 from __future__ import annotations
@@ -15,7 +15,9 @@ import ipaddress
 import logging
 import os
 import socket
+import sys
 from pathlib import Path
+from typing import Iterable
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -33,6 +35,19 @@ _RENEW_MARGIN_DAYS = 7
 # --- network helpers -------------------------------------------------------
 
 
+#: UDP-connect targets for :func:`_primary_lan_ip_or_none`, in order. The first
+#: finds the internet-facing interface; the private broadcast-ish ones find an
+#: interface with a matching local route when there is no default route (an
+#: offline Pi hotspot serving its own subnet).
+_ROUTE_PROBES = ("8.8.8.8", "10.255.255.255", "192.168.255.255", "172.31.255.255")
+
+
+def _is_usable_ipv4(ip: str) -> bool:
+    # The whole 127/8 block is loopback: Debian maps the hostname to 127.0.1.1,
+    # which a phone can never reach.
+    return bool(ip) and not ip.startswith("127.") and ip != "0.0.0.0"
+
+
 def lan_ipv4s() -> list[str]:
     """Return the machine's non-loopback IPv4 addresses (best effort)."""
     ips: set[str] = set()
@@ -42,29 +57,76 @@ def lan_ipv4s() -> list[str]:
             ips.add(info[4][0])
     except OSError:
         pass
+    ips.update(_interface_ipv4s())
     primary = _primary_lan_ip_or_none()
     if primary:
         ips.add(primary)
-    ips.discard("127.0.0.1")
-    return sorted(ips, key=lambda s: tuple(int(p) for p in s.split(".")))
+    return sorted(
+        (ip for ip in ips if _is_usable_ipv4(ip)),
+        key=lambda s: tuple(int(p) for p in s.split(".")),
+    )
+
+
+def _interface_ipv4s() -> list[str]:
+    """Per-interface IPv4s via ``SIOCGIFADDR`` (Linux only; ``[]`` elsewhere).
+
+    The hostname lookup on an offline Pi yields only 127.0.1.1, and the route
+    probes miss a /24 hotspot subnet, so read the interfaces directly.
+    """
+    # The ioctl number is Linux's; never issue it on another kernel.
+    if not sys.platform.startswith("linux"):
+        return []
+    import fcntl
+    import struct
+
+    siocgifaddr = 0x8915
+    found: list[str] = []
+    try:
+        names = [name for _, name in socket.if_nameindex()]
+    except OSError:
+        return []
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        for name in names:
+            try:
+                packed = fcntl.ioctl(
+                    sock.fileno(), siocgifaddr,
+                    struct.pack("256s", name.encode()[:15]),
+                )
+            except OSError:
+                continue  # no IPv4 address on this interface
+            found.append(socket.inet_ntoa(packed[20:24]))
+    finally:
+        sock.close()
+    return found
 
 
 def _primary_lan_ip_or_none() -> str | None:
-    """The IPv4 the OS would use to reach the internet (no packets sent)."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        sock.connect(("8.8.8.8", 80))
-        return sock.getsockname()[0]
-    except OSError:
-        return None
-    finally:
-        sock.close()
+    """The IPv4 the OS would route outbound traffic from (no packets sent).
+
+    Tries the internet route first, then private broadcast-ish targets so an
+    offline access point still resolves to its own subnet address.
+    """
+    for target in _ROUTE_PROBES:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            # Linux refuses connect() to a broadcast address without this.
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            sock.connect((target, 80))
+            ip = sock.getsockname()[0]
+        except OSError:
+            continue
+        finally:
+            sock.close()
+        if _is_usable_ipv4(ip):
+            return ip
+    return None
 
 
 def primary_lan_ip() -> str:
     """The best LAN IPv4 for building QR / capture URLs; falls back to loopback."""
     primary = _primary_lan_ip_or_none()
-    if primary and primary != "127.0.0.1":
+    if primary:
         return primary
     others = lan_ipv4s()
     return others[0] if others else "127.0.0.1"
@@ -73,10 +135,24 @@ def primary_lan_ip() -> str:
 # --- certificate lifecycle -------------------------------------------------
 
 
-def _desired_sans(hostname: str) -> tuple[set[str], set[str]]:
-    """Return (dns_names, ip_addresses) the cert should cover."""
+def _desired_sans(
+    hostname: str, extra_hosts: Iterable[str] = ()
+) -> tuple[set[str], set[str]]:
+    """Return (dns_names, ip_addresses) the cert should cover.
+
+    ``extra_hosts`` (e.g. ``--advertise-host``) land in the IP or DNS set by
+    whether they parse as an address, so the advertised URL always verifies.
+    """
     dns = {hostname, "localhost"}
     ips = {"127.0.0.1", *lan_ipv4s()}
+    for host in extra_hosts:
+        host = (host or "").strip()
+        if not host:
+            continue
+        try:
+            ips.add(str(ipaddress.ip_address(host)))
+        except ValueError:
+            dns.add(host)
     return dns, ips
 
 
@@ -153,11 +229,13 @@ def ensure_cert(
     cert_dir: str | os.PathLike[str],
     hostname: str | None = None,
     validity_days: int = _DEFAULT_VALIDITY_DAYS,
+    extra_hosts: Iterable[str] = (),
 ) -> tuple[Path, Path]:
     """Ensure a valid self-signed cert exists in ``cert_dir``.
 
     Returns ``(cert_path, key_path)``. Reuses an existing cert when it is
-    unexpired and its SANs still match; otherwise regenerates.
+    unexpired and its SANs still match; otherwise regenerates. ``extra_hosts``
+    adds names/IPs beyond the detected ones (the ``--advertise-host``).
     """
     cert_dir = Path(cert_dir)
     cert_dir.mkdir(parents=True, exist_ok=True)
@@ -165,7 +243,7 @@ def ensure_cert(
     key_path = cert_dir / KEY_NAME
     hostname = hostname or socket.gethostname() or "localhost"
 
-    dns, ips = _desired_sans(hostname)
+    dns, ips = _desired_sans(hostname, extra_hosts)
     if cert_path.exists() and key_path.exists() and _cert_matches(cert_path, dns, ips):
         logger.debug("reusing existing cert at %s", cert_path)
         return cert_path, key_path
