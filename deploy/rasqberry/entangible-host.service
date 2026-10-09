@@ -1,5 +1,6 @@
 # Entangible booth host — installed by deploy/rasqberry/install.sh, which
-# substitutes @USER@ and @REPO@. Settings live in /etc/default/entangible.
+# substitutes @USER@ (the desktop user) and @REPO@ (the checkout, wherever it
+# is). Settings live in /etc/default/entangible (never overwritten by install).
 [Unit]
 Description=Entangible booth host (kiosk + vision pipeline)
 After=network-online.target
@@ -10,6 +11,8 @@ Type=simple
 User=@USER@
 WorkingDirectory=@REPO@
 EnvironmentFile=-/etc/default/entangible
+# Unbuffered so the printed URLs reach journald immediately.
+Environment=PYTHONUNBUFFERED=1
 # The venv entry point directly — no uv/network at boot (booths run offline).
 ExecStart=@REPO@/.venv/bin/qamposer-physical run
 Restart=on-failure

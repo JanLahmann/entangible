@@ -12,8 +12,10 @@ optional in-browser noise model pairs realistic results beside the ideal ones
 with zero infrastructure — presets are calibration snapshots of four IBM chip
 generations (Falcon → Eagle → Heron → Nighthawk), so the "why quantum is hard"
 contrast works offline. Hosts: macOS (documented, see
-[`docs/mac-booth.md`](docs/mac-booth.md)) and Raspberry Pi 4/5 (install
-script + guide, see [`docs/rasqberry.md`](docs/rasqberry.md); a prebuilt
+[`docs/mac-booth.md`](docs/mac-booth.md)) and Raspberry Pi 4/5 on Pi OS
+Trixie (the `entangible` install/status command, see
+[`docs/rasqberry.md`](docs/rasqberry.md) and the RasQberry contract
+[`docs/rasqberry-integration.md`](docs/rasqberry-integration.md); a prebuilt
 flashable image is still to come). Cameras: USB / Pi Camera / Continuity
 Camera / iPhone browser streaming.
 

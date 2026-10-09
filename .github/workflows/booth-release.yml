@@ -1,0 +1,128 @@
+# Entangible booth web bundle — the prebuilt pocket-app for Raspberry Pi installs.
+#
+# A RasQberry A/B system update wipes the Pi's root filesystem and /home, so
+# deploy/rasqberry/install.sh reruns after every update. It must not need
+# Node/npm on the Pi (a Pi 4 build takes ~20 min), so it downloads this bundle
+# instead: the tag named in deploy/rasqberry/BUNDLE_TAG, verified by sha256.
+# Contract: docs/rasqberry-integration.md.
+#
+# Assets on the `booth-v*` release:
+#   * entangible-web-<tag>.tar.gz         — the contents of pocket-app/dist
+#   * entangible-web-<tag>.tar.gz.sha256  — `<hex>  <file name>`
+#
+# Cutting a release: commit BUNDLE_TAG = the new tag, then push that tag on the
+# same commit (the job fails if the two disagree, since installs at that commit
+# would otherwise fetch a different bundle). `booth-vN` is a full release,
+# `booth-vN-<suffix>` (e.g. booth-v2-rc1) a prerelease.
+#
+# Booth releases are NEVER marked "latest": the app and README download the
+# printable kit via releases/latest/download/<asset>, which the `kit-*`
+# releases (artifacts.yml) must keep owning.
+name: booth-release
+
+on:
+  push:
+    tags: ["booth-v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing booth-v* tag to (re)build the web bundle for"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: booth-release
+  cancel-in-progress: false
+
+jobs:
+  bundle:
+    name: build web bundle + release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Resolve tag
+        id: meta
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag="${INPUT_TAG}"
+          fi
+          case "$tag" in
+            booth-v*) ;;
+            *) echo "::error::tag '$tag' is not a booth-v* tag"; exit 1 ;;
+          esac
+          if [[ "$tag" =~ ^booth-v[0-9]+(\.[0-9]+)*$ ]]; then
+            prerelease=false
+          else
+            prerelease=true
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+      # Build exactly the tagged commit (also for a manual re-run).
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ steps.meta.outputs.tag }}
+
+      - name: Check BUNDLE_TAG matches the tag
+        run: |
+          set -euo pipefail
+          want="${{ steps.meta.outputs.tag }}"
+          have="$(tr -d '[:space:]' < deploy/rasqberry/BUNDLE_TAG)"
+          if [ "$have" != "$want" ]; then
+            echo "::error::deploy/rasqberry/BUNDLE_TAG is '$have' at this commit, tag is '$want' — commit BUNDLE_TAG first"
+            exit 1
+          fi
+
+      # Node 20 like ci.yml / deploy-pocket.yml: Node 22's bundled npm fails
+      # `npm ci` on the @qamposer/react git dependency.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: pocket-app/package-lock.json
+
+      - name: Install and build pocket-app
+        working-directory: pocket-app
+        run: |
+          npm ci
+          npm run build
+
+      - name: Package bundle
+        id: pack
+        run: |
+          set -euo pipefail
+          tag="${{ steps.meta.outputs.tag }}"
+          name="entangible-web-$tag.tar.gz"
+          test -f pocket-app/dist/index.html
+          mkdir -p release
+          # Deterministic-ish archive: sorted, numeric root owner, no mtimes noise.
+          tar -C pocket-app/dist --sort=name --owner=0 --group=0 --numeric-owner \
+            --mtime='2000-01-01 00:00Z' -czf "release/$name" .
+          (cd release && sha256sum "$name" > "$name.sha256")
+          cat "release/$name.sha256"
+          ls -l release
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release ${{ steps.meta.outputs.tag }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.meta.outputs.tag }}"
+          name="${{ steps.pack.outputs.name }}"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            flags=(--latest=false)
+            [ "${{ steps.meta.outputs.prerelease }}" = "true" ] && flags+=(--prerelease)
+            gh release create "$tag" "${flags[@]}" \
+              --title "Entangible booth web bundle $tag" \
+              --notes "Prebuilt pocket-app (pocket-app/dist) for Raspberry Pi / RasQberry installs, built from $(git rev-parse --short HEAD). Installed by deploy/rasqberry/install.sh when deploy/rasqberry/BUNDLE_TAG is $tag — see docs/rasqberry-integration.md. Not the printable kit (that is the kit-* releases)."
+          fi
+          gh release upload "$tag" --clobber "release/$name" "release/$name.sha256"

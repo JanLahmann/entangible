@@ -11,4 +11,4 @@ qamposer-assets = { workspace = true }
 
 # Dev tooling shared across the workspace, installed by `uv sync` by default.
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pyyaml>=6"]  # pyyaml: workflow-file tests (tests/test_deploy_scripts.py)

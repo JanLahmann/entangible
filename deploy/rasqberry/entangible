@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+# `entangible` — the stable command RasQberry (and operators) call.
+# Contract, exit codes and the status JSON schema: docs/rasqberry-integration.md.
+#
+# Works from wherever the checkout is (paths resolve relative to this file);
+# RasQberry's convention is ~/RasQberry-Two/demos/entangible. `--help`, `url`,
+# `status` and usage errors need neither systemd nor an install, so they are
+# safe to call on any machine (and in tests).
+set -euo pipefail
+
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+# shellcheck source=lib.sh
+. "$SCRIPT_DIR/lib.sh"
+
+PROG="entangible"
+# Ctrl+C anywhere -> 130 (RasQberry's convention). install.sh traps it itself to
+# clean up partial downloads first.
+trap 'exit "$ENT_EXIT_INTERRUPTED"' INT TERM
+
+usage() {
+  cat <<EOF
+usage: $PROG <command> [options]
+
+commands:
+  install [--kiosk] [--build-web]   install or update (idempotent; repeat after an A/B update)
+  uninstall [--purge] [--purge-cache]
+                                    remove the service + kiosk autostart; --purge also the
+                                    settings, venv, web bundle and TLS certs/token;
+                                    --purge-cache also the download cache on /data
+  start | stop | restart            control the $ENT_UNIT systemd service
+  status                            one line of JSON (installed, running, health, URLs)
+  url [--visitor]                   the booth-screen URL (or the URL phones open)
+  doctor                            preflight checklist (camera, port, TLS, token)
+  --version                         print the checkout version and web bundle tag
+  -h, --help                        this help
+
+exit codes: 0 ok · 1 failure · 2 usage error · 3 not installed ·
+            4 download/verify failure · 5 unsupported OS/arch · 130 interrupted
+EOF
+}
+
+die_usage() { echo "$PROG: $*" >&2; echo "Try '$PROG --help'." >&2; exit "$ENT_EXIT_USAGE"; }
+
+have_systemctl() { command -v systemctl >/dev/null 2>&1; }
+
+is_installed() {
+  have_systemctl && [ -f "$(ent_unit_file)" ] && [ -x "$ENT_VENV_DIR/bin/qamposer-physical" ]
+}
+
+is_running() { have_systemctl && systemctl is-active --quiet "$ENT_UNIT" 2>/dev/null; }
+
+require_installed() {
+  is_installed && return 0
+  echo "$PROG: not installed — run '$PROG install' first" >&2
+  exit "$ENT_EXIT_NOT_INSTALLED"
+}
+
+# Start logging to ~/.cache/rasqberry/entangible.log for state-changing
+# commands only (status/url are polled and would just flood the log).
+start_log() {
+  ent_resolve_user || exit "$ENT_EXIT_FAIL"
+  ent_start_log "$*"
+  export ENT_LOG_STARTED=1
+}
+
+# --- status ------------------------------------------------------------------
+# /api/health returns {"status":"ok","backend":{...},"camera":{kind,name,
+# connected,lost},"clients":N}. "ready" = host up AND camera connected and not
+# lost — the two READY-light rows the server knows (frames/board live in the
+# browser). null when the host did not answer.
+cmd_status() {
+  [ "$#" -eq 0 ] || die_usage "status takes no arguments"
+  local installed=false running=false health="unknown" ready="null" body="" bundle="null"
+  is_installed && installed=true
+  is_running && running=true
+  if command -v curl >/dev/null 2>&1; then
+    body="$(curl -ks --max-time 2 "$(ent_health_url)" 2>/dev/null || true)"
+    if printf '%s' "$body" | grep -q '"status"[[:space:]]*:[[:space:]]*"ok"'; then
+      health="ok"
+      ready="$(health_ready "$body")"
+    elif [ "$installed" = true ] || [ "$running" = true ]; then
+      health="down"
+    fi
+  fi
+  local tag; tag="$(ent_installed_bundle 2>/dev/null || true)"
+  [ -n "$tag" ] && bundle="$(ent_json_str "$tag")"
+  printf '{"installed":%s,"running":%s,"version":%s,"bundle":%s,"urls":{"kiosk":%s,"visitor":%s},"source":%s,"ready":%s,"health":%s}\n' \
+    "$installed" "$running" "$(ent_json_str "$(ent_version)")" "$bundle" \
+    "$(ent_json_str "$(ent_kiosk_url)")" "$(ent_json_str "$(ent_visitor_url)")" \
+    "$(ent_json_str "$(ent_source)")" "$ready" "$(ent_json_str "$health")"
+}
+
+# true/false/null from a health body; python3 when present (always on Pi OS),
+# else a conservative grep.
+health_ready() {
+  local body="$1" py=""
+  for py in "$ENT_VENV_DIR/bin/python" python3; do
+    command -v "$py" >/dev/null 2>&1 && break
+    py=""
+  done
+  if [ -n "$py" ]; then
+    printf '%s' "$body" | "$py" -c '
+import json, sys
+try:
+    cam = json.load(sys.stdin).get("camera") or {}
+    print("true" if cam.get("connected") and not cam.get("lost") else "false")
+except Exception:
+    print("null")
+' 2>/dev/null || echo null
+  elif printf '%s' "$body" | grep -q '"connected"[[:space:]]*:[[:space:]]*true' \
+       && ! printf '%s' "$body" | grep -q '"lost"[[:space:]]*:[[:space:]]*true'; then
+    echo true
+  else
+    echo false
+  fi
+}
+
+# --- service control ---------------------------------------------------------
+cmd_service() {
+  local action="$1"; shift
+  [ "$#" -eq 0 ] || die_usage "$action takes no arguments"
+  require_installed
+  start_log "$action"
+  ent_as_root systemctl "$action" "$ENT_UNIT"
+  echo "$ENT_UNIT: $action ok"
+}
+
+cmd_url() {
+  case "${1:-}" in
+    "") [ "$#" -le 1 ] || die_usage "url takes at most one option"; ent_kiosk_url ;;
+    --visitor) [ "$#" -eq 1 ] || die_usage "url takes at most one option"; ent_visitor_url ;;
+    *) die_usage "url: unknown option '$1' (supported: --visitor)" ;;
+  esac
+}
+
+cmd_doctor() {
+  [ -x "$ENT_VENV_DIR/bin/qamposer-physical" ] || {
+    echo "$PROG: not installed (no $ENT_VENV_DIR) — run '$PROG install' first" >&2
+    exit "$ENT_EXIT_NOT_INSTALLED"; }
+  start_log "doctor $*"
+  if is_running; then
+    echo "note: the service is running, so the 'port' row is expected to be ✗ (it holds the port)."
+  fi
+  local assignments=()
+  while IFS= read -r line; do assignments+=("$line"); done < <(ent_env_assignments)
+  # As the desktop user, from the checkout: the cert/token live in their home
+  # and the default pocket-app/dist path is relative.
+  ent_as_user env ${assignments[@]+"${assignments[@]}"} bash -c 'cd "$1" && shift && exec "$@"' _ \
+    "$ENT_REPO_DIR" "$ENT_VENV_DIR/bin/qamposer-physical" doctor "$@"
+}
+
+cmd_install() {
+  local a
+  for a in "$@"; do
+    case "$a" in --kiosk|--build-web) ;; *) die_usage "install: unknown option '$a'" ;; esac
+  done
+  start_log "install $*"
+  exec bash "$SCRIPT_DIR/install.sh" "$@"
+}
+
+cmd_uninstall() {
+  local a
+  for a in "$@"; do
+    case "$a" in --purge|--purge-cache) ;; *) die_usage "uninstall: unknown option '$a'" ;; esac
+  done
+  start_log "uninstall $*"
+  exec bash "$SCRIPT_DIR/install.sh" --uninstall "$@"
+}
+
+[ "$#" -ge 1 ] || { usage >&2; exit "$ENT_EXIT_USAGE"; }
+cmd="$1"; shift
+case "$cmd" in
+  -h|--help|help) usage ;;
+  --version|version)
+    tag="$(ent_installed_bundle 2>/dev/null || true)"
+    echo "entangible $(ent_version) (bundle ${tag:-none}, expects $(ent_bundle_tag 2>/dev/null || echo '?'))" ;;
+  install) cmd_install "$@" ;;
+  uninstall) cmd_uninstall "$@" ;;
+  start|stop|restart) cmd_service "$cmd" "$@" ;;
+  status) cmd_status "$@" ;;
+  url) cmd_url "$@" ;;
+  doctor) cmd_doctor "$@" ;;
+  *) die_usage "unknown command '$cmd'" ;;
+esac
