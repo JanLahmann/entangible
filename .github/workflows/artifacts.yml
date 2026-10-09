@@ -17,6 +17,12 @@
 # `kit-*` tag. Generation is CAD-heavy (build123d/OpenCASCADE), so the four
 # variants — and then the four plate runs — are built in parallel across the
 # runner's cores; expect ~15-25 min.
+#
+# Releases do NOT auto-cut: whenever tile/board art, the marker table or the
+# kit composition changes on main, regenerate the committed examples
+# (examples/print, examples/test-boards) in the same change and push a new
+# `kit-*` tag — otherwise the "latest" downloads contradict the detector
+# (that is exactly how kit-8 shipped 4-label dials after #107).
 name: artifacts
 
 on:
@@ -177,12 +183,16 @@ jobs:
             cp "out/hardware-plates/$variant"/*.3mf \
                "out/hardware-plates/$variant"/*.md "kit3d/print-jobs/$variant"/
           done
+          cp hardware/START-HERE.md kit3d/START-HERE.md
           cp hardware/README.md kit3d/README.md
           (cd kit3d && zip -q -r -X ../dist/entangible-3d-tiles.zip .)
 
           (cd out/assets/laser && zip -q -r -X "$GITHUB_WORKSPACE/dist/entangible-laser-kit.zip" .)
 
           cp examples/print/entangible-print-kit-A4.pdf dist/
+          # Full-size single-sheet board (720x500 mm) for print shops — the
+          # guide links this asset by name.
+          cp out/assets/board/board_full.pdf dist/entangible-board-720x500.pdf
 
           echo "Provenance line in tile/plates.md:"
           grep -m1 '^> Generated' kit3d/tile/plates.md
@@ -204,4 +214,5 @@ jobs:
           gh release upload "$tag" --clobber \
             dist/entangible-3d-tiles.zip \
             dist/entangible-laser-kit.zip \
-            dist/entangible-print-kit-A4.pdf
+            dist/entangible-print-kit-A4.pdf \
+            dist/entangible-board-720x500.pdf

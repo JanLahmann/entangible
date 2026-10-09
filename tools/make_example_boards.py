@@ -109,12 +109,21 @@ def main() -> None:
             marker_id, row, col = placement[0], placement[1], placement[2]
             rotation = placement[3] if len(placement) > 3 else 0
             tile = rasterize(tile_svg(marker_id, cfg), cfg.tile.size, cfg.tile.size)
-            if rotation % 4:
-                # PIL rotates counter-clockwise; a tile turn is clockwise.
-                tile = tile.rotate(-90 * (rotation % 4), expand=False)
             cx = b.grid_offset_x + col * b.pitch + b.cell_size / 2
             cy = b.grid_offset_y + row * b.pitch + b.cell_size / 2
-            mat.paste(tile, (int(cx * SCALE - tile.width / 2), int(cy * SCALE - tile.height / 2)))
+            if rotation % 8:
+                # Rotations are octant-valued since #107 (clockwise 45° steps);
+                # PIL rotates counter-clockwise. An odd step needs the expanded
+                # bounding box and an alpha mask so the mat shows through the
+                # rotated tile's corners.
+                tile = tile.convert("RGBA").rotate(-45 * (rotation % 8), expand=True)
+                mat.paste(
+                    tile,
+                    (int(cx * SCALE - tile.width / 2), int(cy * SCALE - tile.height / 2)),
+                    tile,
+                )
+            else:
+                mat.paste(tile, (int(cx * SCALE - tile.width / 2), int(cy * SCALE - tile.height / 2)))
         path = out_dir / f"{name}.png"
         mat.save(path, optimize=True)
         readme.append(f"- **{name}.png** — {desc}")
