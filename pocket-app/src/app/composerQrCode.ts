@@ -23,7 +23,6 @@
  * `toString` renderer (no <canvas>, so it works in jsdom tests too).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import QRCode from 'qrcode';
 import { COMPOSER_BASE, composerUrl } from './composerTransfer';
 
 /** URLs up to this length use the sturdier level M; longer ones fall to L. */
@@ -51,8 +50,11 @@ export function planComposerQr(qasm: string): QrPlan {
   return { url, ecLevel, overLong };
 }
 
-/** Render a URL to an SVG-markup QR string (pure JS; canvas-free). */
-export function renderQrSvg(url: string, ecLevel: 'M' | 'L'): Promise<string> {
+/** Render a URL to an SVG-markup QR string (pure JS; canvas-free). The
+ *  `qrcode` library is its own chunk, fetched the first time a QR is drawn
+ *  (code splitting) — callers already wait on this promise. */
+export async function renderQrSvg(url: string, ecLevel: 'M' | 'L'): Promise<string> {
+  const { default: QRCode } = await import('qrcode');
   return QRCode.toString(url, {
     type: 'svg',
     errorCorrectionLevel: ecLevel,

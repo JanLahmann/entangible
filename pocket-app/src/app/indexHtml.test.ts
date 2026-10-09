@@ -1,6 +1,7 @@
 /**
- * index.html head regressions: pinch-zoom stays enabled (accessibility), and a
- * shared entangible.org link carries a real preview card.
+ * index.html regressions: pinch-zoom stays enabled (accessibility), a shared
+ * entangible.org link carries a real preview card, and the page paints a boot
+ * splash before any script arrives.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -35,5 +36,24 @@ describe('index.html', () => {
     expect(image).toMatch(/^https:\/\/entangible\.org\//);
     const rel = image!.replace('https://entangible.org/', '');
     expect(existsSync(fileURLToPath(new URL(`../../public/${rel}`, import.meta.url)))).toBe(true);
+  });
+});
+
+describe('index.html boot splash (no blank first paint)', () => {
+  const root = /<div id="root">([\s\S]*?)<\/div>\s*<script/.exec(html)?.[1] ?? '';
+
+  it('puts a static splash inside #root, for React to replace on mount', () => {
+    expect(root).toContain('class="boot-splash"');
+    expect(root).toContain('role="status"');
+    expect(root.replace(/<[^>]+>/g, '')).toContain('Entangible');
+    expect(root).toContain('Build quantum circuits with your hands');
+  });
+
+  it('styles the splash inline, in the token colours, with no external request', () => {
+    const style = /<style>([\s\S]*?)<\/style>/.exec(html)?.[1] ?? '';
+    expect(style).toContain('.boot-splash');
+    expect(style).toContain('#0f1117'); // --bg (also theme-color)
+    expect(style).toContain('#7a5cff'); // --entangle, the "En" of the brand
+    expect(style).not.toMatch(/url\(|@import/);
   });
 });

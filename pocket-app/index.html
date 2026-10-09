@@ -46,9 +46,56 @@
     <!-- Umami analytics — shared Fun with Quantum family property (cookie-free).
          data-domains keeps dev servers and offline/kiosk-LAN builds out of the numbers. -->
     <script defer src="https://cloud.umami.is/script.js" data-website-id="97f347ac-e7ba-4be3-b26f-ab4b328bdbf2" data-domains="entangible.org"></script>
+
+    <!-- Boot splash: painted from this file alone, before any script or
+         stylesheet arrives (a phone on a weak fair WLAN would otherwise stare at
+         a blank page). React replaces #root's contents on mount; the lazily
+         loaded kiosk / debug surfaces reuse these classes as their loading
+         fallback (LazyBoundary.tsx BootSplash). Colours are shared/tokens.css
+         (--bg, --text, --muted, --entangle): the app is dark-only, so the splash
+         stays dark under a light system theme too — no light→dark flash. -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #0f1117;
+        color-scheme: dark;
+      }
+      .boot-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.6rem;
+        padding: 1.5rem;
+        text-align: center;
+        background: #0f1117;
+        color: #e6e9ef;
+        font-family: 'IBM Plex Sans', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+      }
+      .boot-splash__brand {
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+      }
+      .boot-splash__en {
+        color: #7a5cff;
+      }
+      .boot-splash__line {
+        font-size: 1rem;
+        color: #8a91a0;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-splash" role="status">
+        <div class="boot-splash__brand"><span class="boot-splash__en">En</span>tangible</div>
+        <div class="boot-splash__line">Build quantum circuits with your hands</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -3692,3 +3692,39 @@ body,
 .pk-quantina-links a:hover {
   text-decoration: underline;
 }
+
+/* ---- lazily loaded parts (LazyBoundary.tsx) ----------------------------- */
+/*
+ * While a split-off chunk (Guide, Runner, Quantina menu, debug panel, kiosk /
+ * debug surfaces) downloads, a quiet "Loading…" note holds its place; if the
+ * chunk can't be fetched, a short message with a Reload button replaces it.
+ * The overlay variants cover the screen like the Guide they stand in for.
+ */
+.pk-lazy-loading,
+.pk-lazy-error {
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  color: var(--muted);
+  padding: 0.75rem 1rem;
+}
+
+.pk-lazy-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 0.9rem;
+  color: var(--text);
+}
+
+.pk-lazy-loading--overlay,
+.pk-lazy-error--overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}

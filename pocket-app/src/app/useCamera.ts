@@ -10,7 +10,8 @@
  * - Secure-context / permission errors surface as `error` for the start card.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PocketPipeline, type FrameResult } from '../vision/pipeline';
+// Type-only: the vision pipeline itself is a lazy chunk (see ensurePipeline).
+import type { PocketPipeline, FrameResult } from '../vision/pipeline';
 import { DEFAULT_BOARD_LAYOUT, type BoardLayout } from '../vision/boardModel';
 import { buildVideoConstraints, shouldFallbackToAuto } from './cameraDevices';
 import { applyVideoFreeze, shouldProcess, videoFreezeAction } from './freeze';
@@ -131,7 +132,12 @@ export function useCamera({
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const pipelineRef = useRef<PocketPipeline>(new PocketPipeline({ boardLayout }));
+  // The vision pipeline (marker detection → board → circuit) is the biggest
+  // piece of code a visitor may never need, so it is its own chunk: loaded on
+  // the first camera start (in parallel with the permission prompt), then kept.
+  const pipelineRef = useRef<PocketPipeline | null>(null);
+  const boardLayoutRef = useRef(boardLayout);
+  boardLayoutRef.current = boardLayout;
   const rafRef = useRef<number | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const skipRef = useRef(1);
@@ -173,6 +179,14 @@ export function useCamera({
     } catch {
       /* wake lock is best-effort */
     }
+  }, []);
+
+  const ensurePipeline = useCallback(async (): Promise<PocketPipeline> => {
+    if (pipelineRef.current) return pipelineRef.current;
+    const { PocketPipeline } = await import('../vision/pipeline');
+    // A second start may have built it while this one waited for the chunk.
+    pipelineRef.current ??= new PocketPipeline({ boardLayout: boardLayoutRef.current });
+    return pipelineRef.current;
   }, []);
 
   const loop = useCallback(() => {
@@ -222,7 +236,9 @@ export function useCamera({
         if (canvas.width !== w) canvas.width = w;
         if (canvas.height !== h) canvas.height = h;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        if (ctx) {
+        // The loop only runs once start() has the pipeline; the guard is for TS.
+        const pipeline = pipelineRef.current;
+        if (ctx && pipeline) {
           // Digital zoom: center-crop 1/zoom of the frame straight into the
           // full canvas (source-rect drawImage — no extra full-frame copy). At
           // zoom 1 (or native mode) this is the identity full-frame draw. The
@@ -232,7 +248,7 @@ export function useCamera({
           ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
           const image = ctx.getImageData(0, 0, w, h);
           const t0 = performance.now();
-          const result = pipelineRef.current.processFrame({
+          const result = pipeline.processFrame({
             data: image.data,
             width: w,
             height: h,
@@ -271,7 +287,7 @@ export function useCamera({
       wakeLockRef.current.release().catch(() => undefined);
       wakeLockRef.current = null;
     }
-    pipelineRef.current.reset();
+    pipelineRef.current?.reset();
     setStatus('idle');
     setFps(0);
   }, []);
@@ -286,6 +302,8 @@ export function useCamera({
       return;
     }
     setStatus('starting');
+    const pipelineReady = ensurePipeline();
+    pipelineReady.catch(() => undefined); // awaited below — never an unhandled rejection
     try {
       // A chosen camera targets one device (deviceId: exact); null asks for the
       // rear-facing camera. If a stored device is gone the exact request rejects
@@ -338,7 +356,20 @@ export function useCamera({
         applyZoom(clamped, 'digital');
       }
 
-      pipelineRef.current.reset();
+      let pipeline: PocketPipeline;
+      try {
+        pipeline = await pipelineReady;
+      } catch {
+        // The camera chunk didn't load (offline, or a stale page after a new
+        // release): release the camera we just opened and say how to recover.
+        for (const t of stream.getTracks()) t.stop();
+        streamRef.current = null;
+        trackRef.current = null;
+        setStatus('error');
+        setError("The camera code didn't load — check the connection and reload the page.");
+        return;
+      }
+      pipeline.reset();
       skipRef.current = 1;
       frameCountRef.current = 0;
       fpsEmaRef.current = 0;
@@ -356,13 +387,13 @@ export function useCamera({
             : `Could not start the camera (${name ?? 'unknown error'}).`,
       );
     }
-  }, [loop, requestWakeLock, zoom, applyZoom]);
+  }, [loop, requestWakeLock, zoom, applyZoom, ensurePipeline]);
 
   // Board layout (task #94): apply the current choice to the live pipeline, so
   // the settings drawer (or a booth broadcast) retunes detection on the next
   // frame instead of on the next camera start.
   useEffect(() => {
-    pipelineRef.current.setBoardLayout(boardLayout);
+    pipelineRef.current?.setBoardLayout(boardLayout);
   }, [boardLayout]);
 
   // Pause processing when the tab is hidden; resume (and re-acquire wake lock)

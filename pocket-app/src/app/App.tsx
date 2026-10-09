@@ -9,7 +9,7 @@
  *   changes; golf drives its own celebrations (hole-in banner). Settings live in
  *   localStorage with URL overrides; a debug panel appends the pipeline stats.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ThemeProvider,
   QamposerProvider,
@@ -39,7 +39,6 @@ import { framesSocketUrl } from '@shared/capture/streamController';
 import type { FrameStreamerStatus } from '@shared/capture/frameStreamer';
 import { useCamera } from './useCamera';
 import { pinchZoom, pointerDistance, cropRect, type Point as PinchPoint } from './zoom';
-import { detectMatRoi } from '../vision/matDetect';
 import type { Rect } from '@shared/capture/matRoi';
 import { MessageStrip, type StripMessage } from './MessageStrip';
 import { courseElapsed, tickCourseTimer } from '@shared/display/courseTimer';
@@ -51,11 +50,9 @@ import { StatePanel } from '@shared/display/StatePanel';
 import { ComposerHandoff } from './ComposerHandoff';
 import { EvolvingState } from '@shared/display/EvolvingState';
 import { Scorecard } from './Scorecard';
-import { DebugPanel } from './DebugPanel';
 import { SettingsControl } from './SettingsDrawer';
 import { TouchInspector } from './TouchInspector';
 import { toggleFrozen } from './freeze';
-import { GuidePage } from './GuidePage';
 import { useRoute } from './hashNav';
 import {
   settingsStore,
@@ -64,8 +61,8 @@ import {
   type Mode,
   type PanelId,
 } from './settings';
-import { QuantinaPanel, useQuantinaPack } from './QuantinaPanel';
-import { RunnerGame } from './RunnerGame';
+import { useQuantinaPack } from './quantinaPack';
+import { LazyBoundary } from './LazyBoundary';
 import { displayCircuit, highestUsedRow } from '@shared/display/displayWires';
 import { HINTS, HINT_ROTATE_MS } from '@shared/display/hints';
 import { editorFit, editorNaturalHeight, type EditorFit } from './editorFit';
@@ -118,7 +115,19 @@ import type { FrameResult } from '../vision/pipeline';
 import type { DetectedMarker } from '../vision/detect';
 import type { BoardResult } from '../vision/board';
 import { CORNER_IDS } from '../vision/geometry';
+// The Runner's stylesheet stays in the entry CSS, ahead of pocket.css, exactly
+// where it sat before the Runner became a lazy chunk: `.pk-main` (pocket.css)
+// must keep winning the cascade over `.pk-main--runner` as it always has.
+import './runnerGame.css';
 import './pocket.css';
+
+// Code splitting: parts a cold visitor on the welcome card never sees load as
+// their own chunks on first use (each mounted inside a LazyBoundary). Keep them
+// out of the static imports above — src/lazyChunks.test.ts guards the split.
+const GuidePage = lazy(() => import('./GuidePage'));
+const RunnerGame = lazy(() => import('./RunnerGame'));
+const QuantinaPanel = lazy(() => import('./QuantinaPanel'));
+const DebugPanel = lazy(() => import('./DebugPanel'));
 
 const BOARD_QUBITS = BOARD.rows;
 const storage = typeof window !== 'undefined' ? window.localStorage : null;
@@ -737,18 +746,25 @@ export function App() {
     // (native zoom already baked into the sensor pixels, so its crop is full).
     const digitalZoom = camera.zoomMode === 'digital' ? camera.zoom : 1;
     const crop = cropRect(digitalZoom, w, h);
-    const result = detectMatRoi(video, crop);
-    if (!result.ok) {
-      pushStrip("Can't find the mat — all four corners in view?");
-      return;
-    }
-    setMatLock(result.roi);
-    if (overlayRef.current) drawMatOverlay(overlayRef.current, result.roi, crop, w, h);
-    if (matOverlayTimerRef.current !== null) window.clearTimeout(matOverlayTimerRef.current);
-    matOverlayTimerRef.current = window.setTimeout(() => {
-      matOverlayTimerRef.current = null;
-      clearCanvas(overlayRef.current);
-    }, 1500);
+    // The marker detector is part of the camera chunk (code splitting): loaded
+    // on first use — already in the cache once the camera has been running.
+    import('../vision/matDetect').then(
+      ({ detectMatRoi }) => {
+        const result = detectMatRoi(video, crop);
+        if (!result.ok) {
+          pushStrip("Can't find the mat — all four corners in view?");
+          return;
+        }
+        setMatLock(result.roi);
+        if (overlayRef.current) drawMatOverlay(overlayRef.current, result.roi, crop, w, h);
+        if (matOverlayTimerRef.current !== null) window.clearTimeout(matOverlayTimerRef.current);
+        matOverlayTimerRef.current = window.setTimeout(() => {
+          matOverlayTimerRef.current = null;
+          clearCanvas(overlayRef.current);
+        }, 1500);
+      },
+      () => pushStrip("Couldn't load the mat finder — check the connection and reload."),
+    );
   }, [camera.videoRef, camera.zoom, camera.zoomMode, pushStrip]);
 
   const handleUnlockMat = useCallback(() => {
@@ -1368,7 +1384,11 @@ export function App() {
       {hasPanel('state') && <StatePanel key="state" circuit={circuit} classPrefix="pk" />}
       {hasPanel('qasm') && <QasmPanel key="qasm" circuit={circuit} />}
       <ComposerHandoff key="transfer" circuit={circuit} onToast={pushStrip} />
-      {settings.debug && <DebugPanel key="debug" frame={lastFrameRef.current} fps={camera.fps} />}
+      {settings.debug && (
+        <LazyBoundary key="debug">
+          <DebugPanel frame={lastFrameRef.current} fps={camera.fps} />
+        </LazyBoundary>
+      )}
     </>
   ) : isQuantina ? (
     // Quantina: the live menu + serve surface. Quantina is NOT golf — the noise
@@ -1376,16 +1396,17 @@ export function App() {
     // the histogram is sized to the pack's qubit count.
     <>
       {showCamera && cameraPanel}
-      <QuantinaPanel
-        key="quantina"
-        pack={quantina.pack}
-        error={quantina.error}
-        circuit={circuit}
-        noisyProbs={noisyProbs}
-        externalResult={quantinaExternal}
-        externalSeq={boothServed?.seq ?? 0}
-        canServe={!connected}
-      />
+      <LazyBoundary key="quantina">
+        <QuantinaPanel
+          pack={quantina.pack}
+          error={quantina.error}
+          circuit={circuit}
+          noisyProbs={noisyProbs}
+          externalResult={quantinaExternal}
+          externalSeq={boothServed?.seq ?? 0}
+          canServe={!connected}
+        />
+      </LazyBoundary>
       {hasPanel('results') && (
         <ResultsHistogram
           key="results"
@@ -1395,14 +1416,22 @@ export function App() {
         />
       )}
       <ComposerHandoff key="transfer" circuit={circuit} onToast={pushStrip} />
-      {settings.debug && <DebugPanel key="debug" frame={lastFrameRef.current} fps={camera.fps} />}
+      {settings.debug && (
+        <LazyBoundary key="debug">
+          <DebugPanel frame={lastFrameRef.current} fps={camera.fps} />
+        </LazyBoundary>
+      )}
     </>
   ) : (
     <>
       {showCamera && cameraPanel}
       {composerPanels}
       <ComposerHandoff key="transfer" circuit={circuit} onToast={pushStrip} />
-      {settings.debug && <DebugPanel key="debug" frame={lastFrameRef.current} fps={camera.fps} />}
+      {settings.debug && (
+        <LazyBoundary key="debug">
+          <DebugPanel frame={lastFrameRef.current} fps={camera.fps} />
+        </LazyBoundary>
+      )}
     </>
   );
 
@@ -1448,7 +1477,11 @@ export function App() {
             />
           </section>
         </main>
-        {route === 'guide' && <GuidePage />}
+        {route === 'guide' && (
+          <LazyBoundary overlay>
+            <GuidePage />
+          </LazyBoundary>
+        )}
       </div>
     );
   }
@@ -1528,7 +1561,9 @@ export function App() {
         // camera pipeline; it is a self-contained game driven by the pure engine.
         <ThemeProvider defaultTheme="dark">
           <main className="pk-main pk-main--runner">
-            <RunnerGame />
+            <LazyBoundary>
+              <RunnerGame />
+            </LazyBoundary>
           </main>
         </ThemeProvider>
       ) : (
@@ -1615,7 +1650,11 @@ export function App() {
 
       {/* The Guide renders as an overlay over the still-mounted app, so an active
           camera stream keeps running while it is open (docs/pocket.md). */}
-      {route === 'guide' && <GuidePage />}
+      {route === 'guide' && (
+        <LazyBoundary overlay>
+          <GuidePage />
+        </LazyBoundary>
+      )}
     </div>
   );
 }

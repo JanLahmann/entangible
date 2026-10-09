@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { Circuit } from '@qamposer/react';
@@ -29,6 +29,13 @@ const fiveWire: Circuit = {
 
 let container: HTMLDivElement;
 let root: Root;
+
+// `qrcode` is a lazy chunk (renderQrSvg imports it on first use). Load it once
+// up front so the first QR draws within one tick here, as it does for a visitor
+// whose chunk is already cached — the tests are about the overlay, not the fetch.
+beforeAll(async () => {
+  await import('qrcode');
+});
 
 beforeEach(() => {
   container = document.createElement('div');

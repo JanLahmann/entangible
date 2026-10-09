@@ -36,6 +36,22 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    rollupOptions: {
+      output: {
+        // React + the qamposer editor change far less often than the app, so
+        // they get their own long-lived chunk: a returning visitor (or a booth
+        // after a release) re-downloads only the app part. Both are needed on
+        // first paint either way — this adds no bytes to the initial load. The
+        // rest of the splitting is React.lazy / import() in the code
+        // (src/lazyChunks.test.ts).
+        manualChunks(id) {
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler|@qamposer[\\/]react)[\\/]/.test(id)) {
+            return 'vendor';
+          }
+          return undefined;
+        },
+      },
+    },
   },
   test: {
     globals: true,
