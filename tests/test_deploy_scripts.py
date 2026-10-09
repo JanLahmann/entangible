@@ -65,7 +65,7 @@ def _fake_env(tmp_path: Path, **extra: str) -> dict[str, str]:
 
 def _run(args: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [str(COMMAND), *args], env=env, capture_output=True, text=True, timeout=30
+        [str(COMMAND), *args], env=env, capture_output=True, text=True, encoding="utf-8", timeout=30
     )
 
 
@@ -225,7 +225,7 @@ def _resolve(script: str, env: dict[str, str]) -> str:
     result = subprocess.run(
         ["bash", "-c", f". {LIB}; {script}; ent_resolve_user; echo \"$ENT_USER $ENT_HOME\""],
         env={"PATH": os.environ["PATH"], **env},
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, encoding="utf-8", check=True,
     )
     return result.stdout.strip()
 
