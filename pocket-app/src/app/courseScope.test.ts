@@ -18,7 +18,26 @@ describe('?scope= — the competition a link opens (#102)', () => {
     expect(parseUrlOverrides('?course=1z9k4h&scope=D')).toEqual({
       courseCode: '1z9k4h',
       courseScope: 'D',
+      mode: 'golf',
     });
+  });
+
+  it('a challenge link opens golf on that course, unless it names another mode', () => {
+    // What a friend scans: course + scope, no mode — must land in golf, not on
+    // the camera start card with the code silently stored.
+    expect(parseUrlOverrides('?course=1z9k4h&scope=E')).toEqual({
+      mode: 'golf',
+      courseCode: '1z9k4h',
+      courseScope: 'E',
+    });
+    // A scope alone is golf-only too.
+    expect(parseUrlOverrides('?scope=M').mode).toBe('golf');
+    // An explicit ?mode= is never flipped — not even one this build does not
+    // know (`camera` is an input, not a mode): the link said something else.
+    expect(parseUrlOverrides('?mode=composer&course=1z9k4h&scope=E').mode).toBe('composer');
+    expect('mode' in parseUrlOverrides('?mode=camera&course=1z9k4h&scope=E')).toBe(false);
+    // A malformed code/scope implies nothing.
+    expect(parseUrlOverrides('?course=not%20a%20code&scope=easy')).toEqual({});
   });
 
   it('ignores anything that is not a round, and says nothing when absent', () => {

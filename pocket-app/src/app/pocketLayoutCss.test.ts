@@ -77,3 +77,14 @@ describe('pocket.css golf sphere-forward split (#92)', () => {
     expect(golf).toContain('minmax(30rem, 1fr)');
   });
 });
+
+describe('pocket.css idle start card is never clipped', () => {
+  it('lifts the running stage clip + height cap while idle', () => {
+    // `.pk-cam` clips (overflow hidden) and the phone caps it at 22vh; on
+    // narrow / portrait screens that cut the start card off below "Read the
+    // guide" — taking the "No camera? Build on screen" way in with it.
+    const body = ruleBody('.pk-cam.is-idle');
+    expect(body).toContain('overflow: visible');
+    expect(body).toContain('max-height: none');
+  });
+});

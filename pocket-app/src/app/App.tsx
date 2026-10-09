@@ -1778,6 +1778,15 @@ function CameraPanel({
           {/* Keep the video element mounted so the ref is stable across starts. */}
           <video ref={videoRef} playsInline muted style={{ display: 'none' }} />
           <div className={`pk-startcard ${status === 'error' ? 'is-error' : ''}`}>
+            {/* Most visitors arrive from a QR code with no context: say what
+                this is before asking for the camera. */}
+            {!streaming && (
+              <p className="pk-startcard-intro">
+                Entangible lets you build a quantum circuit with your hands: lay printed tiles
+                on the mat, point a camera at them, and watch the results appear live. No tiles
+                or camera at hand — tap to build it on screen instead.
+              </p>
+            )}
             <h2>
               {status === 'error'
                 ? 'Camera unavailable'

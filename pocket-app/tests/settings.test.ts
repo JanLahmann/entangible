@@ -30,6 +30,16 @@ describe('parseUrlOverrides', () => {
     expect(parseUrlOverrides('?mode=golf').courseCode).toBeUndefined();
   });
 
+  it('a bare ?course= implies mode=golf; an explicit ?mode= wins (like ?menu=)', () => {
+    expect(parseUrlOverrides('?course=1z9k4h')).toEqual({ courseCode: '1z9k4h', mode: 'golf' });
+    expect(parseUrlOverrides('?mode=quantina&course=1z9k4h')).toEqual({
+      courseCode: '1z9k4h',
+      mode: 'quantina',
+    });
+    // A shape-rejected code implies no mode either.
+    expect(parseUrlOverrides('?course=123456789')).toEqual({});
+  });
+
   it('parses the full recognized param set', () => {
     const o = parseUrlOverrides('?mode=golf&debug=1&panels=camera,results&side=left&lowpower=1');
     expect(o).toEqual({

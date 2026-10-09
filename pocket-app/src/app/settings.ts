@@ -92,7 +92,9 @@ export interface Settings {
    * The RANDOM golf course in play, as its shareable code (#78) — the base seed
    * in base 36, or `null` for the classic course. Persisted, so a round you were
    * sent survives a reload, and URL-overridable via `?course=<code>`, which is
-   * what a shared link carries. Choosing "New random 18" rewrites it; choosing
+   * what a shared link carries — and a bare `?course=` (no `?mode=`) also
+   * implies `mode: 'golf'`, so the link lands on the course it names.
+   * Choosing "New random 18" rewrites it; choosing
    * "Classic 18" clears it, so the code on the card is always the course you are
    * actually playing.
    */
@@ -235,13 +237,25 @@ export function parseUrlOverrides(search: string): Partial<Settings> {
   // is checked here; `parseCourseCode` in `@quantum/golfRandom` is the authority
   // on whether a code is real, and a code that fails there is ignored rather
   // than dealing some other course.
+  //
+  // Like `?menu=` above, a course link also IMPLIES its mode: a bare
+  // `?course=<code>` (no `?mode=` at all) opens golf, so a friend opening a
+  // challenge link lands on that course — not on the camera start card with the
+  // code silently stored. An explicit `?mode=` always wins (no flip).
   const course = params.get('course');
-  if (course !== null && COURSE_CODE_RE.test(course)) out.courseCode = course.toLowerCase();
+  if (course !== null && COURSE_CODE_RE.test(course)) {
+    out.courseCode = course.toLowerCase();
+    if (!params.has('mode')) out.mode = 'golf';
+  }
 
   // `?scope=<letter>` sets the competition scope (#102). Absent means the full
   // course, which is what every pre-#102 link says — so old QRs keep working.
+  // A scope is golf-only, so it implies golf exactly as `?course=` does.
   const scope = params.get('scope');
-  if (scope !== null && COURSE_SCOPE_RE.test(scope)) out.courseScope = scope.toUpperCase();
+  if (scope !== null && COURSE_SCOPE_RE.test(scope)) {
+    out.courseScope = scope.toUpperCase();
+    if (!params.has('mode')) out.mode = 'golf';
+  }
 
   const side = params.get('side');
   if (side === 'left' || side === 'right') out.side = side;

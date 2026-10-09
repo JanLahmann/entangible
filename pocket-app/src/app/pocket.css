@@ -39,6 +39,14 @@ body,
   overflow: hidden;
 }
 
+/* Pinch-zoom is allowed (no `maximum-scale` in the viewport meta — an
+   accessibility must). Controls opt out of double-tap-to-zoom only, so quick
+   repeat taps on a button never zoom the page; the gesture surfaces (camera
+   preview, spheres) already claim `touch-action: none` themselves. */
+.pk button {
+  touch-action: manipulation;
+}
+
 .pk-mono {
   font-family: var(--mono);
 }
@@ -450,9 +458,17 @@ body,
   transform: scaleX(1);
 }
 
+/* Idle (no video yet): the stage holds the start card, which must never be
+   clipped — its last line is the "No camera? Build on screen" way in. The
+   running stage's fixed geometry (overflow hidden, the phone's 22vh cap, the
+   tablet-portrait 20rem column) is lifted here: the 4:3 box stays the MINIMUM
+   (a non-scroll-container with an aspect-ratio grows to its content), and the
+   card simply makes the box taller when the width is too narrow for it. */
 .pk-cam.is-idle {
   display: grid;
   place-items: center;
+  overflow: visible;
+  max-height: none;
 }
 
 /* CAMERA role (U2): a focused single-column streaming screen — the booth owns
@@ -723,6 +739,15 @@ body,
   font-size: 0.85rem;
   line-height: 1.5;
   margin: 0 0 1.2rem;
+}
+
+/* The 30-second "what is this" line, above the camera instructions. */
+.pk-startcard p.pk-startcard-intro {
+  color: var(--text);
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
 }
 
 .pk-startcard.is-error h2 {
@@ -3090,6 +3115,25 @@ body,
     border-radius: 0;
     border-left: none;
     border-right: none;
+  }
+
+  /* Idle start card on a phone: no 16:9 floor (it would only add dead black
+     above and below the text) and a tighter inset, so the card — down to its
+     "Build on screen" button — flows at its natural height on 320px screens. */
+  .pk-cam.is-idle {
+    aspect-ratio: auto;
+  }
+
+  .pk-cam.is-idle .pk-startcard {
+    padding: 1.1rem 1rem 1.25rem;
+  }
+
+  .pk-cam.is-idle .pk-startcard p {
+    margin-bottom: 0.7rem;
+  }
+
+  .pk-cam.is-idle .pk-startcard-link {
+    margin-top: 0.2rem;
   }
 
   /* iPhone expand toggle (no element Fullscreen API there): back to the

@@ -2,12 +2,36 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no"
-    />
+    <!-- No maximum-scale / user-scalable=no: pinch-zoom must stay available
+         (accessibility). Gesture surfaces opt out with `touch-action` CSS. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Entangible Pocket</title>
-    <meta name="description" content="Build a quantum circuit with your hands — point your iPad at the printed tiles." />
+    <meta
+      name="description"
+      content="Build quantum circuits with your hands: lay printed tiles under a camera and watch the circuit and its results update live. No account needed — it all runs in your browser."
+    />
+
+    <!-- Link previews (Open Graph / Twitter). og:image is public/og-image.png,
+         a 1200×630 white-backed crop of examples/renders/bell-on-mat.png. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://entangible.org/" />
+    <meta property="og:site_name" content="Entangible" />
+    <meta property="og:title" content="Entangible — build quantum circuits with your hands" />
+    <meta
+      property="og:description"
+      content="Lay physical tiles under a camera and watch them become a live quantum circuit — no account, everything runs in your browser."
+    />
+    <meta property="og:image" content="https://entangible.org/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Hadamard, control and target tiles standing on the Entangible circuit mat — a Bell state." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Entangible — build quantum circuits with your hands" />
+    <meta
+      name="twitter:description"
+      content="Lay physical tiles under a camera and watch them become a live quantum circuit — no account, everything runs in your browser."
+    />
+    <meta name="twitter:image" content="https://entangible.org/og-image.png" />
 
     <!-- iOS standalone / Add to Home Screen -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
