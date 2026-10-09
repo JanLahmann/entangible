@@ -52,11 +52,14 @@ replay-fixture:
 
 app-build:
 	@if [ -f pocket-app/package.json ]; then \
-		if [ -d pocket-app/dist ]; then \
-			echo "== app already built (pocket-app/dist)"; \
-		elif command -v npm >/dev/null 2>&1; then \
-			echo "== building the app (npm ci && npm run build)"; \
-			cd pocket-app && npm ci && npm run build; \
+		if command -v npm >/dev/null 2>&1; then \
+			if [ -d pocket-app/node_modules ]; then \
+				echo "== building the app (npm run build)"; \
+				cd pocket-app && npm run build; \
+			else \
+				echo "== building the app (npm ci && npm run build)"; \
+				cd pocket-app && npm ci && npm run build; \
+			fi; \
 		else \
 			echo "!! npm not found — skipping app build; host will show the 'not built' page"; \
 		fi; \

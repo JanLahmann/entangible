@@ -84,16 +84,32 @@ and published as release assets, so these URLs always serve the current kit:
 
 ## Quick start
 
+Prerequisites: [uv](https://docs.astral.sh/uv/), Node.js (CI uses Node 20 LTS;
+newer works) with npm, and — only for generating the printable PDF kit —
+libcairo (`brew install cairo` / `apt install libcairo2`).
+
 ```sh
 make demo    # build the app + serve a no-camera replay loop,
-             # then open http://localhost:8443/?kiosk&connect=1
+             # then open https://localhost:8443/?kiosk&connect=1
 ```
+
+The host serves **https** with a self-signed certificate (phones on the booth
+WLAN need TLS for camera access), so the browser shows a one-time certificate
+warning — accept it. `make dev` runs plain http instead.
 
 ## Repo layout
 
-A uv workspace (three Python packages) plus one npm app. See
+A uv workspace (three Python packages) plus one npm app. The app builds on
+[QAMPoser](https://github.com/QAMP-62) (a Qiskit Advocate Mentorship Program
+project): the circuit editor is
+[`@qamposer/react`](https://github.com/JanLahmann/qamposer-react), consumed as
+a git dependency from the fork's `entangible` branch — Entangible adds the
+physical table, vision pipeline, booth host and games around it. See
 [`docs/design.md`](docs/design.md) for the full approved design and milestones,
 and [`docs/marker-ids.md`](docs/marker-ids.md) for the marker/gate ID scheme.
+Task numbers in commit messages (`#NNN`) are the project's internal task list,
+not GitHub PR/issue numbers. [`CONTRIBUTING.md`](CONTRIBUTING.md) has the
+development workflow and quality gates.
 
 ```
 pyproject.toml            # uv workspace root
