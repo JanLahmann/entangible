@@ -12,10 +12,10 @@ optional in-browser noise model pairs realistic results beside the ideal ones
 with zero infrastructure — presets are calibration snapshots of four IBM chip
 generations (Falcon → Eagle → Heron → Nighthawk), so the "why quantum is hard"
 contrast works offline. Hosts: macOS (documented, see
-[`docs/mac-booth.md`](docs/mac-booth.md)) and Raspberry Pi 4/5 — the host is
-the same `uv sync` + `qamposer-physical run` on Pi OS, but a packaged
-RasQberry image and Pi-specific setup guide are still to come. Cameras: USB /
-Pi Camera / Continuity Camera / iPhone browser streaming.
+[`docs/mac-booth.md`](docs/mac-booth.md)) and Raspberry Pi 4/5 (install
+script + guide, see [`docs/rasqberry.md`](docs/rasqberry.md); a prebuilt
+flashable image is still to come). Cameras: USB / Pi Camera / Continuity
+Camera / iPhone browser streaming.
 
 **Quantina** — the built-in successor to
 [Qoffee-Maker](https://github.com/JanLahmann/Qoffee-Maker) and quantum-mixer:
@@ -108,7 +108,8 @@ project): the circuit editor is
 [`@qamposer/react`](https://github.com/JanLahmann/qamposer-react), consumed as
 a git dependency from the fork's `entangible` branch — Entangible adds the
 physical table, vision pipeline, booth host and games around it. See
-[`docs/design.md`](docs/design.md) for the full approved design and milestones,
+[`docs/design.md`](docs/design.md) for the current architecture
+(history + milestones: [`docs/design-history.md`](docs/design-history.md)),
 and [`docs/marker-ids.md`](docs/marker-ids.md) for the marker/gate ID scheme.
 Task numbers in commit messages (`#NNN`) are the project's internal task list,
 not GitHub PR/issue numbers. [`CONTRIBUTING.md`](CONTRIBUTING.md) has the

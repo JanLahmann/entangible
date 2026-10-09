@@ -1,0 +1,8 @@
+# XDG autostart entry (works on Pi OS X11 and Wayland desktops) — installed by
+# install.sh --kiosk, which substitutes @REPO@.
+[Desktop Entry]
+Type=Application
+Name=Entangible kiosk
+Comment=Open the Entangible booth screen fullscreen at login
+Exec=@REPO@/deploy/rasqberry/kiosk-launch.sh
+X-GNOME-Autostart-enabled=true
