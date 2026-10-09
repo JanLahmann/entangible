@@ -24,15 +24,22 @@ import {
   GOLF_HOLES_KEY,
   HOLE_IN_THRESHOLD,
 } from './golf';
-import { canonicalKey, optimalSearch, reachableWithin } from './optimal';
+import { canonicalKey, movesFor, optimalSearch, reachableWithin } from './optimal';
 import {
   ROUND_BONUS,
   GEN_STATE_BUDGET,
   hasRoundSignature,
   type GeneratedHole,
+  type GenTick,
+  DRAW_CHUNK,
+  GEN_CHUNK_CHILDREN,
   courseHoles,
   currentHole,
   generateCourse,
+  generateCourseAsync,
+  generateCourseSteps,
+  isCourseReady,
+  prepareCourse,
   courseCode,
   parseCourseCode,
   randomBaseSeed,
@@ -41,10 +48,16 @@ import {
 
 const CONTROLLED = new Set(['CNOT', 'CX', 'CY', 'CZ', 'CH', 'CS', 'CT', 'CCX']);
 
+/** Generating this course builds every club orbit a course needs (they are
+ *  per (round, wires, depth), never per seed), so a test that wants WARM caches
+ *  deals it first itself instead of relying on test order. */
+const WARMUP_SEED = 999_001;
+
 /**
  * One shared corpus of generated courses, built lazily and walked by every
- * property loop below. Generating a course now runs an optimal search per hole
- * (#76, ~0.4 s a course), so paying for a fresh 40-seed corpus in each of six
+ * property loop below. Generating a course runs an optimal search per hole
+ * (#76) — ~1–3 s a course once the session's club orbits (#77) are built, and
+ * several times that for the first — so paying for a fresh 40-seed corpus in each of six
  * properties is the difference between a few seconds and a minute and a half.
  * The properties are independent of one another, so checking all of them
  * against the same deals is exactly as strong as checking each against its own.
@@ -265,15 +278,24 @@ describe('random course generation (#70)', () => {
     expect(hasRoundSignature(sv([g('H', 0, { qubit: 0 })]), 'extra', 1)).toBe(false);
   });
 
-  it('generates a whole course inside the interaction budget (#76)', () => {
-    // The searches run at generation time, so "Random 18" pays for them once.
-    // `randomCourse` memoizes, so this is a one-off on the tap that starts the
-    // round — measured ~0.4 s here, and the guard is deliberately loose so a
-    // slower CI box does not make it flaky.
+  it('deals a WARM course — club orbits already cached — inside a smoke budget (#76)', () => {
+    // What this measures: one course AFTER the session's club orbits (#77) are
+    // built, i.e. every "Random 18" but the first. Measured ~0.8–3 s in node
+    // (the per-hole par searches, plus the draws on the tight slots); < 6 s is
+    // a smoke alarm with honest headroom for a busy CI box, not a UI budget.
+    //
+    // What it does NOT measure: the COLD first course, ~5–28 s depending on
+    // load, almost all orbit builds. No blocking budget could hold that; the app
+    // deals it through `prepareCourse` (chunked, behind a "Dealing course"
+    // indicator) — see the async tests below.
+    //
+    // The warm-up is explicit and in-test, on a DIFFERENT seed, so the number
+    // never depends on which test happened to run first.
+    generateCourse(WARMUP_SEED);
     const t0 = performance.now();
     generateCourse(20260725);
-    expect(performance.now() - t0).toBeLessThan(2000);
-  }, 20_000);
+    expect(performance.now() - t0).toBeLessThan(6000);
+  }, 120_000);
 
   it('draws only legal gates: the round’s clubs, on the hole’s qubits', () => {
     for (const { hole, circuit } of corpusHoles()) {
@@ -513,6 +535,89 @@ describe('random course generation (#70)', () => {
       expect(seed).toBeLessThanOrEqual(0xffffffff);
     }
   });
+});
+
+describe('dealing without blocking — the async course (#76 cost)', () => {
+  // Generous timeouts: if one of these runs first it pays the cold orbit
+  // builds (~5–28 s) on top of its own work.
+  const ONE_TO_EIGHTEEN = Array.from({ length: 18 }, (_, i) => i + 1);
+
+  it('is the synchronous course, bit for bit — one generator, two drivers', async () => {
+    // Every course has the ruled five-wire slots (M5, D5, X5), so both seeds
+    // cover the orbit-gated draws and the widest par searches.
+    for (const seed of [4242, 20260725]) {
+      const progress: number[] = [];
+      const dealt = await generateCourseAsync(seed, (n) => progress.push(n));
+      expect(dealt).toStrictEqual(generateCourse(seed));
+      expect(progress).toEqual(ONE_TO_EIGHTEEN);
+    }
+  }, 180_000);
+
+  it('ticks in small, bounded chunks — nothing runs long between pauses', () => {
+    // The async driver can only hand the thread back AT a tick, so the work
+    // between ticks is the longest the page can be held. Bounded in work units,
+    // not wall clock: draws in DRAW_CHUNKs, searches in GEN_CHUNK_CHILDREN
+    // (overshooting by under one node's moves — the widest is X5's).
+    const widest = movesFor(gateTypesForClubs(ROUND_CLUBS.extra), 5).length;
+    const ticks: GenTick[] = [];
+    const it = generateCourseSteps(31_415);
+    let step = it.next();
+    while (!step.done) {
+      ticks.push(step.value);
+      step = it.next();
+    }
+    expect(step.value).toHaveLength(18);
+    for (const t of ticks) {
+      if (t.phase === 'draw') expect(t.work).toBe(DRAW_CHUNK);
+      if (t.phase === 'orbit' || t.phase === 'par') {
+        expect(t.work).toBeGreaterThanOrEqual(GEN_CHUNK_CHILDREN);
+        expect(t.work).toBeLessThan(GEN_CHUNK_CHILDREN + widest);
+      }
+    }
+    expect(ticks.filter((t) => t.phase === 'hole').map((t) => t.work)).toEqual(ONE_TO_EIGHTEEN);
+    // A course is hundreds of chunks, not a handful of long ones (warm alone:
+    // ~18 par searches of up to 20k states, and the tight slots' draws).
+    expect(ticks.filter((t) => t.phase === 'par').length).toBeGreaterThan(50);
+  }, 120_000);
+
+  it('hands the thread back while it deals — other macrotasks keep running', async () => {
+    // A 0 ms timer chain stands in for the page's paint/input turns: it can
+    // only run while generation is paused at a macrotask boundary.
+    let turns = 0;
+    let running = true;
+    const spin = () => {
+      turns += 1;
+      if (running) setTimeout(spin, 0);
+    };
+    setTimeout(spin, 0);
+    const progress: number[] = [];
+    await generateCourseAsync(27_182, (n) => progress.push(n));
+    running = false;
+    expect(progress).toEqual(ONE_TO_EIGHTEEN);
+    // At least one hand-back after every hole, whatever the machine's speed.
+    expect(turns).toBeGreaterThanOrEqual(18);
+  }, 120_000);
+
+  it('prepareCourse fills the course memo, so the sync read after it is a hit', async () => {
+    const seed = 161_803;
+    expect(isCourseReady(seed)).toBe(false);
+    const progress: number[] = [];
+    const first = prepareCourse(seed, (n) => progress.push(n));
+    // A second request while it deals joins the first — no second deal.
+    const again = prepareCourse(seed);
+    expect(again).toBe(first);
+    expect(isCourseReady(seed)).toBe(false); // nothing ran synchronously
+    const holes = await first;
+    expect(progress).toEqual(ONE_TO_EIGHTEEN);
+    expect(isCourseReady(seed)).toBe(true);
+    // Every later synchronous read is the SAME memoized course…
+    expect(randomCourse(seed)).toBe(holes);
+    expect(courseHoles(initialGolfState({}, 'random', seed))).toBe(holes);
+    // …a ready seed resolves to it at once…
+    await expect(prepareCourse(seed)).resolves.toBe(holes);
+    // …and it is exactly the course the synchronous generator deals.
+    expect(holes).toStrictEqual(generateCourse(seed).map((g) => g.hole));
+  }, 120_000);
 });
 
 describe('course selection', () => {

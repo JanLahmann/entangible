@@ -1549,6 +1549,78 @@ body,
   font-size: 0.95rem;
 }
 
+/* Dealing a random course — a quiet card over the golf sphere while a course
+   that is not generated yet is dealt (seconds of work, chunked so the page
+   stays live). Covers the sphere only, never the picker or the drawer. */
+.pk-well.is-dealing {
+  position: relative;
+}
+
+.pk-golf-dealing {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  border-radius: inherit;
+  background: rgba(6, 8, 12, 0.72);
+}
+
+.pk-golf-dealing-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: min(100%, 15rem);
+  padding: 0.9rem 1.1rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.pk-golf-dealing-text {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.pk-golf-dealing-dot {
+  flex: none;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--entangle);
+  animation: pk-pulse 1.2s ease-in-out infinite;
+}
+
+.pk-golf-dealing-bar {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--bg-inset);
+}
+
+.pk-golf-dealing-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--entangle);
+  transition: width 0.25s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pk-golf-dealing-dot {
+    animation: none;
+  }
+
+  .pk-golf-dealing-bar > span {
+    transition: none;
+  }
+}
+
 .pk-view-label {
   align-self: flex-start;
   font-size: 0.68rem;

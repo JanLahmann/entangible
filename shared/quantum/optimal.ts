@@ -63,7 +63,8 @@ import {
 
 /** Deduplicated states a search may visit before giving up (see the header). */
 export const DEFAULT_STATE_BUDGET = 300_000;
-/** Children expanded per macrotask in `findOptimalAsync` — the UI-liveness dial. */
+/** Children expanded per macrotask in `findOptimalAsync` — the UI-liveness
+ *  dial, and the default `chunkChildren` of both cooperative generators. */
 export const CHUNK_CHILDREN = 20_000;
 
 /** Below this probability an amplitude is not part of a state's identity. */
@@ -89,6 +90,9 @@ export interface OptimalOptions {
   readonly maxDepth?: number;
   /** Deduplicated states to visit before reporting `'unknown'`. */
   readonly stateBudget?: number;
+  /** Children expanded between yields of the cooperative generator; defaults
+   *  to `CHUNK_CHILDREN`. Changes only where the walk pauses, never its result. */
+  readonly chunkChildren?: number;
 }
 
 /**
@@ -189,8 +193,8 @@ function pathOf(trail: Trail | null): Gate[] {
 
 /**
  * The search itself, as a cooperative generator: it yields the number of
- * children expanded so far roughly every `CHUNK_CHILDREN`, and returns the
- * `OptimalResult`. Callers choose whether to drain it in one go (`findOptimal`)
+ * children expanded so far roughly every `chunkChildren` (default
+ * `CHUNK_CHILDREN`), and returns the `OptimalResult`. Callers choose whether to drain it in one go (`findOptimal`)
  * or across macrotasks (`findOptimalAsync`).
  */
 export function* optimalSearch(
@@ -201,6 +205,7 @@ export function* optimalSearch(
 ): Generator<number, OptimalResult, void> {
   const maxDepth = opts.maxDepth ?? Number.POSITIVE_INFINITY;
   const budget = opts.stateBudget ?? DEFAULT_STATE_BUDGET;
+  const chunk = opts.chunkChildren ?? CHUNK_CHILDREN;
   // A 1-gate stored solution leaves nothing shorter to look for but the empty
   // circuit, and an empty board never holes in (no hole targets |0…0⟩).
   if (maxDepth < 1) return { status: 'minimal' };
@@ -234,7 +239,7 @@ export function* optimalSearch(
         if (visited > budget) return { status: 'unknown' };
         next.push(trail);
       }
-      if (sinceYield >= CHUNK_CHILDREN) {
+      if (sinceYield >= chunk) {
         sinceYield = 0;
         yield expanded;
       }
@@ -274,23 +279,56 @@ export function reachableWithin(
   clubs: readonly GateType[],
   k: number,
   maxDepth: number,
-  opts: Pick<OptimalOptions, 'stateBudget'> = {},
+  opts: Pick<OptimalOptions, 'stateBudget' | 'chunkChildren'> = {},
 ): ReachMap {
+  const it = reachableWithinSteps(clubs, k, maxDepth, opts);
+  let step = it.next();
+  while (!step.done) step = it.next();
+  return step.value;
+}
+
+/**
+ * `reachableWithin` as a cooperative generator — the `optimalSearch` pattern:
+ * it yields the number of children expanded so far roughly every
+ * `chunkChildren` (default `CHUNK_CHILDREN`), and returns the `ReachMap`.
+ * Yielding only pauses the walk; the traversal order, and so the map, is
+ * identical however it is drained.
+ *
+ * The big orbits are seconds of work (millions of expansions at the five-wire
+ * floors), and the random golf course builds them on the tap that deals it,
+ * so a caller on the UI thread drains this across macrotasks rather than in one
+ * blocking call (see `generateCourseAsync` in `@quantum/golfRandom`).
+ */
+export function* reachableWithinSteps(
+  clubs: readonly GateType[],
+  k: number,
+  maxDepth: number,
+  opts: Pick<OptimalOptions, 'stateBudget' | 'chunkChildren'> = {},
+): Generator<number, ReachMap, void> {
   const budget = opts.stateBudget ?? DEFAULT_STATE_BUDGET;
+  const chunk = opts.chunkChildren ?? CHUNK_CHILDREN;
   const moves = movesFor(clubs, k);
   const start = zeroState();
   const depthOf = new Map<string, number>([[canonicalKey(start), 0]]);
   let frontier: StateVector[] = [start];
+  let expanded = 0;
+  let sinceYield = 0;
   for (let depth = 1; depth <= maxDepth; depth++) {
     const next: StateVector[] = [];
     for (const from of frontier) {
       for (const move of moves) {
         const state = applyGatesTo(from, [move]);
+        expanded += 1;
+        sinceYield += 1;
         const key = canonicalKey(state);
         if (depthOf.has(key)) continue;
         depthOf.set(key, depth);
         if (depthOf.size > budget) return { depthOf, complete: false };
         next.push(state);
+      }
+      if (sinceYield >= chunk) {
+        sinceYield = 0;
+        yield expanded;
       }
     }
     // The orbit closed: deeper circuits cannot reach anything new, so the map

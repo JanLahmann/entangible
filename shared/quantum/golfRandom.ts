@@ -114,7 +114,7 @@ import { ketTerms } from '@shared/display/KetDisplay';
 import { mulberry32, cryptoRng, type Rng } from '@shared/menu/sample';
 import { basisVisuals } from './qsphere';
 import { statevector, DIM, NUM_QUBITS, type StateVector } from './statevector';
-import { canonicalKey, optimalSearch, reachableWithin, type ReachMap } from './optimal';
+import { canonicalKey, optimalSearch, reachableWithinSteps, type ReachMap } from './optimal';
 import {
   HOLES,
   ROUND_CLUBS,
@@ -160,11 +160,11 @@ const SLOT_STRIDE = 100_000;
 const MAX_ATTEMPTS = 32_000;
 /**
  * States a generation-time optimal search may visit before giving up (#76).
- * Deliberately far below `@quantum/optimal`'s own default: this runs inside the
- * draw loop, on every candidate that clears (a)–(d), and course generation must
- * stay a one-off ~300 ms rather than a multi-second stall. Measured: 20k
- * resolves every E/M/D slot and X1/X3 essentially always; only the five-wire
- * EXTRA slot regularly outruns it, and that is exactly the case the
+ * Deliberately far below `@quantum/optimal`'s own default: it runs once per
+ * hole, on the accepted deal, and those eighteen searches are most of a WARM
+ * course's cost (~0.8–3 s measured, see "Cost" on `generateCourse`). Measured:
+ * 20k resolves every E/M/D slot and X1/X3 essentially always; only the
+ * five-wire EXTRA slot regularly outruns it, and that is exactly the case the
  * generator-length fallback exists for.
  */
 export const GEN_STATE_BUDGET = 20_000;
@@ -401,6 +401,73 @@ function isRuled(round: GolfRound, k: number): boolean {
   return !(round === 'medium' && k === 1);
 }
 
+/**
+ * One pause point of cooperative generation — the work done since the previous
+ * tick, so callers (and the liveness test) can see how big the chunks are.
+ *
+ *  - `orbit` / `par` — children expanded by a club-orbit build or a par search
+ *    since the last tick: `GEN_CHUNK_CHILDREN`, give or take one node's moves.
+ *  - `draw` — candidate draws since the last tick: exactly `DRAW_CHUNK`.
+ *  - `hole` — a hole is finished; `work` is how many are, 1..18.
+ */
+export interface GenTick {
+  readonly phase: 'orbit' | 'draw' | 'par' | 'hole';
+  readonly work: number;
+}
+
+/**
+ * Candidate draws between ticks in the draw loop. A draw is a statevector, the
+ * (a)–(d) checks and at most two map lookups — ~3–16 µs measured, so 256 of
+ * them are a few milliseconds on a desktop and still well under 50 ms on a slow
+ * phone. The tight slots run hundreds to a few thousand draws (see
+ * `MAX_ATTEMPTS`), which is why the loop needs ticks at all.
+ */
+export const DRAW_CHUNK = 256;
+/**
+ * Children an orbit build or par search expands between ticks. Far finer than
+ * `@quantum/optimal`'s `CHUNK_CHILDREN`: a child costs ~1–7 µs measured
+ * (load-dependent), so 20k of them were 100–300 ms per chunk on a busy desktop,
+ * while 1k is a few milliseconds. Ticks are cheap (the async driver only hands the thread back
+ * once a `SLICE_MS` slice is used up), so fine-grained costs nothing.
+ */
+export const GEN_CHUNK_CHILDREN = 1_000;
+/**
+ * Milliseconds of generation `generateCourseAsync` runs before it hands the
+ * thread back — about one frame. Yielding at EVERY tick would mean thousands of
+ * `setTimeout(0)`s a course, and browsers clamp chained timeouts to ≥ 4 ms
+ * each: seconds of pure idle on a cold course. With a slice the page still gets
+ * a turn every ~20 ms, and the clamp costs ~20% instead of most of the time.
+ */
+const SLICE_MS = 16;
+
+/** Re-tick a `@quantum/optimal` generator (which yields a running count of
+ *  children expanded) as `GenTick`s carrying the per-chunk delta. */
+function* ticked<R>(
+  phase: 'orbit' | 'par',
+  it: Generator<number, R, void>,
+): Generator<GenTick, R, void> {
+  let last = 0;
+  let step = it.next();
+  while (!step.done) {
+    yield { phase, work: step.value - last };
+    last = step.value;
+    step = it.next();
+  }
+  return step.value;
+}
+
+/** Run a cooperative generator to completion, synchronously. */
+function drain<R>(it: Generator<unknown, R, void>): R {
+  let step = it.next();
+  while (!step.done) step = it.next();
+  return step.value;
+}
+
+/** A MACROtask boundary: lets the page paint and handle input in between. */
+function nextMacrotask(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 /** What a generation-time optimal search learned about a candidate target. */
 interface OptimalFind {
   /** Shortest circuit length that prepares the target, or `null` if the search
@@ -416,19 +483,20 @@ interface OptimalFind {
  * the draw?", which is the cheap question; a `minimal` verdict means the draw
  * itself is the shortest answer.
  */
-function findOptimalFor(
+function* findOptimalFor(
   target: StateVector,
   types: readonly GateType[],
   k: number,
   size: number,
-): OptimalFind {
-  const it = optimalSearch(target, types, k, {
-    maxDepth: size - 1,
-    stateBudget: GEN_STATE_BUDGET,
-  });
-  let step = it.next();
-  while (!step.done) step = it.next();
-  const result = step.value;
+): Generator<GenTick, OptimalFind, void> {
+  const result = yield* ticked(
+    'par',
+    optimalSearch(target, types, k, {
+      maxDepth: size - 1,
+      stateBudget: GEN_STATE_BUDGET,
+      chunkChildren: GEN_CHUNK_CHILDREN,
+    }),
+  );
   if (result.status === 'shorter') return { optimal: result.gates.length, gates: result.gates };
   if (result.status === 'minimal') return { optimal: size, gates: null };
   return { optimal: null, gates: null };
@@ -443,20 +511,34 @@ function findOptimalFor(
  * per candidate. That is what lets both sit inside a draw loop that runs
  * hundreds of times: each becomes a map lookup.
  *
- * The cache is module-level and survives across courses, so the one genuinely
- * big orbit (the EXTRA clubs at depth 5, ~176k states) is paid for once per
- * session rather than once per "Random 18".
+ * The cache is module-level and survives across courses, so the big orbits are
+ * paid for once per session rather than once per "Random 18". They are most of
+ * a COLD course's cost (see "Cost" on `generateCourse`): the EXTRA clubs at
+ * depth 5 close out at ~176k states (~2.3 s on their own, measured), and the
+ * five-wire necessity orbits behind M5, D5 and X5 run to 18k–30k states each.
+ *
+ * A generator, so an orbit build can be spread across macrotasks
+ * (`reachableWithinSteps`); a cache hit returns without yielding.
  */
 const REACH_CACHE = new Map<string, ReachMap>();
 const REACH_CACHE_LIMIT = 24;
 
-function reachOf(round: GolfRound, k: number, maxDepth: number, budget: number): ReachMap {
+function* reachOf(
+  round: GolfRound,
+  k: number,
+  maxDepth: number,
+  budget: number,
+): Generator<GenTick, ReachMap, void> {
   const key = `${round}:${k}:${maxDepth}`;
   const hit = REACH_CACHE.get(key);
   if (hit) return hit;
-  const map = reachableWithin(gateTypesForClubs(ROUND_CLUBS[round]), k, maxDepth, {
-    stateBudget: budget,
-  });
+  const map = yield* ticked(
+    'orbit',
+    reachableWithinSteps(gateTypesForClubs(ROUND_CLUBS[round]), k, maxDepth, {
+      stateBudget: budget,
+      chunkChildren: GEN_CHUNK_CHILDREN,
+    }),
+  );
   if (REACH_CACHE.size >= REACH_CACHE_LIMIT) REACH_CACHE.clear();
   REACH_CACHE.set(key, map);
   return map;
@@ -465,16 +547,16 @@ function reachOf(round: GolfRound, k: number, maxDepth: number, budget: number):
 /**
  * Constraint (e), as a lookup: is this target buildable in `k` gates or fewer
  * with the round's OWN clubs — i.e. is it no harder than an easy hole of the
- * same width (#76)? Bounded by depth `k`, which is the only question the floor
- * asks; the far deeper search that produces `par` happens once, after a deal is
- * accepted, and never inside the loop.
+ * same width (#76)? `floor` is that orbit, `reachOf(round, k, k,
+ * FLOOR_ORBIT_BUDGET)`: bounded by depth `k`, which is the only question the
+ * floor asks; the far deeper search that produces `par` happens once, after a
+ * deal is accepted, and never inside the loop.
  *
  * An orbit too big to enumerate leaves the question open, and an open question
  * ACCEPTS — generation must never stall on something it cannot prove.
  */
-function isTooEasy(target: StateVector, round: GolfRound, k: number): boolean {
-  const reach = reachOf(round, k, k, FLOOR_ORBIT_BUDGET);
-  return reach.depthOf.has(canonicalKey(target));
+function isTooEasy(target: StateVector, floor: ReachMap): boolean {
+  return floor.depthOf.has(canonicalKey(target));
 }
 
 /**
@@ -551,16 +633,18 @@ export function hasRoundSignature(target: StateVector, round: GolfRound, k: numb
  * Generation must never stall on something it cannot prove — the asymmetry with
  * (e) is deliberate, and (e) cannot hit it anyway because its own search is
  * bounded by depth k, which is always cheap.
+ *
+ * `reach` is the round below's orbit at the deal's own depth,
+ * `reachOf(ROUND_BELOW[round], k, size, NECESSITY_ORBIT_BUDGET)`, or `null`
+ * for a round with nothing below it (which then needs nothing).
  */
 function needsOwnClubs(
   target: StateVector,
   round: GolfRound,
   k: number,
-  maxDepth: number,
+  reach: ReachMap | null,
 ): boolean {
-  const below = ROUND_BELOW[round];
-  if (below === null) return true;
-  const reach = reachOf(below, k, maxDepth, NECESSITY_ORBIT_BUDGET);
+  if (reach === null) return true;
   // Found in the lower round's orbit → the new clubs bought nothing. This is
   // the exact answer, and it is what M2–M5, D1–D3 and X1/X3 are decided by.
   if (reach.depthOf.has(canonicalKey(target))) return false;
@@ -585,8 +669,15 @@ export interface GeneratedHole {
   readonly attempts: number;
 }
 
-/** Generate one hole for `slot` from `seed` (deterministic in both). */
-export function generateHole(slot: Slot, seed: number): GeneratedHole {
+/**
+ * One hole for `slot` from `seed`, as a cooperative generator (see "Cost" on
+ * `generateCourse`): it yields a `GenTick` at every expensive boundary — inside
+ * the orbit builds, every `DRAW_CHUNK` candidate draws, and inside the par
+ * search — and returns the hole. Yielding only pauses the work, so the hole is
+ * the same however it is driven; `generateHole` drains it synchronously,
+ * `generateCourseAsync` across macrotasks.
+ */
+function* holeSteps(slot: Slot, seed: number): Generator<GenTick, GeneratedHole, void> {
   const clubs = ROUND_CLUBS[slot.round];
   const types = gateTypesForClubs(clubs);
   const k = slot.level;
@@ -594,23 +685,36 @@ export function generateHole(slot: Slot, seed: number): GeneratedHole {
   const phaseRule = ROUND_PHASE[slot.round];
 
   const ruled = isRuled(slot.round, k);
+  // The two orbits (e) and (f) look candidates up in, built (or fetched from the
+  // cache) BEFORE the loop so their cost is chunked like everything else. The
+  // accepted deal of a ruled slot always consults both, so building them up
+  // front does no work the loop would have skipped, and an orbit's contents do
+  // not depend on when it is built.
+  let floor: ReachMap | null = null;
+  let below: ReachMap | null = null;
+  if (ruled) {
+    floor = yield* reachOf(slot.round, k, k, FLOOR_ORBIT_BUDGET);
+    const lower = ROUND_BELOW[slot.round];
+    if (lower !== null) below = yield* reachOf(lower, k, size, NECESSITY_ORBIT_BUDGET);
+  }
 
   let gates: Gate[] | null = null;
   let attempts = MAX_ATTEMPTS;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0 && attempt % DRAW_CHUNK === 0) yield { phase: 'draw', work: DRAW_CHUNK };
     const candidate = drawGates(mulberry32(seed + attempt), types, k, size);
     const target = statevector({ qubits: NUM_QUBITS, gates: candidate });
     if (!isNonTrivial(target)) continue;
     if (!everyQubitLives(target, k)) continue;
     if (!satisfiesPhase(target, k, phaseRule)) continue;
     if (!fitsTheKetLine(target, k)) continue;
-    if (ruled) {
+    if (floor !== null) {
       // (e) — no harder than an easy hole of this width? Then it is not a
       // medium/difficult/extra hole, whatever its ket looks like.
-      if (isTooEasy(target, slot.round, k)) continue;
+      if (isTooEasy(target, floor)) continue;
       // (f) — the clubs this round adds have to be the reason the target is
       // worth building at all.
-      if (!needsOwnClubs(target, slot.round, k, size)) continue;
+      if (!needsOwnClubs(target, slot.round, k, below)) continue;
     }
     gates = candidate;
     attempts = attempt + 1;
@@ -622,7 +726,7 @@ export function generateHole(slot: Slot, seed: number): GeneratedHole {
   // The one expensive search of the whole pipeline, run ONCE on the deal that
   // was accepted — never inside the loop, where a wide EXTRA slot would pay for
   // it on every candidate that got as far as being measured.
-  const found = findOptimalFor(target, types, k, size);
+  const found = yield* findOptimalFor(target, types, k, size);
   // Par on the classic course's own rule (#69): the MINIMUM plus two, so one
   // extra gate is a birdie and a small fumble still makes par. When the search
   // could not resolve — the wide EXTRA slot, occasionally — fall back to the
@@ -652,9 +756,78 @@ export function generateHole(slot: Slot, seed: number): GeneratedHole {
   return { hole, circuit, attempts };
 }
 
-/** The full 18-hole generated course for `baseSeed`, with its generators. */
+/** Generate one hole for `slot` from `seed` (deterministic in both). */
+export function generateHole(slot: Slot, seed: number): GeneratedHole {
+  return drain(holeSteps(slot, seed));
+}
+
+/**
+ * The whole course as ONE cooperative generator: every hole's own ticks, plus a
+ * `hole` tick after each finished hole. Both course drivers below run exactly
+ * this, so the synchronous and the asynchronous course cannot drift apart.
+ * Exported for the liveness test, which walks the ticks.
+ */
+export function* generateCourseSteps(
+  baseSeed: number,
+): Generator<GenTick, readonly GeneratedHole[], void> {
+  const holes: GeneratedHole[] = [];
+  for (let i = 0; i < SLOTS.length; i++) {
+    holes.push(yield* holeSteps(SLOTS[i], (baseSeed + i * SLOT_STRIDE) >>> 0));
+    yield { phase: 'hole', work: i + 1 };
+  }
+  return holes;
+}
+
+/**
+ * The full 18-hole generated course for `baseSeed`, with its generators —
+ * synchronously, in one blocking call.
+ *
+ * ## Cost (measured in node on M-series Macs; strongly load-dependent)
+ * COLD — the first course of a session — is ~5 s on a quiet machine and was
+ * ~28 s on a busy one, most of it the club orbits (e)/(f) look candidates up in
+ * (~4.7 s of orbit builds on the quiet machine, the X5 floor alone ~2.3 s).
+ * They are cached for the session (`REACH_CACHE`), after which a course is
+ * ~0.8–3 s: the draws on the tight slots plus one capped par search per hole.
+ * A phone is several times slower on both. Neither belongs in one blocking
+ * call on the UI thread, so the app deals through `prepareCourse` (chunked
+ * across macrotasks, behind a "Dealing course" indicator) and only reads the
+ * result synchronously, from `COURSE_CACHE`, once it is there. This
+ * synchronous form is for tests, tools and callers that already hold the cache.
+ */
 export function generateCourse(baseSeed: number): readonly GeneratedHole[] {
-  return SLOTS.map((slot, i) => generateHole(slot, (baseSeed + i * SLOT_STRIDE) >>> 0));
+  return drain(generateCourseSteps(baseSeed));
+}
+
+/**
+ * The same course, generated across macrotasks so the page keeps painting. It
+ * walks `generateCourseSteps` and, at a tick, hands the thread back with
+ * `setTimeout(0)` (the `findOptimalAsync` idiom — a MACROtask on purpose, since
+ * a microtask would starve rendering just like a blocking loop) whenever
+ * `SLICE_MS` of work has run since the last hand-back, and after every hole.
+ * Ticks are a few milliseconds of work apart (`DRAW_CHUNK`,
+ * `GEN_CHUNK_CHILDREN`), so no stretch runs much past the slice.
+ * `onProgress` hears the number of holes finished, 1..18.
+ *
+ * Deep-equal to `generateCourse(baseSeed)` for every seed: the two drive one
+ * generator, and yielding changes when the work runs, never what it computes.
+ */
+export async function generateCourseAsync(
+  baseSeed: number,
+  onProgress?: (holesDone: number) => void,
+): Promise<readonly GeneratedHole[]> {
+  const it = generateCourseSteps(baseSeed);
+  let sliceStart = performance.now();
+  let step = it.next();
+  while (!step.done) {
+    const hole = step.value.phase === 'hole';
+    if (hole) onProgress?.(step.value.work);
+    if (hole || performance.now() - sliceStart >= SLICE_MS) {
+      await nextMacrotask();
+      sliceStart = performance.now();
+    }
+    step = it.next();
+  }
+  return step.value;
 }
 
 /** Memo of recently generated courses — the holes are rebuilt on every render
@@ -662,14 +835,74 @@ export function generateCourse(baseSeed: number): readonly GeneratedHole[] {
 const COURSE_CACHE = new Map<number, readonly Hole[]>();
 const CACHE_LIMIT = 4;
 
-/** The generated course for `baseSeed` (memoized, so identity is stable). */
-export function randomCourse(baseSeed: number): readonly Hole[] {
-  const hit = COURSE_CACHE.get(baseSeed);
-  if (hit) return hit;
-  const holes = generateCourse(baseSeed).map((g) => g.hole);
+function rememberCourse(baseSeed: number, holes: readonly Hole[]): readonly Hole[] {
   if (COURSE_CACHE.size >= CACHE_LIMIT) COURSE_CACHE.clear();
   COURSE_CACHE.set(baseSeed, holes);
   return holes;
+}
+
+/** The generated course for `baseSeed` (memoized, so identity is stable).
+ *  Synchronous: on a seed nobody has prepared it pays the full cost of
+ *  `generateCourse` on the spot, so the app calls `prepareCourse` first. */
+export function randomCourse(baseSeed: number): readonly Hole[] {
+  const hit = COURSE_CACHE.get(baseSeed);
+  if (hit) return hit;
+  return rememberCourse(baseSeed, generateCourse(baseSeed).map((g) => g.hole));
+}
+
+/** Whether `randomCourse(baseSeed)` is a cache hit right now — i.e. moving onto
+ *  this course needs no dealing and can happen synchronously. */
+export function isCourseReady(baseSeed: number): boolean {
+  return COURSE_CACHE.has(baseSeed);
+}
+
+/** Courses being prepared, so a second request for the same seed (a re-render,
+ *  a StrictMode double effect) joins the first instead of dealing it twice. */
+const PREPARING = new Map<
+  number,
+  { readonly done: Promise<readonly Hole[]>; readonly listeners: Set<(holesDone: number) => void> }
+>();
+/** The tail of the preparation queue (see `prepareCourse`). */
+let prepareQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Deal `baseSeed`'s course without blocking the page, and memoize it: once the
+ * promise resolves, every `randomCourse` / `courseHoles` call for the seed is a
+ * synchronous cache hit, which is what lets the app's render path stay
+ * synchronous. Resolves at once for a course that is already cached.
+ *
+ * Preparations run ONE AT A TIME, in request order. Two cold courses dealt side
+ * by side would each build the same club orbits; queued, the second finds them
+ * cached and costs only its own draws (~2 s instead of ~28 s).
+ */
+export function prepareCourse(
+  baseSeed: number,
+  onProgress?: (holesDone: number) => void,
+): Promise<readonly Hole[]> {
+  const hit = COURSE_CACHE.get(baseSeed);
+  if (hit) return Promise.resolve(hit);
+  const pending = PREPARING.get(baseSeed);
+  if (pending) {
+    if (onProgress) pending.listeners.add(onProgress);
+    return pending.done;
+  }
+  const listeners = new Set<(holesDone: number) => void>();
+  if (onProgress) listeners.add(onProgress);
+  const done = prepareQueue
+    .then(async () => {
+      // A synchronous caller may have dealt it while this waited in the queue.
+      const ready = COURSE_CACHE.get(baseSeed);
+      if (ready) return ready;
+      const course = await generateCourseAsync(baseSeed, (n) => {
+        for (const listener of listeners) listener(n);
+      });
+      // Keep the identity of a course a synchronous caller cached meanwhile.
+      return COURSE_CACHE.get(baseSeed) ?? rememberCourse(baseSeed, course.map((g) => g.hole));
+    })
+    .finally(() => PREPARING.delete(baseSeed));
+  PREPARING.set(baseSeed, { done, listeners });
+  prepareQueue = done.catch(() => undefined);
+  return done;
 }
 
 /** The holes a golf state is playing: the fixed course, or its generated one. */

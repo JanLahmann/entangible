@@ -94,7 +94,14 @@ import {
   type GolfCourse,
   type GolfState,
 } from '@quantum/golf';
-import { courseCode, courseHoles, parseCourseCode, randomBaseSeed } from '@quantum/golfRandom';
+import {
+  courseCode,
+  courseHoles,
+  isCourseReady,
+  parseCourseCode,
+  randomBaseSeed,
+} from '@quantum/golfRandom';
+import { CourseDealing, useCourseDealer } from './CourseDealing';
 import {
   detectEnv,
   exitFullscreen,
@@ -456,12 +463,22 @@ export function App() {
   // A shared course code (#78) — from `?course=`, the settings drawer, or a
   // previous session — opens golf straight onto that generated course. The code
   // IS the seed, so the eighteen holes are the ones the sender played.
+  //
+  // Every move onto a random course goes through the dealer: a course that is
+  // not dealt yet is generated off the critical path (behind the "Dealing
+  // course" indicator) and only then put in play, because render reads the
+  // course synchronously and a cold deal is seconds of work.
+  const { dealing, deal: dealCourse, cancel: cancelDeal, pendingSeed: pendingDeal } =
+    useCourseDealer();
   const [golfState, setGolfState] = useState<GolfState>(() => {
     const seed = settings.courseCode === null ? null : parseCourseCode(settings.courseCode);
     // A shared link carries the competition scope beside the course (#102);
     // one without a scope is a full round, as every pre-#102 link was.
     const scope = parseScope(settings.courseScope);
-    return seed === null
+    // A code whose course is not dealt yet (on a fresh page load: always) opens
+    // on the classic card for the moment; the course-code effect below sees the
+    // code and deals it, then moves onto it.
+    return seed === null || !isCourseReady(seed)
       ? initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage), scope)
       : initialGolfState({}, 'random', seed, {}, scope);
   });
@@ -539,16 +556,28 @@ export function App() {
       // quantina session falls through to the composer moment path below.
       const effectiveMode: Mode = update.boothMode ?? modeRef.current;
       if (effectiveMode === 'golf') {
+        // While a course is being dealt the board does not play: the state in
+        // hand belongs to the course being left, and the new one tees off from
+        // a fresh baseline once it is dealt.
+        if (pendingDeal() !== null) {
+          prevCircuitRef.current = next;
+          return;
+        }
         const prevGolf = golfStateRef.current;
         const step = golfStep(prevGolf, next, courseHoles(prevGolf));
-        // Finishing a RANDOM course and clearing the board deals a NEW course:
-        // "play again" on a generated round means a fresh 18, not the same 18.
-        const nextGolf =
-          step.restarted && prevGolf.course === 'random'
-            ? initialGolfState({}, 'random', randomBaseSeed(), {}, prevGolf.scope)
-            : step.state;
+        const nextGolf = step.state;
         golfStateRef.current = nextGolf;
         setGolfState(nextGolf);
+        // Finishing a RANDOM course and clearing the board deals a NEW course:
+        // "play again" on a generated round means a fresh 18, not the same 18.
+        if (step.restarted && prevGolf.course === 'random') {
+          const seed = randomBaseSeed();
+          dealCourse(seed, () => {
+            const fresh = initialGolfState({}, 'random', seed, {}, golfStateRef.current.scope);
+            golfStateRef.current = fresh;
+            setGolfState(fresh);
+          });
+        }
         // A board-clear restart tees off a new round, so the mid-hole reveals
         // it may have paid for go with the old one (#99).
         if (step.restarted && persistsBest(nextGolf)) saveRevealed(storage, nextGolf.revealed);
@@ -603,7 +632,7 @@ export function App() {
         setCelebration({ ...outcome.celebration, token: ++tokenRef.current });
       }
     },
-    [pushStrip],
+    [pushStrip, dealCourse, pendingDeal],
   );
 
   const onResult = useCallback((result: FrameResult, video: HTMLVideoElement) => {
@@ -1074,40 +1103,61 @@ export function App() {
   // Pocket ONLY: the kiosk (KioskView) stays on the classic course by design —
   // its surface is operator-layout-driven and unattended, while choosing a
   // random round is a per-visitor decision with nobody there to make it.
+  //
+  // A fresh random seed is never dealt yet, so Random goes through the dealer
+  // and the switch (state, code setting, board) happens once the course is;
+  // Classic needs no dealing and also calls off any deal still pending.
   const pickCourse = (course: GolfCourse) => {
     const seed = course === 'random' ? randomBaseSeed() : null;
-    const scope = golfStateRef.current.scope;
-    const fresh =
-      seed === null
-        ? initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage), scope)
-        : initialGolfState({}, 'random', seed, {}, scope);
-    golfStateRef.current = fresh;
-    setGolfState(fresh);
-    // Keep the shareable code (#78) pointing at the course actually in play, so
-    // the card, the drawer field and a copied link can never disagree.
-    settingsStore.update({ courseCode: seed === null ? null : courseCode(seed) });
-    if (manual) manualSourceRef.current.clear();
+    const enter = () => {
+      const scope = golfStateRef.current.scope;
+      const fresh =
+        seed === null
+          ? initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage), scope)
+          : initialGolfState({}, 'random', seed, {}, scope);
+      golfStateRef.current = fresh;
+      setGolfState(fresh);
+      // Keep the shareable code (#78) pointing at the course actually in play, so
+      // the card, the drawer field and a copied link can never disagree.
+      settingsStore.update({ courseCode: seed === null ? null : courseCode(seed) });
+      if (manual) manualSourceRef.current.clear();
+    };
+    if (seed === null) {
+      cancelDeal();
+      enter();
+    } else {
+      dealCourse(seed, enter);
+    }
   };
 
   // A code typed into the drawer (or arriving in the URL) switches courses. Only
   // fires when the code names a course we are NOT already playing, so it cannot
   // fight `pickCourse`, which writes the setting itself.
+  // It is also what deals a code the page was OPENED with: the initial state
+  // stays classic until that course is dealt (see `golfState` above).
   const courseCodeSetting = settings.courseCode;
   useEffect(() => {
     const seed = courseCodeSetting === null ? null : parseCourseCode(courseCodeSetting);
     const cur = golfStateRef.current;
     if (seed === null) {
+      // Clearing the code also calls off a code-or-link deal still pending.
+      cancelDeal();
       if (cur.course !== 'random') return;
       const fresh = initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage), cur.scope);
       golfStateRef.current = fresh;
       setGolfState(fresh);
+      if (manual) manualSourceRef.current.clear();
     } else {
       if (cur.course === 'random' && cur.randomSeed === seed) return;
-      const fresh = initialGolfState({}, 'random', seed, {}, cur.scope);
-      golfStateRef.current = fresh;
-      setGolfState(fresh);
+      // Already on its way (a StrictMode re-run of this effect, say).
+      if (pendingDeal() === seed) return;
+      dealCourse(seed, () => {
+        const fresh = initialGolfState({}, 'random', seed, {}, golfStateRef.current.scope);
+        golfStateRef.current = fresh;
+        setGolfState(fresh);
+        if (manual) manualSourceRef.current.clear();
+      });
     }
-    if (manual) manualSourceRef.current.clear();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseCodeSetting]);
 
@@ -1119,11 +1169,17 @@ export function App() {
   const advanceHole = manual
     ? () => {
         const cur = golfStateRef.current;
-        if (cur.complete) {
-          const fresh =
-            cur.course === 'random'
-              ? initialGolfState({}, 'random', randomBaseSeed(), {}, cur.scope)
-              : initialGolfState(cur.best, 'classic', 0, {}, cur.scope);
+        if (cur.complete && cur.course === 'random') {
+          // A brand-new seed: dealt first, then teed off (the board clears now
+          // either way, and does not play while the course is dealt).
+          const seed = randomBaseSeed();
+          dealCourse(seed, () => {
+            const fresh = initialGolfState({}, 'random', seed, {}, golfStateRef.current.scope);
+            golfStateRef.current = fresh;
+            setGolfState(fresh);
+          });
+        } else if (cur.complete) {
+          const fresh = initialGolfState(cur.best, 'classic', 0, {}, cur.scope);
           // A new round deals every price afresh (#99): holes revealed last
           // time round are not still floored on this one.
           if (persistsBest(fresh)) saveRevealed(storage, fresh.revealed);
@@ -1199,7 +1255,10 @@ export function App() {
       <div key="golfview" className="pk-side-hero">
         {/* The view names itself now (EvolvingState's view-label) — no extra
             panel label, it would double up. */}
-        <div className="pk-well">
+        <div className={`pk-well${dealing ? ' is-dealing' : ''}`}>
+          {/* A course being dealt covers the sphere: the target under it is
+              the course being left, not the one about to be played. */}
+          {dealing && <CourseDealing holesDone={dealing.holesDone} />}
           <EvolvingState
             circuit={circuit}
             view={currentLevel.view}

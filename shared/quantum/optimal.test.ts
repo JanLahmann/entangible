@@ -6,6 +6,8 @@ import {
   optimalSearch,
   canonicalKey,
   movesFor,
+  reachableWithin,
+  reachableWithinSteps,
   DEFAULT_STATE_BUDGET,
 } from './optimal';
 import { HOLES, clubGateTypes, evaluate, holeTargetState, ROUND_CLUBS, gateTypesForClubs } from './golf';
@@ -169,6 +171,62 @@ describe('optimalSearch — the three outcomes', () => {
       stateBudget: 60_000,
     });
     expect(result.status).toBe(step.value.status);
+  });
+});
+
+describe('chunking — where a cooperative walk pauses, never what it finds', () => {
+  /** Drain a counting generator, returning the per-yield deltas and the result. */
+  function chunksOf<R>(it: Generator<number, R, void>): { deltas: number[]; result: R } {
+    const deltas: number[] = [];
+    let last = 0;
+    let step = it.next();
+    while (!step.done) {
+      deltas.push(step.value - last);
+      last = step.value;
+      step = it.next();
+    }
+    return { deltas, result: step.value };
+  }
+
+  it('optimalSearch pauses every `chunkChildren`, give or take one node, same verdict', () => {
+    const h = hole(18); // X5: the widest move set there is
+    const moves = movesFor(clubGateTypes(h), h.qubits).length;
+    const opts = { maxDepth: 5, stateBudget: 20_000 };
+    const { deltas, result } = chunksOf(
+      optimalSearch(holeTargetState(h), clubGateTypes(h), h.qubits, { ...opts, chunkChildren: 500 }),
+    );
+    expect(deltas.length).toBeGreaterThan(10);
+    // A pause is checked after each expanded node, so a chunk overshoots by
+    // less than one node's moves — and never undershoots.
+    for (const d of deltas) {
+      expect(d).toBeGreaterThanOrEqual(500);
+      expect(d).toBeLessThan(500 + moves);
+    }
+    const plain = chunksOf(optimalSearch(holeTargetState(h), clubGateTypes(h), h.qubits, opts));
+    expect(result).toEqual(plain.result);
+  });
+
+  it('reachableWithinSteps chunks the same walk reachableWithin does (#77 orbits)', () => {
+    const k = 3;
+    const moves = movesFor(DIFFICULT, k).length;
+    for (const stateBudget of [30_000, 500]) {
+      const { deltas, result } = chunksOf(
+        reachableWithinSteps(DIFFICULT, k, 6, { stateBudget, chunkChildren: 300 }),
+      );
+      const whole = reachableWithin(DIFFICULT, k, 6, { stateBudget });
+      // Same traversal ⇒ the same map, entry for entry, in the same order.
+      expect(result.complete).toBe(whole.complete);
+      expect([...result.depthOf]).toEqual([...whole.depthOf]);
+      expect(deltas.length).toBeGreaterThan(2);
+      for (const d of deltas) {
+        expect(d).toBeGreaterThanOrEqual(300);
+        expect(d).toBeLessThan(300 + moves);
+      }
+    }
+    // Both exits are covered: the 3-wire stabilizer orbit closes (1080 states)
+    // inside 30k, and is capped at 500.
+    expect(reachableWithin(DIFFICULT, k, 6, { stateBudget: 30_000 }).complete).toBe(true);
+    expect(reachableWithin(DIFFICULT, k, 6, { stateBudget: 500 }).complete).toBe(false);
   });
 });
 
