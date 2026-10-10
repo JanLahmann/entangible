@@ -57,6 +57,12 @@ locally with npm instead; it installs Node 20 and is slow on a Pi 4.
 Without `--kiosk` the host still starts on boot; open the address that
 `entangible url` prints in any browser.
 
+`--no-enable` installs the service without starting it at boot, so it holds
+no port, camera or RAM until you run `entangible start` (and `entangible
+stop` when done). This is how the RasQberry menu should run it, as a demo
+started on demand. It cannot be combined with `--kiosk`, which needs the
+service at boot.
+
 ## The service
 
 `entangible` below means `<checkout>/deploy/rasqberry/entangible`.
@@ -72,7 +78,9 @@ entangible uninstall       # --purge also removes settings, venv, certs
 
 Settings live in `/etc/default/entangible`. They are environment variables,
 the same `QAMPOSER_*` set the CLI flags map to. Install never overwrites this
-file:
+file. When it first creates it, install picks `QAMPOSER_SOURCE` from the
+cameras it finds: a USB webcam gives `cv2:0`, otherwise a Pi Camera Module
+gives `picamera2`, otherwise `cv2:0`.
 
 ```bash
 # /etc/default/entangible
@@ -96,7 +104,9 @@ QAMPOSER_SOURCE=cv2:0          # first USB camera (the default)
   cannot use Continuity Camera — the phone-browser streaming path is the Pi's
   overhead-iPhone option ([`iphone-capture.md`](iphone-capture.md)).
 
-Staff can also switch cameras live from the `/debug` page.
+Staff can also switch cameras live from the `/debug` page. If the camera
+changes later (say, the webcam is replaced by a camera module),
+`entangible doctor` prints a hint with the value to set.
 
 ## Offline / hotspot booths
 

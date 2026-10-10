@@ -23,13 +23,16 @@ usage() {
 usage: $PROG <command> [options]
 
 commands:
-  install [--kiosk] [--build-web]   install or update (idempotent; repeat after an A/B update)
+  install [--kiosk] [--build-web] [--no-enable]
+                                    install or update (idempotent; repeat after an A/B update);
+                                    --no-enable: do not start at boot (start it on demand;
+                                    not with --kiosk)
   uninstall [--purge] [--purge-cache]
                                     remove the service + kiosk autostart; --purge also the
                                     settings, venv, web bundle and TLS certs/token;
                                     --purge-cache also the download cache on /data
   start | stop | restart            control the $ENT_UNIT systemd service
-  status                            one line of JSON (installed, running, health, URLs)
+  status                            one line of JSON (installed, running, enabled, health, URLs)
   url [--visitor]                   the booth-screen URL (or the URL phones open)
   doctor                            preflight checklist (camera, port, TLS, token)
   --version                         print the checkout version and web bundle tag
@@ -49,6 +52,12 @@ is_installed() {
 }
 
 is_running() { have_systemctl && systemctl is-active --quiet "$ENT_UNIT" 2>/dev/null; }
+
+# Started at boot? Only "enabled" counts (not enabled-runtime: gone at reboot).
+is_enabled() {
+  have_systemctl && [ -f "$(ent_unit_file)" ] \
+    && [ "$(systemctl is-enabled "$ENT_UNIT" 2>/dev/null || true)" = "enabled" ]
+}
 
 require_installed() {
   is_installed && return 0
@@ -71,9 +80,10 @@ start_log() {
 # browser). null when the host did not answer.
 cmd_status() {
   [ "$#" -eq 0 ] || die_usage "status takes no arguments"
-  local installed=false running=false health="unknown" ready="null" body="" bundle="null"
+  local installed=false running=false enabled=false health="unknown" ready="null" body="" bundle="null"
   is_installed && installed=true
   is_running && running=true
+  is_enabled && enabled=true
   if command -v curl >/dev/null 2>&1; then
     body="$(curl -ks --max-time 2 "$(ent_health_url)" 2>/dev/null || true)"
     if printf '%s' "$body" | grep -q '"status"[[:space:]]*:[[:space:]]*"ok"'; then
@@ -85,10 +95,10 @@ cmd_status() {
   fi
   local tag; tag="$(ent_installed_bundle 2>/dev/null || true)"
   [ -n "$tag" ] && bundle="$(ent_json_str "$tag")"
-  printf '{"installed":%s,"running":%s,"version":%s,"bundle":%s,"urls":{"kiosk":%s,"visitor":%s},"source":%s,"ready":%s,"health":%s}\n' \
+  printf '{"installed":%s,"running":%s,"version":%s,"bundle":%s,"urls":{"kiosk":%s,"visitor":%s},"source":%s,"ready":%s,"health":%s,"enabled":%s}\n' \
     "$installed" "$running" "$(ent_json_str "$(ent_version)")" "$bundle" \
     "$(ent_json_str "$(ent_kiosk_url)")" "$(ent_json_str "$(ent_visitor_url)")" \
-    "$(ent_json_str "$(ent_source)")" "$ready" "$(ent_json_str "$health")"
+    "$(ent_json_str "$(ent_source)")" "$ready" "$(ent_json_str "$health")" "$enabled"
 }
 
 # true/false/null from a health body; python3 when present (always on Pi OS),
@@ -142,6 +152,8 @@ cmd_doctor() {
   if is_running; then
     echo "note: the service is running, so the 'port' row is expected to be ✗ (it holds the port)."
   fi
+  # Configured source vs. the camera hardware found (a hint, never an edit).
+  ent_source_hint || true
   local assignments=()
   while IFS= read -r line; do assignments+=("$line"); done < <(ent_env_assignments)
   # As the desktop user, from the checkout: the cert/token live in their home
@@ -151,10 +163,18 @@ cmd_doctor() {
 }
 
 cmd_install() {
-  local a
+  local a kiosk=0 no_enable=0
   for a in "$@"; do
-    case "$a" in --kiosk|--build-web) ;; *) die_usage "install: unknown option '$a'" ;; esac
+    case "$a" in
+      --kiosk) kiosk=1 ;;
+      --no-enable) no_enable=1 ;;
+      --build-web) ;;
+      *) die_usage "install: unknown option '$a'" ;;
+    esac
   done
+  # The kiosk autostart needs the service up at boot.
+  [ "$kiosk" -eq 0 ] || [ "$no_enable" -eq 0 ] \
+    || die_usage "install: --no-enable cannot go with --kiosk (the kiosk needs the service at boot)"
   start_log "install $*"
   exec bash "$SCRIPT_DIR/install.sh" "$@"
 }

@@ -49,7 +49,7 @@ script (e.g. into `/usr/local/bin`) also works.
 
 | Command | What it does | Needs root? |
 |---|---|---|
-| `install [--kiosk] [--build-web]` | Install or update. Idempotent: run it again after every A/B update. `--kiosk` autostarts the booth screen at desktop login. `--build-web` builds the web app with npm (it installs Node 20) instead of downloading it. | uses `sudo` for apt/systemd/`/etc`; may also run as root via sudo |
+| `install [--kiosk] [--build-web] [--no-enable]` | Install or update. Idempotent: run it again after every A/B update. By default the service is enabled (starts at boot) and (re)started. `--no-enable` installs it **disabled** and does not start it: it runs only after `entangible start`. An earlier enabled install becomes disabled, and a service that is already running is restarted so it runs the new code. A kiosk autostart left by an earlier `--kiosk` install is removed. `--kiosk` autostarts the booth screen at desktop login; it needs the service at boot, so `--kiosk` with `--no-enable` is a usage error (exit 2). `--build-web` builds the web app with npm (it installs Node 20) instead of downloading it. | uses `sudo` for apt/systemd/`/etc`; may also run as root via sudo |
 | `uninstall [--purge] [--purge-cache]` | Stops, disables and removes the unit and the kiosk autostart. `--purge` also removes `/etc/default/entangible`, the venv, the downloaded web bundle and the TLS cert/token. `--purge-cache` also removes the cache on `/data`. Prints every path it removes. | uses `sudo` |
 | `start` / `stop` / `restart` | `systemctl <action> entangible-host` | uses `sudo` |
 | `status` | Prints **one line of JSON** on stdout (see below). Exits 0 whether or not the booth is running. | no |
@@ -61,6 +61,16 @@ script (e.g. into `/usr/local/bin`) also works.
 
 `--help`, `url`, `status` and usage errors need neither systemd nor an
 install.
+
+### On demand: `install --no-enable` (recommended for the RasQberry launcher)
+
+RasQberry starts a demo only when it is opened. A default install enables
+`entangible-host`, so it runs from every boot and holds port 8443, the camera
+and RAM even when nobody uses it. For the RasQberry menu, install with
+`entangible install --no-enable`, then call `entangible start` when the demo is
+opened and `entangible stop` when it is closed. `status` reports
+`"enabled":false` for such an install. A dedicated booth Pi keeps the default
+(or `--kiosk`), so the booth comes back on its own after a reboot.
 
 ### Exit codes
 
@@ -83,7 +93,7 @@ Ctrl+C, anything else = failure. Every code below except 0 and 130 counts as
 One line on stdout, nothing else on stdout:
 
 ```json
-{"installed":true,"running":true,"version":"booth-v1-3-g1a2b3c4","bundle":"booth-v1","urls":{"kiosk":"https://localhost:8443/?kiosk&connect=1","visitor":"https://192.168.4.1:8443/?connect=1"},"source":"cv2:0","ready":false,"health":"ok"}
+{"installed":true,"running":true,"version":"booth-v1-3-g1a2b3c4","bundle":"booth-v1","urls":{"kiosk":"https://localhost:8443/?kiosk&connect=1","visitor":"https://192.168.4.1:8443/?connect=1"},"source":"cv2:0","ready":false,"health":"ok","enabled":true}
 ```
 
 | Key | Type | Meaning |
@@ -97,6 +107,10 @@ One line on stdout, nothing else on stdout:
 | `source` | string | `QAMPOSER_SOURCE` from the env file (default `cv2:0`) |
 | `ready` | bool or null | Comes from `GET /api/health` (the host returns `{"status":"ok","backend":{…},"camera":{"kind","name","connected","lost"},"clients":N}`). `true` when the host answers and the camera is connected and not lost, which are the server-side rows of the `/debug` READY light. The frames and board rows exist only in the browser. `null` when the host did not answer. |
 | `health` | string | `"ok"` when `/api/health` answered with `status: ok`. `"down"` when installed or running but not answering (still starting, or crashed). `"unknown"` when not installed and not answering, or when `curl` is missing. |
+| `enabled` | bool | The service starts at boot: the unit file exists and `systemctl is-enabled entangible-host` says `enabled`. `false` after `install --no-enable`, when not installed, or without systemd. |
+
+Fields are only ever added, at the end; parse the line as JSON rather than by
+position.
 
 `status` reads `/etc/default/entangible` and never needs root. It probes
 `https://localhost:<port>/api/health` with `curl -ks --max-time 2`.
@@ -111,7 +125,7 @@ One line on stdout, nothing else on stdout:
 | Python venv | `<checkout>/.venv` (system python3, `--system-site-packages`) | no |
 | `uv` | `$USER_HOME/.local/bin/uv`, unless already on `PATH` | no |
 | systemd unit | `/etc/systemd/system/entangible-host.service` | no (root fs) |
-| Settings | `/etc/default/entangible`. Seeded only if missing and never overwritten. | no (root fs) |
+| Settings | `/etc/default/entangible`. Seeded only if missing (with `QAMPOSER_SOURCE` picked from the cameras found, see [Cameras](#cameras)) and never overwritten. | no (root fs) |
 | TLS cert + operator token | `$USER_HOME/.qamposer-physical/certs/` | no |
 | Booth layout/branding (optional) | `$USER_HOME/.qamposer-physical/{layout,branding}.toml` | no |
 | Kiosk autostart (`--kiosk`) | `$USER_HOME/.config/autostart/entangible-kiosk.desktop` | no |
@@ -146,7 +160,7 @@ checkout) after an update. Each step and its cost on a repeat:
 | web bundle | download + sha256 check from the GitHub release | from the cache; no network |
 | `uv` | official installer download | copied from the cache |
 | venv + `uv sync --frozen` (host + vision only) | wheel downloads (opencv-python-headless, numpy, fastapi …) | from the uv cache; offline retry with `--offline` |
-| unit, env file, kiosk entry, `systemctl restart` | seconds | seconds |
+| unit, env file, kiosk entry, `systemctl enable` + `restart` (with `--no-enable`: `disable`, restart only if running) | seconds | seconds |
 
 Expected durations are to be measured on the rig, for Pi 4 and Pi 5, cold and
 warm. With a warm cache, no step needs the network and no step builds
@@ -197,6 +211,19 @@ build123d/OpenCASCADE) is never installed on a booth.
 
 Set `QAMPOSER_SOURCE` in `/etc/default/entangible` and then run
 `entangible restart`. Staff can also switch live on `/debug`.
+
+**Auto-pick on the first install.** When `install` seeds the env file (only
+then; an existing file is never rewritten), it picks the source from the
+hardware: a USB camera → `cv2:0`; else a Pi Camera Module → `picamera2`; else
+`cv2:0`. The choice is printed and logged. A USB camera is a video4linux node
+whose sysfs device sits on a USB bus (any `/dev/video*` is not enough: a Pi 5
+always has ISP/CSI nodes, a Pi 4 codec/ISP nodes). A Pi Camera Module is a
+non-USB entry in `rpicam-hello --list-cameras` (or `libcamera-hello`), probed
+with a 10 s time limit; missing tools just mean "not detected".
+`entangible doctor` prints a one-line hint when the configured source
+disagrees with the hardware (e.g. `cv2:0` on a Pi with only a camera module);
+it never edits the file. `ENT_SYSFS_ROOT` and `ENT_LIBCAMERA_LIST_CMD` in
+`lib.sh` are test hooks only.
 
 | Source | Value |
 |---|---|
@@ -268,6 +295,19 @@ then re-clone the checkout. This leaves `/data` alone.
     and it recovers.
 21. (Optional) Pi Camera Module: `QAMPOSER_SOURCE=picamera2`. This checks that
     the apt picamera2 imports in the venv.
+22. **Camera auto-pick:** `uninstall --purge`, then `install` with only a Pi
+    Camera Module connected: the log says `QAMPOSER_SOURCE=picamera2` and the
+    env file has it. Repeat with a USB webcam plugged in: `cv2:0`. With the
+    env file set to `cv2:0` and only the module connected, `doctor` prints
+    the hint.
+
+### On-demand install (`--no-enable`)
+
+23. After a default install, run `entangible install --no-enable` while the
+    service runs: it is restarted (running, new code), and `status` shows
+    `"enabled":false`. Reboot: the service stays down until `entangible start`.
+24. `entangible install --no-enable` with the service stopped: it stays
+    stopped, and the closing message says so and names `entangible start`.
 
 ## Known unknowns (need the rig)
 

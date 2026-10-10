@@ -12,6 +12,11 @@
 #   ENTANGIBLE_UNIT_DIR   where the unit file goes       (/etc/systemd/system)
 #   ENTANGIBLE_CACHE_DIR  optional cache on /data; EMPTY disables caching
 #   USER_HOME             the desktop user's home (else from passwd)
+#
+# Test hooks only (camera detection, see ent_detect_source):
+#   ENT_SYSFS_ROOT          sysfs mount point                 (/sys)
+#   ENT_LIBCAMERA_LIST_CMD  camera-list command; "" disables  (rpicam-hello /
+#                           libcamera-hello --list-cameras)
 
 # --- the one place the cache location lives ---------------------------------
 # A/B updates wipe / and /home, only /data survives — so a warm cache here makes
@@ -213,6 +218,75 @@ ent_lan_host() {
 ent_kiosk_url() { printf '%s://localhost:%s/?kiosk&connect=1\n' "$(ent_scheme)" "$(ent_port)"; }
 ent_visitor_url() { printf '%s://%s:%s/?connect=1\n' "$(ent_scheme)" "$(ent_lan_host)" "$(ent_port)"; }
 ent_health_url() { printf '%s://localhost:%s/api/health\n' "$(ent_scheme)" "$(ent_port)"; }
+
+# --- camera auto-detection ------------------------------------------------------
+# Used to seed QAMPOSER_SOURCE on a fresh install and for the doctor hint.
+# Never fails: missing tools / sysfs just mean "not detected".
+
+# A USB (UVC) camera: a video4linux node whose device resolves under a USB bus.
+# NOT "any /dev/video*": a Pi 5 always has ISP/CSI front-end nodes (pispbe,
+# rp1-cfe) and a Pi 4 has bcm2835-codec/isp nodes. UVC makes two nodes per
+# camera (capture index 0 + metadata index 1); only the capture one counts.
+ent_has_usb_camera() {
+  local dev real idx
+  for dev in "${ENT_SYSFS_ROOT:-/sys}"/class/video4linux/video*; do
+    [ -e "$dev/device" ] || continue
+    real="$(readlink -f "$dev/device" 2>/dev/null)" || continue
+    case "$real" in */usb[0-9]*/*) ;; *) continue ;; esac
+    idx="$(cat "$dev/index" 2>/dev/null || echo 0)"
+    [ "$idx" = "0" ] && return 0
+  done
+  return 1
+}
+
+# A Pi camera module (CSI): `rpicam-hello --list-cameras` (older images:
+# libcamera-hello) lists it as "N : <sensor> [...] (<path>)". libcamera lists
+# UVC cameras too — their path/id contains "usb", so those are skipped.
+# Time-limited: a wedged camera stack must not hang the install.
+ent_has_pi_camera() {
+  local probe=() out="" c
+  if [ -n "${ENT_LIBCAMERA_LIST_CMD+x}" ]; then
+    read -r -a probe <<<"$ENT_LIBCAMERA_LIST_CMD"
+  else
+    for c in rpicam-hello libcamera-hello; do
+      if command -v "$c" >/dev/null 2>&1; then probe=("$c" --list-cameras); break; fi
+    done
+  fi
+  [ "${#probe[@]}" -gt 0 ] && command -v "${probe[0]}" >/dev/null 2>&1 || return 1
+  if command -v timeout >/dev/null 2>&1; then probe=(timeout 10 "${probe[@]}"); fi
+  # The listing goes to stdout or stderr depending on the rpicam-apps version.
+  out="$("${probe[@]}" 2>&1 </dev/null || true)"
+  printf '%s\n' "$out" | grep -E '^[[:space:]]*[0-9]+[[:space:]]+:[[:space:]]' \
+    | grep -vi 'usb' >/dev/null  # no -q: an early exit could SIGPIPE under pipefail
+}
+
+# The source a fresh install should use: USB camera > Pi camera module > cv2:0.
+ent_detect_source() {
+  if ent_has_usb_camera; then
+    echo "cv2:0"
+  elif ent_has_pi_camera; then
+    echo "picamera2"
+  else
+    echo "$ENT_DEFAULT_SOURCE"
+  fi
+}
+
+# One hint line when the configured source disagrees with the hardware found
+# (nothing otherwise). Hint only: the env file is never edited for the user.
+ent_source_hint() {
+  local src want=""
+  src="$(ent_source)"
+  case "$src" in
+    cv2:*)
+      ent_has_usb_camera || { ent_has_pi_camera && want="picamera2"; } ;;
+    picamera2)
+      ent_has_pi_camera || { ent_has_usb_camera && want="cv2:0"; } ;;
+  esac
+  [ -n "$want" ] || return 0
+  printf 'hint: QAMPOSER_SOURCE=%s, but this Pi has %s — set QAMPOSER_SOURCE=%s in %s, then: entangible restart\n' \
+    "$src" "$([ "$want" = picamera2 ] && echo 'a Pi camera module and no USB camera' || echo 'a USB camera and no Pi camera module')" \
+    "$want" "$ENT_ENV_FILE"
+}
 
 # --- platform ----------------------------------------------------------------
 # Linux on arm64 (Pi 4/5) or x86_64 (dev/CI) only; Trixie is the supported

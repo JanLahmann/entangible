@@ -13,7 +13,7 @@
 # when the packages are already there, and caches downloads on /data (the only
 # thing that survives an update) so a warm reinstall needs no network.
 #
-#   install.sh [--kiosk] [--build-web]
+#   install.sh [--kiosk] [--build-web] [--no-enable]
 #   install.sh --uninstall [--purge] [--purge-cache]
 #
 # What install does, in order:
@@ -25,7 +25,10 @@
 #   4. uv + Python venv    --system-site-packages (apt picamera2 must be importable),
 #                          `uv sync --frozen` of the booth packages only
 #   5. systemd unit        entangible-host.service; /etc/default/entangible seeded
-#                          only if missing (the operator may have edited it)
+#                          only if missing (the operator may have edited it), with
+#                          QAMPOSER_SOURCE auto-picked (USB camera > Pi camera > cv2:0);
+#                          enabled + restarted, or with --no-enable disabled and
+#                          only restarted if it was already running
 #   6. kiosk autostart     with --kiosk: Chromium opens the booth screen at login
 set -euo pipefail
 
@@ -40,10 +43,12 @@ AUTOSTART_NAME="entangible-kiosk.desktop"
 
 usage() {
   cat <<'EOF'
-usage: install.sh [--kiosk] [--build-web]
+usage: install.sh [--kiosk] [--build-web] [--no-enable]
        install.sh --uninstall [--purge] [--purge-cache]
 
   --kiosk        also autostart Chromium on the booth screen at desktop login
+  --no-enable    do not start the service at boot (disable it); start it on
+                 demand with `entangible start`. Not with --kiosk.
   --build-web    build pocket-app locally with npm (installs Node 20) instead of
                  downloading the prebuilt release bundle
   --uninstall    stop + remove the service and the kiosk autostart
@@ -53,11 +58,12 @@ usage: install.sh [--kiosk] [--build-web]
 EOF
 }
 
-KIOSK=0; BUILD_WEB=0; UNINSTALL=0; PURGE=0; PURGE_CACHE=0
+KIOSK=0; BUILD_WEB=0; NO_ENABLE=0; UNINSTALL=0; PURGE=0; PURGE_CACHE=0
 for arg in "$@"; do
   case "$arg" in
     --kiosk) KIOSK=1 ;;
     --build-web) BUILD_WEB=1 ;;
+    --no-enable) NO_ENABLE=1 ;;
     --uninstall) UNINSTALL=1 ;;
     --purge) PURGE=1 ;;
     --purge-cache) PURGE_CACHE=1 ;;
@@ -67,6 +73,14 @@ for arg in "$@"; do
 done
 if [ "$UNINSTALL" -eq 0 ] && { [ "$PURGE" -eq 1 ] || [ "$PURGE_CACHE" -eq 1 ]; }; then
   echo "install.sh: --purge / --purge-cache only go with --uninstall" >&2
+  exit "$ENT_EXIT_USAGE"
+fi
+if [ "$UNINSTALL" -eq 1 ] && [ "$NO_ENABLE" -eq 1 ]; then
+  echo "install.sh: --no-enable only goes with an install" >&2
+  exit "$ENT_EXIT_USAGE"
+fi
+if [ "$KIOSK" -eq 1 ] && [ "$NO_ENABLE" -eq 1 ]; then
+  echo "install.sh: --no-enable cannot go with --kiosk (the kiosk needs the service at boot)" >&2
   exit "$ENT_EXIT_USAGE"
 fi
 
@@ -419,15 +433,25 @@ if ! command -v systemctl >/dev/null 2>&1; then
   exit "$ENT_EXIT_UNSUPPORTED"
 fi
 if [ ! -f "$ENT_ENV_FILE" ]; then
+  # Only when seeding: an existing file is the operator's (doctor hints instead).
+  SEED_SOURCE="$(ent_detect_source)"
+  if [ "$SEED_SOURCE" = "picamera2" ]; then
+    say "Pi camera module found — QAMPOSER_SOURCE=picamera2"
+  elif ent_has_usb_camera; then
+    say "USB camera found — QAMPOSER_SOURCE=$SEED_SOURCE"
+  else
+    say "No camera detected — QAMPOSER_SOURCE=$SEED_SOURCE (the default; see the env file for others)"
+  fi
   say "Seeding $ENT_ENV_FILE"
-  ent_as_root tee "$ENT_ENV_FILE" >/dev/null <<'EOF'
+  ent_as_root tee "$ENT_ENV_FILE" >/dev/null <<EOF
 # Entangible host settings (systemd reads this; docs/rasqberry-integration.md).
 # Never overwritten by install — edit freely, then: entangible restart
 #
 # Source: cv2:0 = first USB camera, picamera2 = the Pi camera module,
 #         push = a phone streaming via the staff QR,
 #         replay:tests/fixtures/recordings/bell-sequence = the recorded demo loop.
-QAMPOSER_SOURCE=cv2:0
+# (Picked at install from the cameras found: USB > Pi camera module > cv2:0.)
+QAMPOSER_SOURCE=$SEED_SOURCE
 # Pin the hostname/IP printed in QRs and covered by the TLS cert (hotspots):
 # QAMPOSER_ADVERTISE_HOST=10.42.0.1
 # QAMPOSER_PORT=8443
@@ -447,9 +471,29 @@ if ! cmp -s "$unit_tmp" "$UNIT_FILE"; then
   ent_as_root install -m 0644 "$unit_tmp" "$UNIT_FILE"
   ent_as_root systemctl daemon-reload
 fi
-ent_as_root systemctl enable --quiet "$ENT_UNIT"
 # Restart (not just start) so a re-install always runs the new code/bundle.
-ent_as_root systemctl restart "$ENT_UNIT"
+RUNNING=1
+if [ "$NO_ENABLE" -eq 1 ]; then
+  # On demand only (RasQberry starts demos when opened): not at boot, so it
+  # holds no port/camera/RAM until asked. Disabling is idempotent and turns an
+  # earlier default install into an on-demand one.
+  ent_as_root systemctl disable --quiet "$ENT_UNIT"
+  if systemctl is-active --quiet "$ENT_UNIT" 2>/dev/null; then
+    say "Service was running — restarting it on the new code (not started at boot)"
+    ent_as_root systemctl restart "$ENT_UNIT"
+  else
+    RUNNING=0
+  fi
+  # A kiosk autostart from an earlier --kiosk install would open a dead page
+  # at login now that nothing starts the service at boot.
+  if [ -f "$ENT_HOME/.config/autostart/$AUTOSTART_NAME" ]; then
+    ent_as_user rm -f "$ENT_HOME/.config/autostart/$AUTOSTART_NAME"
+    say "Removed the kiosk autostart (it needs the service at boot)"
+  fi
+else
+  ent_as_root systemctl enable --quiet "$ENT_UNIT"
+  ent_as_root systemctl restart "$ENT_UNIT"
+fi
 
 # --- 6. optional kiosk autostart ---------------------------------------------
 if [ "$KIOSK" -eq 1 ]; then
@@ -460,7 +504,14 @@ if [ "$KIOSK" -eq 1 ]; then
 fi
 
 echo
-say "Done. Entangible is running as $ENT_UNIT."
+if [ "$RUNNING" -eq 0 ]; then
+  say "Done. Entangible is installed; $ENT_UNIT is not running and does not start at boot."
+  echo "    start it:      $SCRIPT_DIR/entangible start"
+elif [ "$NO_ENABLE" -eq 1 ]; then
+  say "Done. Entangible is running as $ENT_UNIT (not started at boot)."
+else
+  say "Done. Entangible is running as $ENT_UNIT."
+fi
 echo "    booth screen:  $(ent_kiosk_url)"
 echo "    phones join:   $(ent_visitor_url)"
 echo "    preflight:     $SCRIPT_DIR/entangible doctor"
