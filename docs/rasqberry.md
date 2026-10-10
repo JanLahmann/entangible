@@ -48,7 +48,8 @@ Any checkout location works; that one is the RasQberry convention.
   importable), then `uv sync --frozen`
 - a systemd service
 - with `--kiosk`, a desktop autostart entry that opens the booth screen
-  fullscreen at login
+  fullscreen at login, in a Chromium with its own profile (separate from
+  RasQberry's own Chromium window)
 
 Downloads are cached on `/data` when it exists, so a reinstall after a
 RasQberry system update needs no network. `--build-web` builds the web app

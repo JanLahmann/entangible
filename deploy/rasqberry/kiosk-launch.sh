@@ -21,5 +21,14 @@ done
 
 # Trixie ships `chromium`; `chromium-browser` covers older images.
 BROWSER=$(command -v chromium || command -v chromium-browser)
-exec "$BROWSER" --kiosk --noerrdialogs --disable-session-crashed-bubble \
-  --ignore-certificate-errors "$URL"
+# A dedicated profile: RasQberry autostarts its own Chromium (default profile)
+# at login, and Chromium's singleton would just hand our URL to that window,
+# dropping --kiosk and --ignore-certificate-errors. A separate --user-data-dir
+# makes this its own browser process. It lives in /home (an A/B update wipes
+# it; it is simply recreated). A fresh profile shows first-run UI and the
+# keyring unlock prompt on Pi OS, hence --no-first-run --password-store=basic.
+PROFILE="${XDG_CONFIG_HOME:-$HOME/.config}/entangible-kiosk"
+mkdir -p "$PROFILE"
+exec "$BROWSER" --user-data-dir="$PROFILE" --no-first-run \
+  --password-store=basic --kiosk --noerrdialogs \
+  --disable-session-crashed-bubble --ignore-certificate-errors "$URL"

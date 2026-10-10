@@ -137,6 +137,16 @@ def test_kiosk_desktop_entry_points_at_launcher() -> None:
     # The launcher waits on the host's real health endpoint before Chromium.
     assert "ent_health_url" in launcher
     assert "/api/health" in LIB.read_text(encoding="utf-8")
+    # Own profile: otherwise Chromium's singleton hands the URL to RasQberry's
+    # already-running Chromium and drops the kiosk/cert flags.
+    for flag in (
+        "--user-data-dir=",
+        "--no-first-run",
+        "--password-store=basic",
+        "--kiosk",
+        "--ignore-certificate-errors",
+    ):
+        assert flag in launcher, f"kiosk-launch.sh lacks {flag}"
 
 
 def test_no_hardcoded_desktop_user_home() -> None:

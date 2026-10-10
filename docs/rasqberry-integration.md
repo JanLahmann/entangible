@@ -202,7 +202,9 @@ build123d/OpenCASCADE) is never installed on a booth.
   `/etc/default/entangible`. Printed URLs, QR codes, the TLS cert and
   `entangible url --visitor` then all use it.
 - Visitors tap through a certificate warning once. The kiosk Chromium uses
-  `--ignore-certificate-errors` on `localhost`.
+  `--ignore-certificate-errors` on `localhost`. It runs with its own profile
+  (`~/.config/entangible-kiosk`), so it is a separate browser process from
+  RasQberry's own Chromium and its kiosk and certificate flags take effect.
 - **Offline:** everything runs locally (the app, the simulation, golf,
   Quantina). Install with a warm cache is offline too. Only "Transfer to IBM
   Composer" needs the visitor's own internet.
