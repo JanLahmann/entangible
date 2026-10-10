@@ -1,0 +1,4 @@
+User-agent: *
+Disallow: /debug
+
+Sitemap: https://entangible.org/sitemap.xml
