@@ -69,7 +69,7 @@ service at boot.
 `entangible` below means `<checkout>/deploy/rasqberry/entangible`.
 
 ```bash
-entangible doctor          # preflight: build, camera, port, TLS, token (stop the service first)
+entangible doctor          # preflight: build, camera, port, TLS, token (service up or down)
 entangible status          # one-line JSON: installed, running, health, URLs
 entangible restart         # after changing settings
 entangible url --visitor   # the URL phones open

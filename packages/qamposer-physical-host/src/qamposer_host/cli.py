@@ -197,9 +197,14 @@ def _cmd_qr(args: argparse.Namespace) -> int:
 # --- doctor ------------------------------------------------------------------
 
 
-def _check_source(spec: str, replay_dir) -> tuple[bool, str, str]:
-    """(ok, detail, hint) for one frame-source spec, without starting a pipeline."""
+def _check_source(spec: str, replay_dir, wrapped: bool = False) -> tuple[bool, str, str]:
+    """(ok, detail, hint) for one frame-source spec, without starting a pipeline.
+
+    ``wrapped``: the hints name the entangible env file / commands, not CLI flags.
+    """
     from pathlib import Path
+
+    env_file = "/etc/default/entangible"
 
     kind, _, rest = spec.partition(":")
     if kind == "push":
@@ -222,25 +227,78 @@ def _check_source(spec: str, replay_dir) -> tuple[bool, str, str]:
         try:
             from qamposer_vision.sources import list_cameras  # lazy
         except Exception:
-            return False, "qamposer-vision not importable", "run `uv sync` from the repo root"
+            return False, "qamposer-vision not importable", \
+                "entangible install" if wrapped else "run `uv sync` from the repo root"
         openable = list_cameras()
         if index in openable:
             return True, f"cv2:{index} opens (openable: {openable})", ""
         if openable:
             return False, f"cv2:{index} does not open (openable: {openable})", \
-                f"run with --source cv2:{openable[0]}, or pick one on /debug"
-        return False, "no cv2 camera opens", \
+                (f"set QAMPOSER_SOURCE=cv2:{openable[0]} in {env_file}, or pick one on /debug"
+                 if wrapped else f"run with --source cv2:{openable[0]}, or pick one on /debug")
+        return False, "no cv2 camera opens", (
+            "plug in a camera, or set QAMPOSER_SOURCE=push or "
+            f"replay:examples/recordings/bell-sequence in {env_file} "
+            "(the host still starts and retries)"
+            if wrapped else
             "plug in a camera, or use --source push / replay (the host still starts and retries)"
+        )
     return False, f"unknown source spec {spec!r}", "use replay:<dir> | cv2:<idx> | picamera2 | push"
+
+
+#: Who runs the doctor, set by a wrapper that owns the host's lifecycle:
+#: unset = plain ``qamposer-physical`` (the host is started by hand);
+#: ``rasqberry`` = ``entangible doctor`` with its systemd service stopped;
+#: ``rasqberry-running`` = the same with the service running (it holds the
+#: port and camera, so those rows report the service instead of probing).
+DOCTOR_CONTEXT_ENV = "QAMPOSER_DOCTOR_CONTEXT"
+_SERVICE = "entangible-host"
+
+
+def _doctor_context() -> tuple[bool, bool]:
+    """(under the entangible wrapper, its service is running)."""
+    import os
+
+    value = os.environ.get(DOCTOR_CONTEXT_ENV, "").strip().lower()
+    if value == "rasqberry-running":
+        return True, True
+    return value == "rasqberry", False
+
+
+def _service_camera(config: HostConfig) -> tuple[bool, str, str]:
+    """The camera row from the running host's ``/api/health`` (no device probe:
+    the service holds the camera, and opening it again would fail or disturb it)."""
+    import json
+    import ssl
+    import urllib.request
+
+    scheme = "https" if config.tls else "http"
+    url = f"{scheme}://localhost:{config.port}/api/health"
+    context = ssl._create_unverified_context() if config.tls else None  # self-signed, localhost
+    try:
+        with urllib.request.urlopen(url, timeout=3, context=context) as response:
+            camera = json.load(response).get("camera") or {}
+    except Exception as exc:
+        return False, f"{_SERVICE} does not answer {url} ({type(exc).__name__})", \
+            f"journalctl -u {_SERVICE} -n 50"
+    name = camera.get("name") or camera.get("kind") or config.source
+    if camera.get("connected") and not camera.get("lost"):
+        return True, f"{name} connected (reported by the running {_SERVICE})", ""
+    return False, f"{name} not connected (reported by the running {_SERVICE})", \
+        "check the cable/ribbon and QAMPOSER_SOURCE, then: entangible restart"
 
 
 def _cmd_doctor(args: argparse.Namespace) -> int:
     """Preflight for booth operators: every row is ✓/✗ + the first fix to try.
 
     Mirrors the /debug READY card for the moments before the host runs. Checks
-    never raise; exit 0 only when every row is green.
+    never raise; exit 0 only when every row is green. Under the ``entangible``
+    wrapper (``QAMPOSER_DOCTOR_CONTEXT``) the fixes and the closing line name
+    its commands, and a running service's port/camera count as its own.
     """
     import socket as _socket
+
+    wrapped, service_running = _doctor_context()
 
     config = HostConfig.from_env(
         host=args.host,
@@ -264,15 +322,27 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     check("app build", lambda: (
         (config.pocket_dist / "index.html").is_file(),
         str(config.pocket_dist),
-        "cd pocket-app && npm ci && npm run build",
+        "entangible install (fetches the web app)" if wrapped
+        else "cd pocket-app && npm ci && npm run build",
     ))
-    check("camera", lambda: _check_source(config.source, config.replay_dir))
+    if service_running and config.source.partition(":")[0] in ("cv2", "picamera2"):
+        check("camera", lambda: _service_camera(config))
+    else:
+        check("camera", lambda: _check_source(config.source, config.replay_dir, wrapped))
 
     def port_free() -> tuple[bool, str, str]:
         sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
         try:
             sock.bind((config.host, config.port))
         except OSError:
+            if service_running:
+                # Not a problem: it is the booth itself.
+                return True, f"port {config.port} held by the running {_SERVICE} service", ""
+            if wrapped:
+                return False, f"port {config.port} is taken, and {_SERVICE} is stopped", (
+                    f"another program holds it — sudo ss -ltnp 'sport = :{config.port}' "
+                    "names it; stop it, or set QAMPOSER_PORT in /etc/default/entangible"
+                )
             # The classic trap: a stale host from an earlier demo still running.
             return False, f"port {config.port} is taken", \
                 f"another host is running — lsof -i :{config.port}, then kill it"
@@ -302,8 +372,15 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
             line += f"\n     → {hint}"
         print(line)
     ready = all(ok for ok, *_ in rows)
-    print("READY — start with: qamposer-physical run" if ready
-          else "NOT READY — fix the ✗ rows above")
+    if service_running:
+        print(f"READY — {_SERVICE} is running (after a settings change: entangible restart)"
+              if ready else "NOT READY — fix the ✗ rows above, then: entangible restart")
+    elif wrapped:
+        print("READY — start with: entangible start" if ready
+              else "NOT READY — fix the ✗ rows above, then: entangible start")
+    else:
+        print("READY — start with: qamposer-physical run" if ready
+              else "NOT READY — fix the ✗ rows above")
     return 0 if ready else 1
 
 

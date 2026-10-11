@@ -334,6 +334,47 @@ def test_status_reports_enabled(
     assert status["running"] is False
 
 
+def _fake_checkout(tmp_path: Path) -> Path:
+    """deploy/rasqberry copied into a throwaway checkout whose venv entry point
+    just prints the environment and arguments the wrapper hands the doctor."""
+    checkout = tmp_path / "checkout"
+    shutil.copytree(DEPLOY, checkout / "deploy" / "rasqberry")
+    entry = checkout / ".venv" / "bin" / "qamposer-physical"
+    entry.parent.mkdir(parents=True)
+    entry.write_text(
+        '#!/bin/sh\necho "cwd=$(pwd)"\necho "context=$QAMPOSER_DOCTOR_CONTEXT"\n'
+        'echo "source=$QAMPOSER_SOURCE"\necho "args=$*"\n',
+        encoding="utf-8",
+    )
+    entry.chmod(0o755)
+    return checkout
+
+
+@pytest.mark.parametrize(("active", "context"), [
+    (0, "rasqberry-running"), (3, "rasqberry"),
+])
+def test_doctor_tells_python_its_context(tmp_path: Path, active: int, context: str) -> None:
+    checkout = _fake_checkout(tmp_path)
+    env = _fake_env(tmp_path)
+    for tool in ("env", "sh"):
+        (Path(env["PATH"]) / tool).symlink_to(shutil.which(tool))
+    _fake_tool(env, "systemctl", f'[ "$1" = is-active ] && exit {active}\nexit 1\n')
+    # The env file cannot override the context (the wrapper's value comes last).
+    Path(env["ENTANGIBLE_ENV_FILE"]).write_text(
+        "QAMPOSER_SOURCE=push\nQAMPOSER_DOCTOR_CONTEXT=bogus\n", encoding="utf-8")
+    result = subprocess.run(
+        [str(checkout / "deploy" / "rasqberry" / "entangible"), "doctor", "--port", "9"],
+        env=env, capture_output=True, text=True, encoding="utf-8", timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    assert f"context={context}" in lines
+    assert "source=push" in lines and "args=doctor --port 9" in lines
+    assert f"cwd={checkout.resolve()}" in lines or f"cwd={checkout}" in lines
+    # One voice: the Python doctor reports the service's port; no wrapper note.
+    assert "note:" not in result.stdout and "expected to be" not in result.stdout
+
+
 def test_service_commands_need_an_install(tmp_path: Path) -> None:
     env = _fake_env(tmp_path)
     for cmd in ("start", "stop", "restart"):

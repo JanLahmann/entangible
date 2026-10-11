@@ -55,7 +55,7 @@ script (e.g. into `/usr/local/bin`) also works.
 | `status` | Prints **one line of JSON** on stdout (see below). Exits 0 whether or not the booth is running. | no |
 | `url` | Prints the booth-screen (kiosk) URL as one line. | no |
 | `url --visitor` | Prints the URL phones open as one line. | no |
-| `doctor` | The host's preflight checklist (app build, camera, port, TLS, token), run as the desktop user with `/etc/default/entangible` loaded. Exits 0 only when every row is green. While the service runs, the "port" row is expected to be red, because the service holds the port. | no |
+| `doctor` | The host's preflight checklist (app build, camera, port, TLS, token), run as the desktop user with `/etc/default/entangible` loaded. Exits 0 only when every row is green. Works with the service stopped or running, see [doctor](#doctor). | no |
 | `--version` | `entangible <git describe> (bundle <installed tag>, expects <BUNDLE_TAG>)` | no |
 | `-h`, `--help` | Usage | no |
 
@@ -71,6 +71,25 @@ and RAM even when nobody uses it. For the RasQberry menu, install with
 opened and `entangible stop` when it is closed. `status` reports
 `"enabled":false` for such an install. A dedicated booth Pi keeps the default
 (or `--kiosk`), so the booth comes back on its own after a reboot.
+
+### doctor
+
+`entangible doctor` runs the host's own `qamposer-physical doctor` and tells
+it, through `QAMPOSER_DOCTOR_CONTEXT`, that it runs under this command and
+whether `entangible-host` is running. The output then depends on the service:
+
+| | Service stopped (`rasqberry`) | Service running (`rasqberry-running`) |
+|---|---|---|
+| port row | ✓ when free. ✗ when taken, since the holder is not the booth; the hint names `sudo ss -ltnp 'sport = :<port>'`. | ✓ "held by the running entangible-host service". |
+| camera row (`cv2`, `picamera2`) | Probes the device. | Not probed (the service holds it): read from the service's `/api/health`. ✗ when the camera is not connected, or the service does not answer. |
+| camera row (`replay`, `push`) | Static check (frames present / nothing to check). | same |
+| fixes | Name `entangible install` and `/etc/default/entangible` instead of npm, `uv sync` or CLI flags. | same |
+| closing line | `READY — start with: entangible start` | `READY — entangible-host is running (after a settings change: entangible restart)` |
+
+Without the variable (plain `qamposer-physical doctor` on a dev machine) the
+output is as before and ends with `start with: qamposer-physical run`. An
+unknown value counts as unset. The wrapper sets it after the env file's
+values, so the env file cannot override it.
 
 ### Exit codes
 
@@ -267,7 +286,9 @@ then re-clone the checkout. This leaves `/data` alone.
 3. **Repeat install** with nothing changed. Expect a quick no-op apart from the
    restart.
 4. **`entangible doctor`** after `entangible stop`. All rows green except the
-   camera row (no webcam yet). Then `entangible start`.
+   camera row (no webcam yet); the last line names `entangible start`. Then
+   `entangible start` and run `doctor` again: the port row is ✓ "held by the
+   running entangible-host service" and the last line names `entangible restart`.
 5. **Replay source:** set `QAMPOSER_SOURCE=replay:examples/recordings/bell-sequence`
    and `entangible restart`. `status` shows `health:"ok", ready:true`. The
    kiosk shows the demo loop.

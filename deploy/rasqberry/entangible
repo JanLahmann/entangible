@@ -149,16 +149,20 @@ cmd_doctor() {
     echo "$PROG: not installed (no $ENT_VENV_DIR) — run '$PROG install' first" >&2
     exit "$ENT_EXIT_NOT_INSTALLED"; }
   start_log "doctor $*"
-  if is_running; then
-    echo "note: the service is running, so the 'port' row is expected to be ✗ (it holds the port)."
-  fi
   # Configured source vs. the camera hardware found (a hint, never an edit).
   ent_source_hint || true
   local assignments=()
   while IFS= read -r line; do assignments+=("$line"); done < <(ent_env_assignments)
+  # Tell the Python doctor it runs under this wrapper, and whether the service
+  # is up: then the closing line says `entangible start`/`restart`, and a
+  # running service's port (and camera, via /api/health) count as its own
+  # rather than "kill the port holder". Last, so the env file cannot override it.
+  local context="rasqberry"
+  is_running && context="rasqberry-running"
+  assignments+=("QAMPOSER_DOCTOR_CONTEXT=$context")
   # As the desktop user, from the checkout: the cert/token live in their home
   # and the default pocket-app/dist path is relative.
-  ent_as_user env ${assignments[@]+"${assignments[@]}"} bash -c 'cd "$1" && shift && exec "$@"' _ \
+  ent_as_user env "${assignments[@]}" bash -c 'cd "$1" && shift && exec "$@"' _ \
     "$ENT_REPO_DIR" "$ENT_VENV_DIR/bin/qamposer-physical" doctor "$@"
 }
 
