@@ -50,7 +50,7 @@ script (e.g. into `/usr/local/bin`) also works.
 | Command | What it does | Needs root? |
 |---|---|---|
 | `install [--kiosk] [--build-web] [--no-enable]` | Install or update. Idempotent: run it again after every A/B update. By default the service is enabled (starts at boot) and (re)started. `--no-enable` installs it **disabled** and does not start it: it runs only after `entangible start`. An earlier enabled install becomes disabled, and a service that is already running is restarted so it runs the new code. A kiosk autostart left by an earlier `--kiosk` install is removed. `--kiosk` autostarts the booth screen at desktop login; it needs the service at boot, so `--kiosk` with `--no-enable` is a usage error (exit 2). `--build-web` builds the web app with npm (it installs Node 20) instead of downloading it. | uses `sudo` for apt/systemd/`/etc`; may also run as root via sudo |
-| `uninstall [--purge] [--purge-cache]` | Stops, disables and removes the unit and the kiosk autostart. `--purge` also removes `/etc/default/entangible`, the venv, the downloaded web bundle and the TLS cert/token. `--purge-cache` also removes the cache on `/data`. Prints every path it removes. | uses `sudo` |
+| `uninstall [--purge] [--purge-cache]` | Stops, disables and removes the unit and the kiosk autostart. `--purge` also removes everything else install or the booth created, see [Uninstall](#uninstall). `--purge-cache` also removes the cache on `/data`. Prints every path it removes. | uses `sudo` |
 | `start` / `stop` / `restart` | `systemctl <action> entangible-host` | uses `sudo` |
 | `status` | Prints **one line of JSON** on stdout (see below). Exits 0 whether or not the booth is running. | no |
 | `url` | Prints the booth-screen (kiosk) URL as one line. | no |
@@ -71,6 +71,37 @@ and RAM even when nobody uses it. For the RasQberry menu, install with
 opened and `entangible stop` when it is closed. `status` reports
 `"enabled":false` for such an install. A dedicated booth Pi keeps the default
 (or `--kiosk`), so the booth comes back on its own after a reboot.
+
+### Uninstall
+
+| What | `uninstall` | `--purge` adds | Kept by both |
+|---|---|---|---|
+| systemd unit (stopped, disabled) | removed | | |
+| Kiosk autostart | removed | | |
+| `/etc/default/entangible` | | removed | |
+| `<checkout>/.venv` | | removed | |
+| `pocket-app/dist` | | removed, only when install put it there (it carries the `.entangible-bundle` stamp) | a hand-built `dist` |
+| `pocket-app/node_modules` | | removed, only when the stamp says `local` (`install --build-web` ran npm) | otherwise (a developer's) |
+| `pocket-app/dist.new`, `dist.old` (an interrupted bundle swap) | | removed | |
+| TLS cert + operator token (`~/.qamposer-physical/certs`) | | removed; `~/.qamposer-physical` too if that leaves it empty | |
+| Kiosk Chromium profile `~/.config/entangible-kiosk` | kept (reused on a reinstall) | removed. Close the kiosk window first: a still-open kiosk is reported and may recreate it. | |
+| Booth config in `~/.qamposer-physical` (layout/branding `.toml`, `menu/` packs, Home Connect token) | | | kept: the operator's |
+| `uv` (`~/.local/bin/uv`, `uvx`) and its wheel cache `~/.cache/uv` | | | kept: shared tools, see below |
+| apt packages (Chromium, picamera2, …; Node 20 + the nodesource apt source after `--build-web`) | | | kept: shared |
+| The log `~/.cache/rasqberry/entangible.log`, the checkout | | | kept |
+| The cache on `/data` | | | only `--purge-cache` removes it |
+
+`uv` and its cache (about 200 MB on a Pi) are shared tools that other
+demos may use, so `--purge` leaves them and prints how to remove them. If
+nothing else needs them:
+
+```bash
+rm -rf ~/.cache/uv ~/.local/bin/uv ~/.local/bin/uvx
+```
+
+(Install puts uv in `~/.local/bin` only when no `uv` was already on `PATH`;
+with a usable `/data` cache, its wheel cache is on `/data` instead of
+`~/.cache/uv`.)
 
 ### doctor
 
@@ -148,6 +179,7 @@ position.
 | TLS cert + operator token | `$USER_HOME/.qamposer-physical/certs/` | no |
 | Booth layout/branding (optional) | `$USER_HOME/.qamposer-physical/{layout,branding}.toml` | no |
 | Kiosk autostart (`--kiosk`) | `$USER_HOME/.config/autostart/entangible-kiosk.desktop` | no |
+| Kiosk Chromium profile (made at the first kiosk start) | `$USER_HOME/.config/entangible-kiosk` | no |
 | Log of `install`/`uninstall`/`start`/`stop`/`restart`/`doctor` | `$USER_HOME/.cache/rasqberry/entangible.log` (appended, rotated once at ~1 MB) | no |
 | Service log | journald: `journalctl -u entangible-host` | — |
 | **Cache** | `/data/rasqberry/cache/entangible/` (`web/<tag>/` bundle tarball + `.sha256`, `uv/` wheel cache, `bin/uv`) | **yes** |
@@ -272,9 +304,11 @@ pipeline is plain OpenCV/ArUco on the CPU, with no GPU or ML model. The
 ## Rig test checklist
 
 Record the time, result and any numbers for each row on **Pi 4 and Pi 5**.
-"Simulated wipe" means: `entangible uninstall --purge`, then
-`rm -rf <checkout>/.venv <checkout>/pocket-app/dist ~/.local/bin/uv ~/.qamposer-physical`,
-then re-clone the checkout. This leaves `/data` alone.
+"Simulated wipe" means: `entangible uninstall --purge` (venv, web bundle,
+certs, kiosk profile), then
+`rm -rf ~/.local/bin/uv ~/.local/bin/uvx ~/.cache/uv ~/.qamposer-physical`
+(what `--purge` keeps on purpose), then re-clone the checkout. This leaves
+`/data` alone.
 
 ### Phase 1: no webcam (replay demo loop + a phone as camera)
 
@@ -310,10 +344,11 @@ then re-clone the checkout. This leaves `/data` alone.
 13. **Ctrl+C during install** (during the bundle download or `uv sync`, after
     a simulated wipe): exit code 130, no `entangible.*` dirs left in `/tmp`,
     no `pocket-app/dist.new`. A following `install` succeeds.
-14. **Uninstall:** `entangible uninstall --purge --purge-cache`. No unit, no
-    autostart, no `/etc/default/entangible`, no `.venv`, no certs, no cache.
-    `systemctl list-units | grep entangible` is empty. The checkout and the
-    log remain.
+14. **Uninstall:** `entangible uninstall --purge --purge-cache` (kiosk
+    window closed). No unit, no autostart, no `/etc/default/entangible`, no
+    `.venv`, no `pocket-app/dist`, no certs, no `~/.config/entangible-kiosk`,
+    no cache. `systemctl list-units | grep entangible` is empty. The checkout,
+    the log and uv remain; the output prints the command that removes uv.
 15. **Log:** `~/.cache/rasqberry/entangible.log` contains the runs above.
 
 ### Phase 2: USB webcam (when it arrives)

@@ -74,8 +74,16 @@ entangible status          # one-line JSON: installed, running, health, URLs
 entangible restart         # after changing settings
 entangible url --visitor   # the URL phones open
 journalctl -u entangible-host -n 20   # the printed URLs (kiosk, staff debug)
-entangible uninstall       # --purge also removes settings, venv, certs
+entangible uninstall       # --purge also settings, venv, certs, kiosk profile (not uv)
 ```
+
+`uninstall --purge` leaves `uv` and its cache (about 200 MB), because other
+demos may share them. It prints the command to remove them; the full list of
+what each uninstall removes is in
+[`rasqberry-integration.md`](rasqberry-integration.md#uninstall).
+
+No camera yet? `QAMPOSER_SOURCE=replay:examples/recordings/bell-sequence` plays
+a recorded demo loop that ships in the checkout, so it works offline.
 
 Settings live in `/etc/default/entangible`. They are environment variables,
 the same `QAMPOSER_*` set the CLI flags map to. Install never overwrites this

@@ -375,6 +375,114 @@ def test_doctor_tells_python_its_context(tmp_path: Path, active: int, context: s
     assert "note:" not in result.stdout and "expected to be" not in result.stdout
 
 
+def _installed_tree(tmp_path: Path, *, booth_config: bool) -> tuple[Path, Path, dict[str, str]]:
+    """A fake checkout + home that look like `entangible install --kiosk
+    --build-web` ran and the kiosk was opened once (no systemd, fake sudo)."""
+    checkout = _fake_checkout(tmp_path)
+    (checkout / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    files = {
+        "checkout": {
+            "pocket-app/dist/index.html": "<!doctype html>",
+            "pocket-app/dist/.entangible-bundle": "local abc1234\n",
+            "pocket-app/dist.new/index.html": "half-extracted",
+            "pocket-app/node_modules/vite/package.json": "{}",
+            "pocket-app/package.json": "{}",
+        },
+        "home": {
+            ".qamposer-physical/certs/cert.pem": "x",
+            ".qamposer-physical/certs/token": "x",
+            ".config/entangible-kiosk/Default/Preferences": "{}",
+            ".config/autostart/entangible-kiosk.desktop": "[Desktop Entry]\n",
+            ".config/autostart/other-app.desktop": "[Desktop Entry]\n",
+            ".local/bin/uv": "uv", ".local/bin/uvx": "uvx",
+            ".cache/uv/wheels/numpy.whl": "w",
+        },
+    }
+    if booth_config:
+        files["home"][".qamposer-physical/layout.toml"] = "x"
+    env = _fake_env(tmp_path)
+    home = Path(env["HOME"])
+    for root, tree in ((checkout, files["checkout"]), (home, files["home"])):
+        for rel, text in tree.items():
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(text, encoding="utf-8")
+    units = Path(env["ENTANGIBLE_UNIT_DIR"])
+    units.mkdir()
+    (units / "entangible-host.service").write_text("[Unit]\n", encoding="utf-8")
+    Path(env["ENTANGIBLE_ENV_FILE"]).write_text("QAMPOSER_SOURCE=push\n", encoding="utf-8")
+    for tool in ("env", "sh", "rm", "rmdir", "stat", "mktemp", "df", "cmp", "cp", "ls"):
+        found = shutil.which(tool)
+        if found and not (Path(env["PATH"]) / tool).exists():
+            (Path(env["PATH"]) / tool).symlink_to(found)
+    _fake_tool(env, "sudo", 'exec "$@"\n')
+    return checkout, home, env
+
+
+def _tree(root: Path) -> set[str]:
+    return {str(p.relative_to(root)) for p in root.rglob("*") if not p.is_dir()}
+
+
+@pytest.mark.parametrize("booth_config", [False, True])
+def test_uninstall_purge_removes_everything_it_owns(tmp_path: Path, booth_config: bool) -> None:
+    checkout, home, env = _installed_tree(tmp_path, booth_config=booth_config)
+    result = subprocess.run(
+        [str(checkout / "deploy" / "rasqberry" / "entangible"), "uninstall", "--purge"],
+        env=env, capture_output=True, text=True, encoding="utf-8", timeout=30,
+    )
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    # Totality: exactly these survive, everything else install made is gone.
+    kept_home = {
+        ".config/autostart/other-app.desktop",  # not ours
+        ".local/bin/uv", ".local/bin/uvx", ".cache/uv/wheels/numpy.whl",  # shared tools
+        ".cache/rasqberry/entangible.log",  # the log is kept
+    }
+    if booth_config:
+        kept_home.add(".qamposer-physical/layout.toml")
+    assert _tree(home) == kept_home
+    assert (home / ".qamposer-physical").exists() is booth_config  # empty dir removed
+    assert not (home / ".config" / "entangible-kiosk").exists()
+    assert {p for p in _tree(checkout) if not p.startswith("deploy/")} == {
+        "pyproject.toml", "pocket-app/package.json",
+    }
+    assert not Path(env["ENTANGIBLE_ENV_FILE"]).exists()
+    assert not any(Path(env["ENTANGIBLE_UNIT_DIR"]).iterdir())
+    out = result.stdout
+    assert "kiosk Chromium profile" in out
+    # uv is left on purpose, and the operator is told how to remove it.
+    assert f"rm -rf {home}/.cache/uv {home}/.local/bin/uv {home}/.local/bin/uvx" in out
+
+
+def test_purge_keeps_node_modules_it_did_not_build(tmp_path: Path) -> None:
+    # A downloaded bundle: node_modules is the developer's, not install's.
+    checkout, _home, env = _installed_tree(tmp_path, booth_config=False)
+    (checkout / "pocket-app/dist/.entangible-bundle").write_text(
+        "booth-v2 0123abcd\n", encoding="utf-8")
+    result = subprocess.run(
+        [str(checkout / "deploy" / "rasqberry" / "entangible"), "uninstall", "--purge"],
+        env=env, capture_output=True, text=True, encoding="utf-8", timeout=30,
+    )
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    assert not (checkout / "pocket-app/dist").exists()
+    assert (checkout / "pocket-app/node_modules/vite/package.json").exists()
+
+
+def test_plain_uninstall_keeps_state_for_a_reinstall(tmp_path: Path) -> None:
+    checkout, home, env = _installed_tree(tmp_path, booth_config=False)
+    result = subprocess.run(
+        [str(checkout / "deploy" / "rasqberry" / "entangible"), "uninstall"],
+        env=env, capture_output=True, text=True, encoding="utf-8", timeout=30,
+    )
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    assert not (home / ".config/autostart/entangible-kiosk.desktop").exists()
+    assert not any(Path(env["ENTANGIBLE_UNIT_DIR"]).iterdir())
+    for kept in (".config/entangible-kiosk/Default/Preferences",
+                 ".qamposer-physical/certs/cert.pem", ".local/bin/uv"):
+        assert (home / kept).exists(), kept
+    assert (checkout / ".venv").is_dir() and (checkout / "pocket-app/dist").is_dir()
+    assert Path(env["ENTANGIBLE_ENV_FILE"]).exists()
+    assert "--purge removes them" in result.stdout
+
+
 def test_service_commands_need_an_install(tmp_path: Path) -> None:
     env = _fake_env(tmp_path)
     for cmd in ("start", "stop", "restart"):

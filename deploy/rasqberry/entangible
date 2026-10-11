@@ -29,7 +29,8 @@ commands:
                                     not with --kiosk)
   uninstall [--purge] [--purge-cache]
                                     remove the service + kiosk autostart; --purge also the
-                                    settings, venv, web bundle and TLS certs/token;
+                                    settings, venv, web bundle, TLS certs/token and kiosk
+                                    profile (not uv: shared);
                                     --purge-cache also the download cache on /data
   start | stop | restart            control the $ENT_UNIT systemd service
   status                            one line of JSON (installed, running, enabled, health, URLs)

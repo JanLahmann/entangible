@@ -53,7 +53,8 @@ usage: install.sh [--kiosk] [--build-web] [--no-enable]
                  downloading the prebuilt release bundle
   --uninstall    stop + remove the service and the kiosk autostart
   --purge        with --uninstall: also remove /etc/default/entangible, the venv,
-                 the downloaded web bundle and the generated TLS certs/token
+                 the downloaded web bundle, the generated TLS certs/token and the
+                 kiosk Chromium profile (not uv or its cache: shared tools)
   --purge-cache  with --uninstall: also remove the download cache on /data
 EOF
 }
@@ -183,11 +184,39 @@ do_uninstall() {
       ent_as_user rm -rf "$ENT_VENV_DIR"; echo "    removed  $ENT_VENV_DIR"; removed=1
     fi
     # Only a bundle we installed (stamped); a hand-made dist is the developer's.
+    # A "local" stamp means install --build-web ran npm here: its
+    # node_modules (hundreds of MB, rebuilt by npm ci) goes too.
     if [ -f "$ENT_STAMP_FILE" ]; then
+      local built_here=0
+      [ "$(ent_installed_bundle 2>/dev/null || true)" = "local" ] && built_here=1
       ent_as_user rm -rf "$ENT_DIST_DIR"; echo "    removed  $ENT_DIST_DIR"; removed=1
+      if [ "$built_here" -eq 1 ] && [ -d "$ENT_REPO_DIR/pocket-app/node_modules" ]; then
+        ent_as_user rm -rf "$ENT_REPO_DIR/pocket-app/node_modules"
+        echo "    removed  $ENT_REPO_DIR/pocket-app/node_modules (from --build-web)"
+      fi
     fi
+    # Leftovers of an interrupted bundle swap (normally cleaned on exit).
+    local p
+    for p in "$ENT_DIST_DIR.new" "$ENT_DIST_DIR.old"; do
+      if [ -d "$p" ]; then ent_as_user rm -rf "$p"; echo "    removed  $p"; removed=1; fi
+    done
     if [ -d "$cert_dir" ]; then
       ent_as_user rm -rf "$cert_dir"; echo "    removed  $cert_dir (TLS cert + operator token)"; removed=1
+    fi
+    # ~/.qamposer-physical keeps the operator's booth config (layout/branding,
+    # menu packs); only an empty dir left by the certs goes.
+    local cfg_dir="$ENT_HOME/.qamposer-physical"
+    if [ -d "$cfg_dir" ] && ent_as_user rmdir "$cfg_dir" 2>/dev/null; then
+      echo "    removed  $cfg_dir (empty)"
+    fi
+    # The kiosk Chromium's own profile (kiosk-launch.sh; history, cache,
+    # cert exceptions). Plain uninstall keeps it: harmless, reused on reinstall.
+    local profile="$ENT_HOME/.config/entangible-kiosk"
+    if [ -d "$profile" ]; then
+      if command -v pgrep >/dev/null 2>&1 && pgrep -f -- "--user-data-dir=$profile" >/dev/null 2>&1; then
+        echo "    WARNING: the kiosk Chromium is still open; close it (it may recreate $profile)" >&2
+      fi
+      ent_as_user rm -rf "$profile"; echo "    removed  $profile (kiosk Chromium profile)"; removed=1
     fi
   fi
   if [ "$PURGE_CACHE" -eq 1 ] && [ -n "$ENT_CACHE_DIR" ] && [ -d "$ENT_CACHE_DIR" ]; then
@@ -195,7 +224,14 @@ do_uninstall() {
     echo "    removed  $ENT_CACHE_DIR (download cache)"; removed=1
   fi
   [ "$removed" -eq 1 ] || echo "    nothing to remove"
-  echo "    kept: the checkout, apt packages (shared), uv, ~/.qamposer-physical/*.toml, the log"
+  echo "    kept: the checkout, apt packages (shared), ~/.qamposer-physical booth config, the log"
+  if [ "$PURGE" -eq 1 ]; then
+    # Shared tools, never purged (other demos may use them). ~200 MB on a Pi.
+    echo "    kept (shared tools, ~200 MB): uv and its wheel cache; if nothing else uses them:"
+    echo "      rm -rf $ENT_HOME/.cache/uv $ENT_HOME/.local/bin/uv $ENT_HOME/.local/bin/uvx"
+  else
+    echo "    kept (--purge removes them): settings, venv, web bundle, TLS certs, kiosk profile"
+  fi
   return 0
 }
 
