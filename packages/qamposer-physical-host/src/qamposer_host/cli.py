@@ -16,6 +16,8 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
+import contextlib
+import os
 import sys
 import threading
 import webbrowser
@@ -197,6 +199,48 @@ def _cmd_qr(args: argparse.Namespace) -> int:
 # --- doctor ------------------------------------------------------------------
 
 
+#: OpenCV's own logger settings for the doctor's camera probe. Probing absent
+#: indices makes the V4L2 backend log "can't open camera by index" (WARN) and
+#: the obsensor backend "Camera index out of range" (ERROR) per index; the
+#: doctor's camera row already says what opens, so the probe runs SILENT.
+_OPENCV_QUIET_ENV = {"OPENCV_LOG_LEVEL": "SILENT", "OPENCV_VIDEOIO_DEBUG": "0"}
+
+
+@contextlib.contextmanager
+def _quiet_opencv():
+    """Silence OpenCV's C++ logger for the doctor probe only; restore afterwards.
+
+    The env vars take effect only if cv2 is first imported inside the block;
+    ``cv2.utils.logging.setLogLevel`` covers an already-imported cv2. Both are
+    put back on exit, so a host started later in this process logs as usual.
+    (macOS AVFoundation prints its messages directly, not via this logger.)
+    """
+    saved_env = {key: os.environ.get(key) for key in _OPENCV_QUIET_ENV}
+    os.environ.update(_OPENCV_QUIET_ENV)
+    cv_logging = previous = None
+    try:
+        import cv2  # noqa: F401 - imported here so the env above applies
+
+        cv_logging = cv2.utils.logging
+        previous = cv_logging.getLogLevel()
+        cv_logging.setLogLevel(cv_logging.LOG_LEVEL_SILENT)
+    except Exception:  # no cv2 / no logging API: the env vars are all we have
+        cv_logging = None
+    try:
+        yield
+    finally:
+        if cv_logging is not None:
+            try:
+                cv_logging.setLogLevel(previous)
+            except Exception:
+                pass
+        for key, value in saved_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
 def _check_source(spec: str, replay_dir, wrapped: bool = False) -> tuple[bool, str, str]:
     """(ok, detail, hint) for one frame-source spec, without starting a pipeline.
 
@@ -224,12 +268,13 @@ def _check_source(spec: str, replay_dir, wrapped: bool = False) -> tuple[bool, s
             "apt install python3-picamera2 + a venv with --system-site-packages (docs/rasqberry.md)"
     if kind == "cv2":
         index = int(rest or 0)
-        try:
-            from qamposer_vision.sources import list_cameras  # lazy
-        except Exception:
-            return False, "qamposer-vision not importable", \
-                "entangible install" if wrapped else "run `uv sync` from the repo root"
-        openable = list_cameras()
+        with _quiet_opencv():
+            try:
+                from qamposer_vision.sources import list_cameras  # lazy
+            except Exception:
+                return False, "qamposer-vision not importable", \
+                    "entangible install" if wrapped else "run `uv sync` from the repo root"
+            openable = list_cameras()
         if index in openable:
             return True, f"cv2:{index} opens (openable: {openable})", ""
         if openable:

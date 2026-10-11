@@ -265,3 +265,53 @@ def test_demo_loop_replay_source_is_green_from_the_checkout(monkeypatch) -> None
     monkeypatch.chdir(repo)
     ok, detail, _hint = cli._check_source("replay:examples/recordings/bell-sequence", "x", True)
     assert ok, detail
+
+
+def test_camera_probe_silences_opencv_logging_only_during_the_probe(monkeypatch) -> None:
+    # Probing absent cv2 indices makes OpenCV log "can't open camera by index"
+    # per index; the doctor's own row says it all, so the probe runs with
+    # OpenCV's logger silenced, and everything is restored afterwards.
+    import os
+    import sys
+    import types
+
+    import qamposer_vision.sources as sources
+
+    levels: list[int] = []
+    fake_logging = types.SimpleNamespace(
+        LOG_LEVEL_SILENT=0, LOG_LEVEL_ERROR=2, LOG_LEVEL_WARNING=3,
+        getLogLevel=lambda: levels[-1] if levels else 3,
+        setLogLevel=levels.append,
+    )
+    fake_cv2 = types.ModuleType("cv2")
+    fake_cv2.utils = types.SimpleNamespace(logging=fake_logging)
+    monkeypatch.setitem(sys.modules, "cv2", fake_cv2)
+    monkeypatch.delenv("OPENCV_LOG_LEVEL", raising=False)
+    monkeypatch.setenv("OPENCV_VIDEOIO_DEBUG", "1")
+
+    seen = {}
+
+    def probe():
+        seen["level"] = fake_logging.getLogLevel()
+        seen["env"] = (os.environ.get("OPENCV_LOG_LEVEL"), os.environ.get("OPENCV_VIDEOIO_DEBUG"))
+        return []
+
+    monkeypatch.setattr(sources, "list_cameras", probe)
+    ok, detail, _hint = cli._check_source("cv2:0", "x", False)
+    assert (ok, detail) == (False, "no cv2 camera opens")  # the row is unchanged
+    assert seen == {"level": 0, "env": ("SILENT", "0")}
+    assert levels == [0, 3]  # silenced for the probe, the previous level restored
+    assert "OPENCV_LOG_LEVEL" not in os.environ
+    assert os.environ["OPENCV_VIDEOIO_DEBUG"] == "1"
+
+
+def test_camera_probe_without_opencv_logging_api_still_runs(monkeypatch) -> None:
+    import sys
+    import types
+
+    import qamposer_vision.sources as sources
+
+    monkeypatch.setitem(sys.modules, "cv2", types.ModuleType("cv2"))  # no .utils
+    monkeypatch.setattr(sources, "list_cameras", lambda: [0])
+    ok, detail, _hint = cli._check_source("cv2:0", "x", False)
+    assert ok, detail

@@ -77,9 +77,9 @@ journalctl -u entangible-host -n 20   # the printed URLs (kiosk, staff debug)
 entangible uninstall       # --purge also settings, venv, certs, kiosk profile (not uv)
 ```
 
-`uninstall --purge` leaves `uv` and its cache (about 200 MB), because other
-demos may share them. It prints the command to remove them; the full list of
-what each uninstall removes is in
+`uninstall --purge` leaves `uv` and its wheel cache, because other demos
+may share them. It prints where they are and how to remove them; the full
+list of what each uninstall removes is in
 [`rasqberry-integration.md`](rasqberry-integration.md#uninstall).
 
 No camera yet? `QAMPOSER_SOURCE=replay:examples/recordings/bell-sequence` plays

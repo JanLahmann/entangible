@@ -448,8 +448,32 @@ def test_uninstall_purge_removes_everything_it_owns(tmp_path: Path, booth_config
     assert not any(Path(env["ENTANGIBLE_UNIT_DIR"]).iterdir())
     out = result.stdout
     assert "kiosk Chromium profile" in out
-    # uv is left on purpose, and the operator is told how to remove it.
-    assert f"rm -rf {home}/.cache/uv {home}/.local/bin/uv {home}/.local/bin/uvx" in out
+    # uv is left on purpose, and the operator is told where it is and how to
+    # remove it — no guessed size, only paths that exist.
+    assert f"kept (shared tool) uv; if nothing else uses it: rm -f {home}/.local/bin/uv {home}/.local/bin/uvx" in out
+    assert f"kept (shared) uv cache; if nothing else uses it: rm -rf {home}/.cache/uv" in out
+    assert "MB" not in out and "/data cache" not in out
+
+
+def test_purge_names_the_uv_cache_on_data(tmp_path: Path) -> None:
+    # With the /data cache install points UV_CACHE_DIR there: uninstall says
+    # --purge-cache removes it instead of suggesting rm on ~/.cache/uv.
+    checkout, home, env = _installed_tree(tmp_path, booth_config=False)
+    cache = tmp_path / "data-cache"
+    (cache / "uv" / "wheels").mkdir(parents=True)
+    env["ENTANGIBLE_CACHE_DIR"] = str(cache)
+    shutil.rmtree(home / ".cache" / "uv")
+    result = subprocess.run(
+        [str(checkout / "deploy" / "rasqberry" / "entangible"), "uninstall", "--purge"],
+        env=env, capture_output=True, text=True, encoding="utf-8", timeout=30,
+    )
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    out = result.stdout
+    assert f"kept uv cache {cache}/uv (part of the /data cache: --purge-cache removes it)" in out
+    assert ".cache/uv" not in out
+    assert (cache / "uv" / "wheels").is_dir()
+    uv_lines = [line for line in out.splitlines() if line.startswith(("    kept (shared", "    kept uv"))]
+    assert len(uv_lines) == 2  # the binaries + the /data cache, nothing guessed
 
 
 def test_purge_keeps_node_modules_it_did_not_build(tmp_path: Path) -> None:

@@ -226,9 +226,24 @@ do_uninstall() {
   [ "$removed" -eq 1 ] || echo "    nothing to remove"
   echo "    kept: the checkout, apt packages (shared), ~/.qamposer-physical booth config, the log"
   if [ "$PURGE" -eq 1 ]; then
-    # Shared tools, never purged (other demos may use them). ~200 MB on a Pi.
-    echo "    kept (shared tools, ~200 MB): uv and its wheel cache; if nothing else uses them:"
-    echo "      rm -rf $ENT_HOME/.cache/uv $ENT_HOME/.local/bin/uv $ENT_HOME/.local/bin/uvx"
+    # Shared tools, never purged (other demos may use them). Name what is
+    # actually there: the uv binaries, and the wheel cache install used —
+    # UV_CACHE_DIR=$ENT_CACHE_DIR/uv with a usable /data cache, else uv's
+    # default ~/.cache/uv (install never sets another).
+    local uv_bins="" b
+    for b in "$ENT_HOME/.local/bin/uv" "$ENT_HOME/.local/bin/uvx"; do
+      [ -e "$b" ] && uv_bins="${uv_bins:+$uv_bins }$b"
+    done
+    [ -n "$uv_bins" ] || uv_bins="$(command -v uv 2>/dev/null || true)"
+    if [ -n "$uv_bins" ]; then
+      echo "    kept (shared tool) uv; if nothing else uses it: rm -f $uv_bins"
+    fi
+    if [ -d "$ENT_HOME/.cache/uv" ]; then
+      echo "    kept (shared) uv cache; if nothing else uses it: rm -rf $ENT_HOME/.cache/uv"
+    fi
+    if [ -n "$ENT_CACHE_DIR" ] && [ -d "$ENT_CACHE_DIR/uv" ]; then
+      echo "    kept uv cache $ENT_CACHE_DIR/uv (part of the /data cache: --purge-cache removes it)"
+    fi
   else
     echo "    kept (--purge removes them): settings, venv, web bundle, TLS certs, kiosk profile"
   fi

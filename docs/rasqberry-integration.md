@@ -86,22 +86,24 @@ opened and `entangible stop` when it is closed. `status` reports
 | TLS cert + operator token (`~/.qamposer-physical/certs`) | | removed; `~/.qamposer-physical` too if that leaves it empty | |
 | Kiosk Chromium profile `~/.config/entangible-kiosk` | kept (reused on a reinstall) | removed. Close the kiosk window first: a still-open kiosk is reported and may recreate it. | |
 | Booth config in `~/.qamposer-physical` (layout/branding `.toml`, `menu/` packs, Home Connect token) | | | kept: the operator's |
-| `uv` (`~/.local/bin/uv`, `uvx`) and its wheel cache `~/.cache/uv` | | | kept: shared tools, see below |
+| `uv` (`~/.local/bin/uv`, `uvx`) and its wheel cache (`~/.cache/uv`, or `<cache>/uv` on `/data`) | | | kept: shared tools, see below; the `/data` one goes with `--purge-cache` |
 | apt packages (Chromium, picamera2, …; Node 20 + the nodesource apt source after `--build-web`) | | | kept: shared |
 | The log `~/.cache/rasqberry/entangible.log`, the checkout | | | kept |
 | The cache on `/data` | | | only `--purge-cache` removes it |
 
-`uv` and its cache (about 200 MB on a Pi) are shared tools that other
-demos may use, so `--purge` leaves them and prints how to remove them. If
-nothing else needs them:
+`uv` and its wheel cache are shared tools that other demos may use, so
+`--purge` leaves them and prints what is actually there, with the command
+to remove it if nothing else needs it, e.g.:
 
-```bash
-rm -rf ~/.cache/uv ~/.local/bin/uv ~/.local/bin/uvx
+```text
+    kept (shared tool) uv; if nothing else uses it: rm -f /home/rasqberry/.local/bin/uv /home/rasqberry/.local/bin/uvx
+    kept uv cache /data/rasqberry/cache/entangible/uv (part of the /data cache: --purge-cache removes it)
 ```
 
-(Install puts uv in `~/.local/bin` only when no `uv` was already on `PATH`;
-with a usable `/data` cache, its wheel cache is on `/data` instead of
-`~/.cache/uv`.)
+Install puts uv in `~/.local/bin` only when no `uv` was already on `PATH`.
+With a usable `/data` cache, uv's wheel cache is `<cache>/uv` on `/data`
+(removed by `--purge-cache` with the rest of the cache); otherwise it is
+uv's default `~/.cache/uv`, and the printed line is an `rm -rf` of that.
 
 ### doctor
 
