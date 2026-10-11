@@ -504,3 +504,29 @@ def test_installer_seeds_detected_source_only_when_seeding() -> None:
     # The doctor hints, never edits.
     command = COMMAND.read_text(encoding="utf-8")
     assert "ent_source_hint" in command.split("cmd_doctor() {", 1)[1].split("\n}\n", 1)[0]
+
+
+# --- the replay demo loop -----------------------------------------------------
+
+DEMO_RECORDING = REPO / "examples" / "recordings" / "bell-sequence"
+
+
+def test_documented_replay_sources_exist_in_the_checkout() -> None:
+    # Every `replay:<dir>` the deploy files or booth docs tell an operator to
+    # use must play on a fresh, offline install: committed frames, nothing to
+    # generate. (The rig once followed the docs to a never-committed fixture.)
+    texts = [p.read_text(encoding="utf-8") for p in DEPLOY.iterdir() if p.is_file()]
+    texts += [(REPO / "docs" / name).read_text(encoding="utf-8")
+              for name in ("rasqberry.md", "rasqberry-integration.md", "mac-booth.md")]
+    texts.append((REPO / "Makefile").read_text(encoding="utf-8"))
+    specs = {m for text in texts for m in re.findall(r"replay:([\w./-]*[\w-])", text)}
+    assert specs == {"examples/recordings/bell-sequence"}, specs
+    frames = sorted(DEMO_RECORDING.glob("frame_*.jpg"))
+    assert len(frames) == 48
+    assert sum(f.stat().st_size for f in frames) < 2_000_000
+    if shutil.which("git") and (REPO / ".git").exists():
+        tracked = subprocess.run(
+            ["git", "ls-files", "--", str(DEMO_RECORDING)], cwd=REPO,
+            capture_output=True, text=True, encoding="utf-8", check=True,
+        ).stdout.split()
+        assert len(tracked) == 48, "the demo frames must be committed, not generated"

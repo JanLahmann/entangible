@@ -209,7 +209,7 @@ def _check_source(spec: str, replay_dir) -> tuple[bool, str, str]:
         if directory.is_dir() and any(directory.glob("**/frame_*")):
             return True, f"replay {directory} — the recorded DEMO loop, not a live camera", ""
         return False, f"replay dir {directory} has no frame_* files", \
-            "pick a recording under tests/fixtures/recordings"
+            "the committed demo loop is replay:examples/recordings/bell-sequence (run from the checkout)"
     if kind == "picamera2":
         import importlib.util
 

@@ -22,14 +22,16 @@ DEFAULT_PORT = 8443
 # The default is a REAL camera: an unattended `qamposer-physical run` at a
 # booth must never silently play the recorded Bell demo loop (operators
 # followed the cheat sheet straight into it). The demo is an explicit opt-in:
-# `make demo`, or `--source replay:tests/fixtures/recordings/bell-sequence`.
+# `make demo`, or `--source replay:examples/recordings/bell-sequence` (committed,
+# so it works on a fresh offline install).
 # No camera attached is fine — the pipeline reports it lost and keeps retrying.
 DEFAULT_SOURCE = "cv2:0"
 DEFAULT_BACKEND = "off"
 DEFAULT_POCKET_DIST = Path("pocket-app/dist")
 DEFAULT_CONFIG_DIR = Path.home() / ".qamposer-physical"
 DEFAULT_CERT_DIR = DEFAULT_CONFIG_DIR / "certs"
-DEFAULT_REPLAY_DIR = Path("tests/fixtures/recordings")
+# Recordings offered by name on /debug; the committed demo loop lives here.
+DEFAULT_REPLAY_DIR = Path("examples/recordings")
 
 _ENV_PREFIX = "QAMPOSER_"
 

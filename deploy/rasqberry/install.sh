@@ -449,7 +449,7 @@ if [ ! -f "$ENT_ENV_FILE" ]; then
 #
 # Source: cv2:0 = first USB camera, picamera2 = the Pi camera module,
 #         push = a phone streaming via the staff QR,
-#         replay:tests/fixtures/recordings/bell-sequence = the recorded demo loop.
+#         replay:examples/recordings/bell-sequence = the recorded demo loop.
 # (Picked at install from the cameras found: USB > Pi camera module > cv2:0.)
 QAMPOSER_SOURCE=$SEED_SOURCE
 # Pin the hostname/IP printed in QRs and covered by the TLS cert (hotspots):

@@ -19,13 +19,19 @@ Frames are rendered from ``assets.toml`` geometry via
 :func:`tests.utils.render_board.render_board` (flat, lightly blurred + seeded
 noise) so the recording is reproducible bit-for-bit.
 
-The PNG frames are **not** checked in (see ``tests/fixtures/recordings/.gitignore``).
-Regenerate them before running the replay/pipeline tests with::
+The full-size PNG test frames are **not** checked in (see
+``tests/fixtures/recordings/.gitignore``; ~90 MB, the seeded noise does not
+compress). Regenerate them before running the replay/pipeline tests with::
 
     uv run python tests/utils/make_recording.py
 
-Only this generator script is version-controlled; anything under
-``recordings/*/`` is disposable and rebuilt on demand.
+The *demo* copy that installs ship and operators replay
+(``replay:examples/recordings/bell-sequence``) IS committed: the same frames,
+downscaled to ``EXAMPLE_WIDTH`` px and JPEG-encoded (under 1 MB on disk;
+identical frames share one blob, so far less in the repository). Rebuild it
+with::
+
+    uv run python tests/utils/make_recording.py --example
 """
 
 from __future__ import annotations
@@ -47,9 +53,15 @@ from qamposer_vision.grid import GridConfig
 
 from tests.utils.render_board import RenderOptions, render_board
 
-__all__ = ["OUTPUT_DIR", "make_recording"]
+__all__ = ["EXAMPLE_DIR", "OUTPUT_DIR", "make_example_recording", "make_recording"]
 
 OUTPUT_DIR = _REPO_ROOT / "tests" / "fixtures" / "recordings" / "bell-sequence"
+#: The committed demo loop (offline installs replay it; no generation needed).
+EXAMPLE_DIR = _REPO_ROOT / "examples" / "recordings" / "bell-sequence"
+#: Demo copy: frame width in px (from 1520) and JPEG quality. Detection is
+#: scale-invariant (homography fit), and ArUco still reads every marker here.
+EXAMPLE_WIDTH = 960
+EXAMPLE_JPEG_QUALITY = 85
 
 # Marker IDs (see markers.MARKER_TABLE): H=30, CNOT control=17, target=15.
 _H = (30, 0, 0)
@@ -112,14 +124,25 @@ def _draw_hand_over_cnot(frame: np.ndarray, config: BoardConfig) -> np.ndarray:
     return out
 
 
-def make_recording(output_dir: Path | str = OUTPUT_DIR) -> list[Path]:
-    """Render the bell-sequence recording; returns the written frame paths."""
+def make_recording(
+    output_dir: Path | str = OUTPUT_DIR,
+    *,
+    width: int | None = None,
+    jpeg_quality: int | None = None,
+) -> list[Path]:
+    """Render the bell-sequence recording; returns the written frame paths.
+
+    Default: full-size PNG frames (the test fixture). ``width`` downscales each
+    frame to that many px (aspect kept); ``jpeg_quality`` writes ``.jpg``
+    instead of ``.png`` (``ReplaySource`` reads both).
+    """
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    # Clear any stale PNGs so a re-run is idempotent.
-    for stale in out.glob("frame_*.png"):
-        stale.unlink()
+    # Clear any stale frames (either format) so a re-run is idempotent.
+    for pattern in ("frame_*.png", "frame_*.jpg"):
+        for stale in out.glob(pattern):
+            stale.unlink()
 
     config = BoardConfig.from_toml()
 
@@ -136,6 +159,11 @@ def make_recording(output_dir: Path | str = OUTPUT_DIR) -> list[Path]:
         if placements not in rendered:
             rendered[placements] = render_board(placements, config, _RENDER)
     occluded_bell = _draw_hand_over_cnot(rendered[_BELL], config)
+    if width is not None:
+        rendered = {k: _downscale(v, width) for k, v in rendered.items()}
+        occluded_bell = _downscale(occluded_bell, width)
+    suffix = ".png" if jpeg_quality is None else ".jpg"
+    params = [] if jpeg_quality is None else [cv2.IMWRITE_JPEG_QUALITY, int(jpeg_quality)]
 
     written: list[Path] = []
     frame_index = 0
@@ -147,14 +175,28 @@ def make_recording(output_dir: Path | str = OUTPUT_DIR) -> list[Path]:
                 frame = occluded_bell
             else:
                 frame = base
-            path = out / f"frame_{frame_index:04d}.png"
-            cv2.imwrite(str(path), frame)
+            path = out / f"frame_{frame_index:04d}{suffix}"
+            cv2.imwrite(str(path), frame, params)
             written.append(path)
             frame_index += 1
 
     return written
 
 
+def _downscale(frame: np.ndarray, width: int) -> np.ndarray:
+    height = int(round(frame.shape[0] * width / frame.shape[1]))
+    return cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
+
+
+def make_example_recording(output_dir: Path | str = EXAMPLE_DIR) -> list[Path]:
+    """The committed demo loop: the same frames as small JPEGs."""
+    return make_recording(output_dir, width=EXAMPLE_WIDTH, jpeg_quality=EXAMPLE_JPEG_QUALITY)
+
+
 if __name__ == "__main__":
-    paths = make_recording()
-    print(f"wrote {len(paths)} frames to {OUTPUT_DIR}")
+    if "--example" in sys.argv[1:]:
+        paths, target = make_example_recording(), EXAMPLE_DIR
+    else:
+        paths, target = make_recording(), OUTPUT_DIR
+    size_mb = sum(p.stat().st_size for p in paths) / 1e6
+    print(f"wrote {len(paths)} frames ({size_mb:.2f} MB) to {target}")

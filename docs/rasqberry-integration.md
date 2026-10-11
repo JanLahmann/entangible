@@ -234,7 +234,14 @@ it never edits the file. `ENT_SYSFS_ROOT` and `ENT_LIBCAMERA_LIST_CMD` in
 | USB webcam | `cv2:0` (default), `cv2:1`, … |
 | Pi Camera Module | `picamera2` (needs the apt `python3-picamera2`; installed when the archive has it) |
 | Phone as camera | `push`. The phone scans the staff QR on `/debug` and streams over the LAN. |
-| Recorded demo loop (no camera) | `replay:tests/fixtures/recordings/bell-sequence` |
+| Recorded demo loop (no camera) | `replay:examples/recordings/bell-sequence` (see below) |
+
+The demo loop is committed in the checkout (48 small JPEG frames, under
+1 MB), so it works on a fresh, offline install with nothing generated. The
+path is relative to the checkout, which is the service's working directory.
+`/debug` lists it as `bell-sequence` (the host's replay directory defaults to
+`examples/recordings`). To rebuild it: `uv run python
+tests/utils/make_recording.py --example` on a dev machine.
 
 ## Resources
 
@@ -261,7 +268,7 @@ then re-clone the checkout. This leaves `/data` alone.
    restart.
 4. **`entangible doctor`** after `entangible stop`. All rows green except the
    camera row (no webcam yet). Then `entangible start`.
-5. **Replay source:** set `QAMPOSER_SOURCE=replay:tests/fixtures/recordings/bell-sequence`
+5. **Replay source:** set `QAMPOSER_SOURCE=replay:examples/recordings/bell-sequence`
    and `entangible restart`. `status` shows `health:"ok", ready:true`. The
    kiosk shows the demo loop.
 6. **Phone over the LAN:** open `entangible url --visitor` on a phone and tap

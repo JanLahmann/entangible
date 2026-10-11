@@ -88,7 +88,7 @@ gives `picamera2`, otherwise `cv2:0`.
 QAMPOSER_SOURCE=cv2:0          # first USB camera (the default)
 # QAMPOSER_SOURCE=picamera2    # the Pi Camera Module
 # QAMPOSER_SOURCE=push         # a phone streams via the staff QR
-# QAMPOSER_SOURCE=replay:tests/fixtures/recordings/bell-sequence   # demo loop, no camera
+# QAMPOSER_SOURCE=replay:examples/recordings/bell-sequence   # demo loop, no camera
 ```
 
 ## Cameras on a Pi

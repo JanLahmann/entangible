@@ -18,8 +18,8 @@ uv sync
 
 # Run the host (self-signed HTTPS on :8443 by default):
 uv run qamposer-physical run --source cv2:0        # a Mac/USB webcam
-# or, with no camera at all (recorded fixtures loop forever):
-uv run qamposer-physical run --source replay:tests/fixtures/recordings/bell-sequence
+# or, with no camera at all (the committed demo recording loops forever):
+uv run qamposer-physical run --source replay:examples/recordings/bell-sequence
 ```
 
 Before an event, run the preflight — every row is ✓/✗ with the first fix

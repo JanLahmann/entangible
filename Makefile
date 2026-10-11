@@ -3,7 +3,7 @@
 # Entangible One: ONE app (pocket-app) — served at / (standalone/viewer/camera),
 # /?kiosk (big-screen booth skin) and /debug (staff).
 
-REPLAY_DIR ?= tests/fixtures/recordings/bell-sequence
+REPLAY_DIR ?= examples/recordings/bell-sequence
 PORT ?= 8443
 
 .PHONY: dev demo test help
@@ -40,8 +40,8 @@ uv-sync-quiet:
 replay-fixture:
 	@if [ ! -d "$(REPLAY_DIR)" ]; then \
 		if [ -f tests/utils/make_recording.py ]; then \
-			echo "== generating replay fixture -> $(REPLAY_DIR)"; \
-			uv run python tests/utils/make_recording.py; \
+			echo "== regenerating the committed demo recording -> $(REPLAY_DIR)"; \
+			uv run python tests/utils/make_recording.py --example; \
 		else \
 			echo "!! replay fixture $(REPLAY_DIR) missing and tests/utils/make_recording.py not found"; \
 			echo "!! the demo needs a recording; continuing (host will serve without frames)"; \

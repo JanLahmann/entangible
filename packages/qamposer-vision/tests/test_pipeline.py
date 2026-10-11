@@ -1,4 +1,9 @@
-"""End-to-end pipeline test over the generated bell-sequence replay fixture."""
+"""End-to-end pipeline tests over the bell-sequence replay recording.
+
+Run on both copies: the full-size PNG fixture generated on demand
+(tests/fixtures/recordings, never committed) and the committed demo loop
+(examples/recordings, small JPEGs) that installs replay with no generation.
+"""
 
 from __future__ import annotations
 
@@ -20,15 +25,27 @@ from qamposer_vision.pipeline import (
 )
 from qamposer_vision.sources import PushFrameSource, ReplaySource
 
-from tests.utils.make_recording import OUTPUT_DIR, make_recording
+from tests.utils.make_recording import EXAMPLE_DIR, OUTPUT_DIR, make_recording
 from tests.utils.render_board import RenderOptions, render_board
 
 
-@pytest.fixture(scope="module")
-def recording_dir():
+@pytest.fixture(scope="module", params=["generated", "example"])
+def recording_dir(request):
+    if request.param == "example":
+        # Committed: must work as checked out (an offline install replays it).
+        return EXAMPLE_DIR
     # PNG frames are gitignored; (re)generate them deterministically for the test.
     make_recording(OUTPUT_DIR)
     return OUTPUT_DIR
+
+
+def test_example_recording_is_committed_and_compact() -> None:
+    # The documented demo source replay:examples/recordings/bell-sequence:
+    # every frame of the sequence, JPEG only, and small enough to commit.
+    frames = sorted(EXAMPLE_DIR.iterdir())
+    assert [f.name for f in frames] == [f"frame_{i:04d}.jpg" for i in range(48)]
+    assert sum(f.stat().st_size for f in frames) < 2_000_000
+    assert ReplaySource(EXAMPLE_DIR).frame_count == 48
 
 
 def _gate_types(circuit: dict) -> list[str]:
