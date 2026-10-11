@@ -146,7 +146,7 @@ Every message is a JSON object with a `type` discriminator.
 ```jsonc
 {
   "type": "status",
-  "camera":  { "kind": "replay", "name": "fixtures/bell-sequence", "connected": true, "lost": false },
+  "camera":  { "kind": "replay", "name": "fixtures/bell-sequence", "connected": true, "lost": false, "missing": false },
   "backend": { "enabled": false, "healthy": false },
   "clients": 2                          // current /ws/state client count
 }
@@ -160,8 +160,23 @@ Every message is a JSON object with a `type` discriminator.
   backoff (1 s → 2 s → 4 s … capped at 10 s, forever), and clears the flag on
   the next real frame. Replay and push sources are never flagged. Kiosk and
   pocket viewer pills turn red ("Camera lost — check the cable"); `/debug`
-  shows it on the camera row. `connected` keeps meaning "a source is
-  configured".
+  shows it on the camera row. `lost` is only ever set for a camera that
+  delivered frames first — a camera that never did is `missing` (below).
+- `camera.connected` for a live camera (`cv2` / `picamera2`) means frames
+  actually arrive: `false` until the pipeline has opened the device **and**
+  received a first frame, `false` again while `lost`. An opened device alone
+  is not enough (a wedged driver opens fine). For replay / push sources it
+  keeps meaning "a source is configured".
+- `camera.missing` (additive, always present on current hosts) is `true` for a
+  live camera that has not delivered a single frame and is known not to work:
+  the device failed to open (reported from the very first `status` /
+  `/api/health`, e.g. `cv2:0` with nothing at `/dev/video0`), the pipeline
+  could not start on it, or it went a whole stall window without a frame.
+  `camera.reason` (present only while `missing`) says why in plain English for
+  logs and launchers ("could not open camera 0 (/dev/video0)", "the camera
+  delivered no frames"). The host keeps retrying; the first real frame clears
+  `missing` and sets `connected`. Screens show "No camera found" with a hint
+  (plug in a USB camera, or set `QAMPOSER_SOURCE`) instead of "Camera lost".
 
 ### `served` — a Quantina serve, broadcast to every client (additive)
 

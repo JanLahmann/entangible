@@ -32,7 +32,13 @@ from . import (
     ws_state,
 )
 from .branding import load_branding
-from .config import HostConfig, build_frame_source, camera_from_spec, ensure_push_source
+from .config import (
+    HostConfig,
+    build_frame_source,
+    camera_from_spec,
+    ensure_push_source,
+    source_open_error,
+)
 from .dispatch import Dispatcher, load_dispatch_config
 from .hub import Hub
 from .layout import LayoutStore
@@ -158,7 +164,13 @@ def _try_start_pipeline(app: FastAPI) -> None:
         pipeline.start()
         app.state.pipeline = pipeline
         app.state.owns_pipeline = True
-        hub.set_camera(camera_from_spec(config.source, connected=True))
+        reason = source_open_error(source)
+        hub.set_camera(camera_from_spec(config.source, connected=True), reason=reason)
+        if reason:
+            logger.warning(
+                "camera source %r: %s; reporting it missing and retrying",
+                config.source, reason,
+            )
         logger.info("vision pipeline started on source %r", config.source)
     except Exception as exc:
         logger.error(
@@ -167,3 +179,7 @@ def _try_start_pipeline(app: FastAPI) -> None:
             type(exc).__name__, exc,
         )
         app.state.owns_pipeline = False
+        hub.set_camera(
+            camera_from_spec(config.source, connected=False),
+            reason=f"{type(exc).__name__}: {exc}",
+        )

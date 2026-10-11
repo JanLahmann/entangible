@@ -29,6 +29,15 @@ logger = logging.getLogger("qamposer_host.hub")
 #: Minimum seconds between broadcast ``detection`` messages (5 Hz).
 DETECTION_MIN_INTERVAL = 0.2
 
+#: Source kinds backed by a physical camera device. Only these must prove
+#: themselves with a real frame before ``status.camera.connected`` is true, and
+#: only these can be ``missing`` (never delivered a frame).
+LIVE_CAMERA_KINDS = frozenset({"cv2", "picamera2"})
+
+#: ``status.camera.reason`` when a camera opened (or seemed to) but never
+#: delivered a frame within the pipeline's stall window.
+NO_FRAMES_REASON = "the camera delivered no frames"
+
 
 class WSClient(Protocol):
     async def send_json(self, obj: Any) -> None: ...
@@ -120,8 +129,15 @@ class Hub:
         self._last_detection_sent = 0.0
         self._camera: dict = {"kind": "none", "name": "", "connected": False}
         #: The pipeline reported the camera stalled (``camera_lost``); surfaced
-        #: as ``status.camera.lost`` so every screen can say so plainly.
+        #: as ``status.camera.lost`` (only after a first frame) so every screen
+        #: can say so plainly.
         self._camera_lost = False
+        #: A real frame from the current source has arrived (any non-lost
+        #: detection event). A live camera is not ``connected`` before this.
+        self._camera_frames = False
+        #: Why the current camera is not working (failed open); ``None`` while
+        #: nothing is known to be wrong.
+        self._camera_reason: str | None = None
         self._backend: dict = {"enabled": False, "healthy": False}
 
     # -- loop binding ------------------------------------------------------
@@ -132,16 +148,47 @@ class Hub:
 
     # -- status pieces -----------------------------------------------------
 
-    def set_camera(self, camera: dict) -> None:
-        """Record a (new) camera source; a fresh source starts not-lost."""
+    def set_camera(self, camera: dict, *, reason: str | None = None) -> None:
+        """Record a (new) camera source; a fresh source starts not-lost.
+
+        ``reason`` says why the source is already known not to work (the
+        device failed to open); a live camera with a reason is reported
+        ``missing`` from the very first status, never briefly ``connected``.
+        """
         self._camera = dict(camera)
         self._camera_lost = False
+        self._camera_frames = False
+        self._camera_reason = reason
 
     def set_backend(self, *, enabled: bool, healthy: bool) -> None:
         self._backend = {"enabled": bool(enabled), "healthy": bool(healthy)}
 
     def camera_status(self) -> dict:
-        return {**self._camera, "lost": self._camera_lost}
+        """The ``status.camera`` object (docs/protocol.md).
+
+        For a live camera (``cv2`` / ``picamera2``) ``connected`` means frames
+        actually arrive: false until the first real frame, false again while
+        ``lost``. ``lost`` is a stall *after* frames arrived (unplugged
+        mid-session); ``missing`` is a live camera that has not delivered a
+        frame and is known not to work — the device failed to open, or it went
+        a whole stall window without a frame — with ``reason`` saying why.
+        Replay / push sources keep ``connected`` = "a source is configured".
+        """
+        status = dict(self._camera)
+        live = status.get("kind") in LIVE_CAMERA_KINDS
+        lost = self._camera_lost and self._camera_frames
+        missing = live and not self._camera_frames and (
+            self._camera_lost or self._camera_reason is not None
+        )
+        if live:
+            status["connected"] = (
+                bool(status.get("connected")) and self._camera_frames and not lost
+            )
+        status["lost"] = lost
+        status["missing"] = missing
+        if missing:
+            status["reason"] = self._camera_reason or NO_FRAMES_REASON
+        return status
 
     def backend_status(self) -> dict:
         return dict(self._backend)
@@ -220,22 +267,28 @@ class Hub:
     async def publish_detection(self, event: Any) -> None:
         """Store latest detection; broadcast at most 5 Hz (drop intermediates).
 
-        A camera-lost transition (``event.camera_lost`` flipping either way)
-        bypasses the throttle — the ``fps: 0`` detection must not be the frame
+        A camera-status transition (``event.camera_lost`` flipping either way,
+        or the first real frame of a source turning it ``connected``) bypasses the throttle — the ``fps: 0`` detection must not be the frame
         that gets dropped — and is followed by a ``status`` broadcast carrying
         ``camera.lost``, so pills turn red (and back) at once.
         """
         message = serialize_detection(event)
         self._latest_detection = message  # keep replay fresh even when throttled
         lost = bool(getattr(event, "camera_lost", False))
-        transition = lost != self._camera_lost
+        before = self.camera_status()
+        self._camera_lost = lost
+        if not lost:
+            # Every non-lost detection comes from a real frame: the source
+            # works (first frame → connected; after a stall → recovered).
+            self._camera_frames = True
+            self._camera_reason = None
+        transition = self.camera_status() != before
         now = time.monotonic()
         if not transition and now - self._last_detection_sent < DETECTION_MIN_INTERVAL:
             return
         self._last_detection_sent = now
         await self._broadcast(message)
         if transition:
-            self._camera_lost = lost
             await self._broadcast(self._status_message())
 
     async def publish_status(self) -> None:

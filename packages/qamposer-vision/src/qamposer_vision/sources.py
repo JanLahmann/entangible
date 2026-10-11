@@ -26,6 +26,7 @@ offer an optional ``reopen() -> bool`` the pipeline retries with backoff.
 from __future__ import annotations
 
 import re
+import sys
 import threading
 from pathlib import Path
 from time import monotonic
@@ -74,8 +75,12 @@ class Cv2CaptureSource:
         self.width = width
         self.height = height
         self._capture = None
+        #: Why the device is not open (``None`` once it opened). An open device
+        #: is still not proof of a working camera — only a delivered frame is;
+        #: the host reports ``status.camera.connected`` from frames, not this.
+        self.open_error: str | None = None
         self._open()
-        reported = self._capture.get(cv2.CAP_PROP_FPS) if self._capture else 0.0
+        reported = self._capture.get(cv2.CAP_PROP_FPS) if self.is_opened() else 0.0
         self.fps_hint: float | None = float(reported) if reported and reported > 0 else None
 
     def _open(self) -> bool:
@@ -83,7 +88,10 @@ class Cv2CaptureSource:
         if self._capture is not None and self._capture.isOpened():
             self._capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
             self._capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+            self.open_error = None
             return True
+        device = f" (/dev/video{self.index})" if sys.platform.startswith("linux") else ""
+        self.open_error = f"could not open camera {self.index}{device}"
         return False
 
     def reopen(self) -> bool:

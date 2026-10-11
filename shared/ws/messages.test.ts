@@ -119,7 +119,7 @@ const detectionSample = {
 
 const statusSample = {
   type: 'status',
-  camera: { kind: 'replay', name: '', connected: false, lost: false },
+  camera: { kind: 'replay', name: '', connected: false, lost: false, missing: false, reason: '' },
   backend: { enabled: false, healthy: false },
   clients: 0,
 } satisfies StatusMessage;

@@ -177,3 +177,75 @@ def test_replay_empty_directory_returns_none(tmp_path: Path) -> None:
     src = ReplaySource(tmp_path, fps=10.0, loop=True)
     assert src.frame_count == 0
     assert src.read() is None
+
+
+# ---------------------------------------------------------------------------
+# Cv2CaptureSource — open failure is reported, not hidden
+# ---------------------------------------------------------------------------
+
+
+class _FakeCapture:
+    """``cv2.VideoCapture`` stand-in; ``opens`` / ``frames`` pick the failure."""
+
+    opens = True
+    frames = True
+
+    def __init__(self, index) -> None:
+        self.index = index
+        self.released = False
+
+    def isOpened(self) -> bool:  # noqa: N802 - cv2 API
+        return _FakeCapture.opens and not self.released
+
+    def set(self, prop, value) -> bool:
+        return True
+
+    def get(self, prop) -> float:
+        return 30.0
+
+    def read(self):
+        if _FakeCapture.frames:
+            return True, np.zeros((4, 4, 3), dtype=np.uint8)
+        return False, None
+
+    def release(self) -> None:
+        self.released = True
+
+
+@pytest.fixture
+def fake_capture(monkeypatch):
+    from qamposer_vision import sources
+
+    _FakeCapture.opens = True
+    _FakeCapture.frames = True
+    monkeypatch.setattr(sources.cv2, "VideoCapture", _FakeCapture)
+    return _FakeCapture
+
+
+def test_cv2_failed_open_sets_open_error(fake_capture) -> None:
+    from qamposer_vision.sources import Cv2CaptureSource
+
+    fake_capture.opens = False
+    src = Cv2CaptureSource(0)
+    assert src.is_opened() is False
+    assert src.open_error is not None and "could not open camera 0" in src.open_error
+    assert src.read() is None
+    assert src.fps_hint is None
+    assert "unavailable" in src.describe()
+
+    # The device appears: a reopen clears the error.
+    fake_capture.opens = True
+    assert src.reopen() is True
+    assert src.open_error is None
+    assert src.read() is not None
+
+
+def test_cv2_open_but_no_frames_reads_none(fake_capture) -> None:
+    from qamposer_vision.sources import Cv2CaptureSource
+
+    fake_capture.frames = False
+    src = Cv2CaptureSource(1)
+    assert src.is_opened() is True
+    assert src.open_error is None  # opened — only frames prove it works
+    assert src.read() is None
+    assert src.fps_hint == 30.0

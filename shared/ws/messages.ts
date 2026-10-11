@@ -125,13 +125,27 @@ export type CameraKind = 'cv2' | 'picamera2' | 'push' | 'replay';
 export interface CameraStatus {
   kind: CameraKind;
   name?: string;
+  /**
+   * Live cameras (`cv2` / `picamera2`): frames are actually arriving — false
+   * until the first real frame and while `lost`. Replay / push: a source is
+   * configured.
+   */
   connected: boolean;
   /**
    * The camera stopped delivering frames for more than 2 s (unplugged, frozen
-   * driver) and the host is reopening it with backoff; cleared by the next real
-   * frame. Additive — absent on older hosts. Replay / push sources never set it.
+   * driver) after it HAD delivered frames, and the host is reopening it with
+   * backoff; cleared by the next real frame. Additive — absent on older hosts.
+   * Replay / push sources never set it.
    */
   lost?: boolean;
+  /**
+   * A live camera that never delivered a frame and is known not to work (no
+   * device / failed open / no frames within the stall window) — "no camera
+   * found", as opposed to `lost`. Additive — absent on older hosts.
+   */
+  missing?: boolean;
+  /** Why the camera is `missing`, in plain English (logs, staff screens). */
+  reason?: string;
 }
 
 export interface BackendStatus {

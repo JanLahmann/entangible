@@ -183,6 +183,18 @@ def camera_from_spec(spec: str, connected: bool = False) -> dict:
     return {"kind": kind, "name": name, "connected": bool(connected)}
 
 
+def source_open_error(source) -> str | None:
+    """Why a freshly built frame source is already known not to work, or ``None``.
+
+    A ``Cv2CaptureSource`` whose device failed to open carries ``open_error``
+    (no camera at ``/dev/videoN``); the host hands it to ``Hub.set_camera`` so
+    the very first ``status`` / ``/api/health`` says "missing", never
+    "connected". Duck-typed: sources without the attribute have no opinion.
+    """
+    error = getattr(source, "open_error", None)
+    return str(error) if error else None
+
+
 def build_frame_source(spec: str):
     """Build a live ``FrameSource`` from a source spec (lazy vision import).
 

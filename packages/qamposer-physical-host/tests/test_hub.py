@@ -113,7 +113,10 @@ def test_disconnect_updates_client_count():
         # a saw the final status broadcast with clients == 1
         assert a.sent[-1] == {
             "type": "status",
-            "camera": {"kind": "none", "name": "", "connected": False, "lost": False},
+            "camera": {
+                "kind": "none", "name": "", "connected": False,
+                "lost": False, "missing": False,
+            },
             "backend": {"enabled": False, "healthy": False},
             "clients": 1,
         }
@@ -187,9 +190,12 @@ def test_camera_lost_transition_bypasses_throttle_and_flips_status():
 def test_new_camera_starts_not_lost():
     async def scenario():
         hub = Hub()
+        hub.set_camera({"kind": "cv2", "name": "cv2:0", "connected": True})
+        await hub.publish_detection(FakeDetectionEvent(fps=12.0))
         await hub.publish_detection(FakeDetectionEvent(fps=0.0, camera_lost=True))
         assert hub.camera_status()["lost"] is True
         hub.set_camera({"kind": "cv2", "name": "cv2:1", "connected": True})
         assert hub.camera_status()["lost"] is False
+        assert hub.camera_status()["missing"] is False
 
     _run(scenario())
