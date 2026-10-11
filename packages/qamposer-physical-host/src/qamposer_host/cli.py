@@ -119,6 +119,17 @@ def _qr_command(args: argparse.Namespace, config: HostConfig) -> str:
     return " ".join(parts)
 
 
+def _ensure_host_cert(config: HostConfig):
+    """The one TLS cert ``run`` and ``doctor`` share (``(cert, key)`` paths).
+
+    SANs: the machine's hostname (+ ``.local``), ``localhost``, 127.0.0.1, the
+    LAN IPv4s and the advertised host. Both commands must ask for the same set,
+    or each would regenerate the other's cert; the hostname is never replaced
+    by the advertised host (it used to be, dropping it from the SANs).
+    """
+    return ensure_cert(config.cert_dir, extra_hosts=[advertised_host(config)])
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -146,11 +157,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     kwargs: dict = {"host": config.host, "port": config.port}
     if config.tls:
-        cert_path, key_path = ensure_cert(
-            config.cert_dir,
-            hostname=display_host,
-            extra_hosts=[config.advertise_host] if config.advertise_host else (),
-        )
+        cert_path, key_path = _ensure_host_cert(config)
         kwargs["ssl_certfile"] = str(cert_path)
         kwargs["ssl_keyfile"] = str(key_path)
 
@@ -278,8 +285,7 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     def tls_ready() -> tuple[bool, str, str]:
         if not config.tls:
             return True, "TLS off (--no-tls) — phones cannot use their camera", ""
-        extra = [config.advertise_host] if config.advertise_host else ()
-        cert_path, _key = ensure_cert(config.cert_dir, extra_hosts=extra)
+        cert_path, _key = _ensure_host_cert(config)
         return True, f"cert ready at {cert_path} (host {advertised_host(config)})", ""
 
     check("tls", tls_ready)

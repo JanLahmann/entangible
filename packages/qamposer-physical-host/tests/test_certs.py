@@ -72,6 +72,75 @@ def test_cert_sans_include_advertised_hosts(tmp_path):
     assert "entangible.local" not in dns2
 
 
+def test_cert_sans_cover_hostname_dot_local_localhost_and_lan(tmp_path, monkeypatch):
+    monkeypatch.setattr(certs, "lan_ipv4s", lambda: ["192.168.4.1"])
+    cert_path, _ = ensure_cert(tmp_path, hostname="rasqberry", extra_hosts=["192.168.4.1"])
+    dns, ips = _load_sans(cert_path)
+    assert dns == {"rasqberry", "rasqberry.local", "localhost"}
+    assert ips == {"127.0.0.1", "192.168.4.1"}
+
+
+def test_macos_style_local_hostname_also_covers_the_bare_name(tmp_path):
+    cert_path, _ = ensure_cert(tmp_path, hostname="Jans-Mac.local")
+    dns, _ = _load_sans(cert_path)
+    assert {"Jans-Mac.local", "Jans-Mac", "localhost"} <= dns
+
+
+def test_default_hostname_is_the_machine_name(tmp_path, monkeypatch):
+    monkeypatch.setattr(certs.socket, "gethostname", lambda: "boothpi")
+    cert_path, _ = ensure_cert(tmp_path)
+    dns, _ = _load_sans(cert_path)
+    assert {"boothpi", "boothpi.local"} <= dns
+
+
+def test_cert_lacking_hostname_is_regenerated_and_token_kept(tmp_path, monkeypatch):
+    """A cert from before this fix (SANs without the hostname) is replaced.
+
+    `run` used to pass the advertised LAN IP as the hostname, so the on-disk
+    cert carried the IP as a DNS name and no hostname at all. The next start
+    must regenerate it — while the operator token beside it stays the same.
+    """
+    from qamposer_host.token import ensure_token
+
+    monkeypatch.setattr(certs, "lan_ipv4s", lambda: ["192.168.4.1"])
+    monkeypatch.setattr(certs.socket, "gethostname", lambda: "rasqberry")
+    token = ensure_token(tmp_path)
+    # The old buggy call: hostname = advertised IP.
+    certs._generate(
+        tmp_path / certs.CERT_NAME, tmp_path / certs.KEY_NAME, "192.168.4.1",
+        {"192.168.4.1", "localhost"}, {"127.0.0.1", "192.168.4.1"}, 30,
+    )
+    old = (tmp_path / certs.CERT_NAME).read_bytes()
+
+    cert_path, _ = ensure_cert(tmp_path, extra_hosts=["192.168.4.1"])
+    assert cert_path.read_bytes() != old
+    dns, ips = _load_sans(cert_path)
+    assert {"rasqberry", "rasqberry.local", "localhost"} == dns
+    assert "192.168.4.1" in ips
+    assert ensure_token(tmp_path) == token
+    # ... and a second start reuses it.
+    again = cert_path.read_bytes()
+    ensure_cert(tmp_path, extra_hosts=["192.168.4.1"])
+    assert cert_path.read_bytes() == again
+
+
+def test_run_and_doctor_request_the_same_cert(tmp_path, monkeypatch):
+    """`run` and `doctor` share one SAN set — neither regenerates the other's cert."""
+    from qamposer_host import cli
+    from qamposer_host.config import HostConfig
+
+    monkeypatch.setattr(certs, "lan_ipv4s", lambda: ["10.0.0.5"])
+    monkeypatch.setattr(certs.socket, "gethostname", lambda: "rasqberry")
+    config = HostConfig.from_env(cert_dir=str(tmp_path), advertise_host="10.0.0.5")
+    cert_path, _ = cli._ensure_host_cert(config)
+    dns, ips = _load_sans(cert_path)
+    assert {"rasqberry", "rasqberry.local", "localhost"} == dns
+    assert ips == {"127.0.0.1", "10.0.0.5"}
+    first = cert_path.read_bytes()
+    cli._ensure_host_cert(config)
+    assert cert_path.read_bytes() == first
+
+
 # --- LAN address detection -------------------------------------------------
 
 

@@ -193,8 +193,10 @@ build123d/OpenCASCADE) is never installed on a booth.
 ## Network
 
 - HTTPS on **port 8443** (`QAMPOSER_PORT`). The certificate is self-signed and
-  generated on first start. Its SANs cover the hostname, `localhost` and every
-  LAN IPv4. It is regenerated when the network changes.
+  generated on first start. Its SANs cover the hostname, `<hostname>.local`,
+  `localhost`, 127.0.0.1, every LAN IPv4 and the advertised host. It is
+  regenerated when the network, the hostname or the advertised host changes
+  (the operator token is kept).
 - The host binds `0.0.0.0`, so it is LAN-reachable. That is required: visitors'
   phones join it, and a phone can be the camera. A phone's camera needs a
   secure context, which is why TLS is on.

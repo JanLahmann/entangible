@@ -55,8 +55,8 @@ the address every URL/QR and the TLS cert carry:
 An iPhone's `getUserMedia` only runs on a **secure context** (HTTPS or
 `localhost`), so the host serves HTTPS from a self-signed certificate by default.
 The cert is generated on first run into `~/.qamposer-physical/certs/`, with SANs
-covering the hostname + every LAN IPv4 (it is regenerated automatically after you
-change networks). See [`certs.py`](../packages/qamposer-physical-host/src/qamposer_host/certs.py).
+covering the hostname (and its `.local` twin), `localhost` and every LAN IPv4 (it
+is regenerated automatically after you change networks or the hostname). See [`certs.py`](../packages/qamposer-physical-host/src/qamposer_host/certs.py).
 
 - **Default (TLS):** phones and other LAN browsers can use the camera; each device
   taps through the self-signed-cert warning once (documented in

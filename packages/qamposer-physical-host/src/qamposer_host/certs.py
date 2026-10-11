@@ -135,6 +135,25 @@ def primary_lan_ip() -> str:
 # --- certificate lifecycle -------------------------------------------------
 
 
+def _hostname_names(hostname: str) -> list[str]:
+    """``hostname`` plus its ``.local`` twin (an IP or ``localhost`` as is)."""
+    hostname = (hostname or "").strip().rstrip(".")
+    if not hostname:
+        return []
+    try:
+        ipaddress.ip_address(hostname)
+        return [hostname]
+    except ValueError:
+        pass
+    if hostname.lower() == "localhost":
+        return [hostname]
+    if hostname.lower().endswith(".local"):
+        return [hostname, hostname[: -len(".local")]]
+    if "." not in hostname:
+        return [hostname, f"{hostname}.local"]
+    return [hostname]
+
+
 def _desired_sans(
     hostname: str, extra_hosts: Iterable[str] = ()
 ) -> tuple[set[str], set[str]]:
@@ -142,10 +161,13 @@ def _desired_sans(
 
     ``extra_hosts`` (e.g. ``--advertise-host``) land in the IP or DNS set by
     whether they parse as an address, so the advertised URL always verifies.
+    The machine's ``hostname`` is covered together with its mDNS name
+    (``<host>.local``, how a Pi is reached on most LANs — or the bare name when
+    the system reports the ``.local`` form, as macOS does).
     """
-    dns = {hostname, "localhost"}
+    dns = {"localhost"}
     ips = {"127.0.0.1", *lan_ipv4s()}
-    for host in extra_hosts:
+    for host in (*_hostname_names(hostname), *extra_hosts):
         host = (host or "").strip()
         if not host:
             continue
@@ -234,8 +256,12 @@ def ensure_cert(
     """Ensure a valid self-signed cert exists in ``cert_dir``.
 
     Returns ``(cert_path, key_path)``. Reuses an existing cert when it is
-    unexpired and its SANs still match; otherwise regenerates. ``extra_hosts``
-    adds names/IPs beyond the detected ones (the ``--advertise-host``).
+    unexpired and its SANs still match; otherwise regenerates. ``hostname`` is
+    the machine's name (default ``socket.gethostname()``) — pass the
+    advertised host / LAN IP through ``extra_hosts``, never as ``hostname``, or
+    the real hostname drops out of the SANs. ``extra_hosts`` adds names/IPs
+    beyond the detected ones (the ``--advertise-host``). Only ``cert.pem`` /
+    ``key.pem`` are rewritten; the operator token beside them is untouched.
     """
     cert_dir = Path(cert_dir)
     cert_dir.mkdir(parents=True, exist_ok=True)
