@@ -51,6 +51,10 @@ export const READINESS_HINTS: Record<ReadinessKey, string> = {
   board: 'point the camera at the mat; check the 4 corner blocks',
 };
 
+/** Camera-row hint when the host never got a frame (`status.camera.missing`). */
+export const CAMERA_MISSING_HINT =
+  'no camera found — plug in a USB camera, or set QAMPOSER_SOURCE / pick another camera below';
+
 function secs(ms: number): string {
   return `${Math.max(0, Math.round(ms / 1000))}s`;
 }
@@ -58,7 +62,13 @@ function secs(ms: number): string {
 function cameraDetail(camera: CameraStatus | undefined): string {
   if (!camera) return 'no status from host';
   const name = camera.name ? ` (${camera.name})` : '';
-  const state = camera.lost ? 'LOST' : camera.connected ? 'connected' : 'offline';
+  const state = camera.lost
+    ? 'LOST'
+    : camera.missing
+      ? `NOT FOUND${camera.reason ? ` (${camera.reason})` : ''}`
+      : camera.connected
+        ? 'connected'
+        : 'offline';
   return `${camera.kind}${name} · ${state}`;
 }
 
@@ -83,7 +93,7 @@ export function readiness(input: ReadinessInput): Readiness {
 
   const rows: ReadinessRow[] = [
     { key: 'link', label: 'host link', ok: linkOk, detail: `ws ${connectionState}`, hint: READINESS_HINTS.link },
-    { key: 'camera', label: 'camera', ok: cameraOk, detail: cameraDetail(camera), hint: READINESS_HINTS.camera },
+    { key: 'camera', label: 'camera', ok: cameraOk, detail: cameraDetail(camera), hint: camera?.missing ? CAMERA_MISSING_HINT : READINESS_HINTS.camera },
     { key: 'frames', label: 'frames', ok: framesOk, detail: framesDetail, hint: READINESS_HINTS.frames },
     { key: 'board', label: 'board', ok: boardFound, detail: boardDetail, hint: READINESS_HINTS.board },
   ];

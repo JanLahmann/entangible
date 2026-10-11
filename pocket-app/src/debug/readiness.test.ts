@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   BOARD_RECENT_MS,
+  CAMERA_MISSING_HINT,
   FRAME_STALE_MS,
   READINESS_HINTS,
   readiness,
@@ -108,5 +109,26 @@ describe('readiness rows', () => {
     expect(lost.rows[1].detail).toBe('cv2 (cv2:0) · LOST');
     const offline = readiness(withFaults(new Set(['cameraOffline'])));
     expect(offline.rows[1].detail).toBe('cv2 (cv2:0) · offline');
+  });
+
+  it('camera never found: NOT FOUND with the reason and a plug-in hint', () => {
+    const r = readiness({
+      ...green(),
+      camera: {
+        kind: 'cv2',
+        name: 'cv2:0',
+        connected: false,
+        lost: false,
+        missing: true,
+        reason: 'could not open camera 0 (/dev/video0)',
+      },
+    });
+    expect(r.ready).toBe(false);
+    expect(r.rows[1]).toMatchObject({
+      ok: false,
+      detail: 'cv2 (cv2:0) · NOT FOUND (could not open camera 0 (/dev/video0))',
+      hint: CAMERA_MISSING_HINT,
+    });
+    expect(CAMERA_MISSING_HINT).toMatch(/USB camera.*QAMPOSER_SOURCE/);
   });
 });

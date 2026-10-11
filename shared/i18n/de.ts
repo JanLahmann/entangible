@@ -225,6 +225,7 @@ export const de: Messages = {
       'Einem Messblock gegenüber liegt kein Leitungsblock – richte ihn an einer Leitung aus.',
     checkBoard: (at: string) => `Prüf das Brett${at}.`,
     cameraLost: 'Kamera weg – prüf das Kabel',
+    cameraMissing: 'Keine Kamera gefunden – steck eine USB-Kamera an oder setz QAMPOSER_SOURCE',
   },
 
   hints: [

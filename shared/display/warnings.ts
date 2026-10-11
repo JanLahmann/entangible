@@ -100,3 +100,27 @@ export function friendlyWarning(w: WarningInput, t: Messages = en): string {
 
 /** Status-pill line when the booth camera stopped delivering frames (English). */
 export const CAMERA_LOST_LABEL = en.warnings.cameraLost;
+
+/** Status-pill line when the booth has no working camera at all (English). */
+export const CAMERA_MISSING_LABEL = en.warnings.cameraMissing;
+
+/**
+ * What is wrong with the booth camera, from `status.camera`: `lost` — it
+ * delivered frames and then stopped (a cable came loose); `missing` — it never
+ * delivered a frame (nothing attached, wrong `QAMPOSER_SOURCE`). `null` while
+ * fine, still starting, or on older hosts without these fields.
+ */
+export type CameraProblem = 'lost' | 'missing';
+
+export function cameraProblem(
+  camera: { lost?: boolean; missing?: boolean } | undefined | null,
+): CameraProblem | null {
+  if (camera?.lost === true) return 'lost';
+  if (camera?.missing === true) return 'missing';
+  return null;
+}
+
+/** The visitor-screen line for a camera problem, in `t`'s language. */
+export function cameraProblemLabel(problem: CameraProblem, t: Messages = en): string {
+  return problem === 'lost' ? t.warnings.cameraLost : t.warnings.cameraMissing;
+}

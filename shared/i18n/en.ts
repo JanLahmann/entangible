@@ -224,6 +224,8 @@ export const en = {
       'A measurement block has no wire block across from it — line it up with a wire.',
     checkBoard: (at: string) => `Check the board${at}.`,
     cameraLost: 'Camera lost — check the cable',
+    /** The booth camera never delivered a frame (none attached / wrong source). */
+    cameraMissing: 'No camera found — plug in a USB camera, or set QAMPOSER_SOURCE',
   },
 
   /** The rotating footer ticker (pocket + kiosk). */

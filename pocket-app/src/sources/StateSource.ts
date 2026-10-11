@@ -79,6 +79,12 @@ export interface StateUpdate {
    * 2 s, reopening). Booth only; absent/false otherwise and on older hosts.
    */
   readonly boothCameraLost?: boolean;
+  /**
+   * The booth host has no working camera at all (`status.camera.missing`:
+   * nothing attached / failed open / never a frame) — distinct from `lost`.
+   * Booth only; absent/false otherwise and on older hosts.
+   */
+  readonly boothCameraMissing?: boolean;
 }
 
 export type StateListener = (update: StateUpdate) => void;

@@ -4,13 +4,15 @@
  *  - warnings: the visitor footer shows only `kioskVisible` codes — the spare
  *    kit beside the board (`stray_tiles` / `stray_furniture`) is SILENT, while a
  *    tile between the wires (`off_grid`) still gets its friendly line;
- *  - camera lost (`status.camera.lost`): the camera pill turns red and says so.
+ *  - camera lost (`status.camera.lost`): the camera pill turns red and says so;
+ *  - camera missing (`status.camera.missing`, never had one): a distinct
+ *    "No camera found" line — never "Camera lost".
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, screen } from '@testing-library/react';
 import type { StateSnapshot } from '@shared/ws/stateSocket';
 import type { DetectionWarning } from '@shared/ws/messages';
-import { CAMERA_LOST_LABEL } from '@shared/display/warnings';
+import { CAMERA_LOST_LABEL, CAMERA_MISSING_LABEL } from '@shared/display/warnings';
 
 let snapshot: StateSnapshot;
 vi.mock('./kioskSocket', () => ({
@@ -21,7 +23,11 @@ vi.mock('./kioskSocket', () => ({
 
 import { KioskView } from './KioskView';
 
-function snap(warnings: DetectionWarning[], lost?: boolean): StateSnapshot {
+function snap(
+  warnings: DetectionWarning[],
+  lost?: boolean,
+  missing?: boolean,
+): StateSnapshot {
   return {
     connectionState: 'open',
     lastSeq: 1,
@@ -41,7 +47,13 @@ function snap(warnings: DetectionWarning[], lost?: boolean): StateSnapshot {
     },
     status: {
       type: 'status',
-      camera: { kind: 'cv2', name: 'cv2:0', connected: true, ...(lost === undefined ? {} : { lost }) },
+      camera: {
+        kind: 'cv2',
+        name: 'cv2:0',
+        connected: !missing,
+        ...(lost === undefined ? {} : { lost }),
+        ...(missing === undefined ? {} : { missing, reason: 'could not open camera 0' }),
+      },
       backend: { enabled: false, healthy: false },
       clients: 1,
     },
@@ -106,5 +118,16 @@ describe('KioskView camera pill', () => {
     expect(pill!.classList.contains('is-down')).toBe(true);
     expect(screen.getByRole('alert').textContent).toBe(CAMERA_LOST_LABEL);
     expect(CAMERA_LOST_LABEL).toBe('Camera lost — check the cable');
+  });
+
+  it('says "No camera found" (not "lost") when the host never had a camera', () => {
+    snapshot = snap([], false, true);
+    const { container } = render(<KioskView />);
+    const pill = container.querySelector('.bo-pill.is-camera-missing');
+    expect(pill).not.toBeNull();
+    expect(pill!.classList.contains('is-down')).toBe(true);
+    expect(container.querySelector('.is-camera-lost')).toBeNull();
+    expect(screen.getByRole('alert').textContent).toBe(CAMERA_MISSING_LABEL);
+    expect(CAMERA_MISSING_LABEL).toMatch(/^No camera found — .*USB camera.*QAMPOSER_SOURCE/);
   });
 });

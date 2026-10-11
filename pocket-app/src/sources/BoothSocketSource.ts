@@ -86,6 +86,7 @@ export function snapshotToUpdate(
     boothServed: snap.served,
     connection: connectionPhase(snap.connectionState),
     boothCameraLost: snap.status?.camera?.lost === true,
+    boothCameraMissing: snap.status?.camera?.missing === true,
   };
 }
 

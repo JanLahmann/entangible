@@ -5,6 +5,7 @@ import {
   connectionPill,
   cameraSwitchAction,
 } from '../../src/sources/boothUrl';
+import { de } from '@shared/i18n/de';
 
 describe('normalizeBoothUrl', () => {
   it('maps http(s) → ws(s) and pins the /ws/state path', () => {
@@ -60,6 +61,16 @@ describe('connectionPill', () => {
     expect(connectionPill('open', false).cls).toBe('is-live');
     // Not connected: the connection phase is the more urgent news.
     expect(connectionPill('closed', true).label).toMatch(/disconnect/i);
+  });
+
+  it('says "No camera found" when the booth never had a camera', () => {
+    expect(connectionPill('open', 'missing')).toEqual({
+      label: 'No camera found — plug in a USB camera, or set QAMPOSER_SOURCE',
+      cls: 'is-off',
+    });
+    expect(connectionPill('open', 'lost').label).toBe('Camera lost — check the cable');
+    expect(connectionPill('open', null).cls).toBe('is-live');
+    expect(connectionPill('open', 'missing', de).label).toMatch(/^Keine Kamera gefunden/);
   });
 });
 

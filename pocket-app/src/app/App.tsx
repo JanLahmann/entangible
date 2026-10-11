@@ -474,6 +474,8 @@ export function App() {
   const [conn, setConn] = useState<ConnectionPhase | null>(null);
   // The booth host's camera stopped delivering frames (status.camera.lost).
   const [boothCameraLost, setBoothCameraLost] = useState(false);
+  // ... or never had one (status.camera.missing): "No camera found", not "lost".
+  const [boothCameraMissing, setBoothCameraMissing] = useState(false);
   const [boothMode, setBoothMode] = useState<BoothMode | null>(null);
   const [boothWires, setBoothWires] = useState<Wires | null>(null);
   // Booth-driven panel set (registry names, display order); null while
@@ -571,6 +573,7 @@ export function App() {
       if (update.source === 'booth') {
         if (update.connection) setConn(update.connection);
         setBoothCameraLost(update.boothCameraLost === true);
+        setBoothCameraMissing(update.boothCameraMissing === true);
         setBoothMode(update.boothMode ?? null);
         setBoothWires(update.boothWires ?? null);
         setBoothPanels(update.boothPanels ?? null);
@@ -840,6 +843,7 @@ export function App() {
     // Standalone: clear any booth metadata, listen to manual or the local pipeline.
     setConn(null);
     setBoothCameraLost(false);
+    setBoothCameraMissing(false);
     setBoothMode(null);
     setBoothWires(null);
     setBoothPanels(null);
@@ -1069,7 +1073,11 @@ export function App() {
   // Viewer policy (design: read-only Display role): while connected to a booth
   // — or building on screen in manual mode — the camera UI is hidden entirely.
   const showCamera = showCameraUi(cameraHidden, hasPanel('camera'), camera.status !== 'idle');
-  const boothPill = connectionPill(conn ?? 'connecting', boothCameraLost, t);
+  const boothPill = connectionPill(
+    conn ?? 'connecting',
+    boothCameraLost ? 'lost' : boothCameraMissing ? 'missing' : null,
+    t,
+  );
   // Camera-role offer gating (design: "connected to a host, camera role
   // selected"): only when a host is known AND an operator key is present.
   const hostKnown = servedByHost || settings.boothUrl != null;

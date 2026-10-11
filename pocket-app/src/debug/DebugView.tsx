@@ -200,7 +200,9 @@ function cameraLine(camera: CameraStatus | undefined): string {
   return `${camera.kind}${camera.name ? ` (${camera.name})` : ''} · ${
     camera.lost
       ? 'LOST — no frames for 2 s, reopening (check the cable)'
-      : camera.connected
+      : camera.missing
+        ? `NOT FOUND${camera.reason ? ` — ${camera.reason}` : ''} (plug in a USB camera, or set QAMPOSER_SOURCE; retrying)`
+        : camera.connected
         ? 'connected'
         : 'offline'
   }`;
@@ -267,7 +269,7 @@ function CameraCard() {
   return (
     <section className="debug__section">
       <h2>camera</h2>
-      <div style={{ marginBottom: '0.6rem' }} className={camera?.lost ? 'debug__row-off' : undefined}>
+      <div style={{ marginBottom: '0.6rem' }} className={camera?.lost || camera?.missing ? 'debug__row-off' : undefined}>
         {cameraLine(camera)}
       </div>
       <button
@@ -1057,7 +1059,7 @@ export function DebugView() {
           <h2>status</h2>
           <table className="debug__kv">
             <tbody>
-              <tr className={status?.camera.lost ? 'debug__row-off' : undefined}>
+              <tr className={status?.camera.lost || status?.camera.missing ? 'debug__row-off' : undefined}>
                 <td>camera</td>
                 <td>{cameraLine(status?.camera)}</td>
               </tr>

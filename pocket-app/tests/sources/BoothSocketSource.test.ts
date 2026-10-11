@@ -105,6 +105,27 @@ describe('snapshotToUpdate (pure mapping)', () => {
     expect(snapshotToUpdate(base, fallback).boothCameraLost).toBe(false);
   });
 
+  it('surfaces the host camera-missing flag separately from lost', () => {
+    const base = { connectionState: 'open', lastSeq: 1 } as StateSnapshot;
+    const status = (missing?: boolean) =>
+      ({
+        type: 'status',
+        camera: {
+          kind: 'cv2',
+          connected: false,
+          lost: false,
+          ...(missing === undefined ? {} : { missing }),
+        },
+        backend: { enabled: false, healthy: false },
+        clients: 1,
+      }) as StateSnapshot['status'];
+    const missing = snapshotToUpdate({ ...base, status: status(true) }, fallback);
+    expect(missing.boothCameraMissing).toBe(true);
+    expect(missing.boothCameraLost).toBe(false);
+    expect(snapshotToUpdate({ ...base, status: status(false) }, fallback).boothCameraMissing).toBe(false);
+    expect(snapshotToUpdate({ ...base, status: status() }, fallback).boothCameraMissing).toBe(false);
+  });
+
   it('falls back to the provided circuit before the first circuit message', () => {
     const snap = { connectionState: 'connecting', lastSeq: null } as StateSnapshot;
     const update = snapshotToUpdate(snap, fallback);

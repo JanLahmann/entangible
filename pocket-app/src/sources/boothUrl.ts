@@ -7,6 +7,7 @@
  */
 import type { ConnectionPhase } from './StateSource';
 import { en, type Messages } from '@shared/i18n/en';
+import { cameraProblemLabel, type CameraProblem } from '@shared/display/warnings';
 
 /**
  * Normalize a user-entered booth address into a `ws(s)://host/ws/state` URL,
@@ -50,16 +51,19 @@ export function connectRequested(search: string): boolean {
 
 /**
  * Status-pill label + style hook for the current booth connection phase. A live
- * connection whose host reports its camera lost (`status.camera.lost`) turns
- * the pill red with the shared camera-lost line instead of "viewing". `t` picks
- * the language (default English).
+ * connection whose host reports a camera problem turns the pill red with the
+ * shared line instead of "viewing": `lost` (`status.camera.lost`, frames
+ * stopped — "check the cable") or `missing` (`status.camera.missing`, no camera
+ * ever delivered a frame — "No camera found"). `true` means `lost` (the
+ * original boolean form). `t` picks the language (default English).
  */
 export function connectionPill(
   phase: ConnectionPhase,
-  cameraLost = false,
+  camera: CameraProblem | boolean | null = null,
   t: Messages = en,
 ): { label: string; cls: string } {
-  if (phase === 'open' && cameraLost) return { label: t.warnings.cameraLost, cls: 'is-off' };
+  const problem: CameraProblem | null = camera === true ? 'lost' : camera || null;
+  if (phase === 'open' && problem) return { label: cameraProblemLabel(problem, t), cls: 'is-off' };
   switch (phase) {
     case 'open':
       return { label: t.booth.viewing, cls: 'is-live' };

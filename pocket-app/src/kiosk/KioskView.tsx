@@ -36,7 +36,12 @@ import {
 import { getKioskSocket, kioskStanding, useKioskState } from './kioskSocket';
 import { sendServe } from './serve';
 import { withKey } from '@shared/ws/operatorKey';
-import { friendlyWarning, kioskVisible } from '@shared/display/warnings';
+import {
+  cameraProblem,
+  cameraProblemLabel,
+  friendlyWarning,
+  kioskVisible,
+} from '@shared/display/warnings';
 import { useT } from '@shared/i18n';
 import type { Messages } from '@shared/i18n/en';
 import type { ConnectionState } from '@shared/ws/stateSocket';
@@ -207,7 +212,8 @@ export function KioskView() {
   // Visitor screen: only warnings the person at the table can act on. Spare kit
   // beside the board (stray_*) and set-up checks stay on /debug.
   const warnings = (detection?.warnings ?? []).filter(kioskVisible);
-  const cameraLost = status?.camera?.lost === true;
+  // `lost` (frames stopped) vs `missing` (never had a camera) — distinct lines.
+  const cameraTrouble = cameraProblem(status?.camera);
   const markersPresent = (detection?.markers?.length ?? 0) > 0;
   const conn = connectionInfo(connectionState, t);
 
@@ -566,15 +572,18 @@ export function KioskView() {
         <span className="bo-pill">{t.kiosk.modes[mode] ?? mode}</span>
         <span className="bo-spacer" />
         {status?.camera && (
-          // Camera lost (no frames for 2 s; the host is reopening it): the pill
-          // goes red with a plain line so staff notice before visitors do.
+          // Camera lost (no frames for 2 s; the host is reopening it) or never
+          // found (nothing attached / wrong source): the pill goes red with a
+          // plain line so staff notice before visitors do.
           <span
-            className={`bo-pill ${cameraLost ? 'is-down is-camera-lost' : 'is-camera'}`}
-            role={cameraLost ? 'alert' : undefined}
+            className={`bo-pill ${
+              cameraTrouble ? `is-down is-camera-${cameraTrouble}` : 'is-camera'
+            }`}
+            role={cameraTrouble ? 'alert' : undefined}
           >
             <span className="bo-dot" aria-hidden="true" />
-            {cameraLost
-              ? t.warnings.cameraLost
+            {cameraTrouble
+              ? cameraProblemLabel(cameraTrouble, t)
               : status.camera.kind === 'push'
                 ? t.kiosk.iphoneCamera
                 : status.camera.kind}
