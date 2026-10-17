@@ -107,8 +107,9 @@ warning — accept it. `make dev` runs plain http instead.
 A uv workspace (three Python packages) plus one npm app. The app builds on
 [QAMPoser](https://github.com/QAMP-62) (a Qiskit Advocate Mentorship Program
 project): the circuit editor is
-[`@qamposer/react`](https://github.com/JanLahmann/qamposer-react), consumed as
-a git dependency from the fork's `entangible` branch — Entangible adds the
+[`@qamposer/react`](https://github.com/JanLahmann/qamposer-react), built from
+the fork's `entangible` branch and vendored as a tarball in
+[`pocket-app/vendor/`](pocket-app/vendor/README.md) — Entangible adds the
 physical table, vision pipeline, booth host and games around it. See
 [`docs/design.md`](docs/design.md) for the current architecture
 (history + milestones: [`docs/design-history.md`](docs/design-history.md)),

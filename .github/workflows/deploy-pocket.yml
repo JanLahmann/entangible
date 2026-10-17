@@ -27,9 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Node 20 like ci.yml: Node 22's bundled npm fails `npm ci` on the
-      # @qamposer/react git dependency ("git dep preparation failed …
-      # Cannot read properties of null (reading 'edgesOut')").
+      # Node 20 like ci.yml (@qamposer/react is vendored since 2026-10-17,
+      # see pocket-app/vendor/README.md).
       - uses: actions/setup-node@v4
         with:
           node-version: 20

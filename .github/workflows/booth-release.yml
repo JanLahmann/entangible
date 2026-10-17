@@ -80,8 +80,8 @@ jobs:
             exit 1
           fi
 
-      # Node 20 like ci.yml / deploy-pocket.yml: Node 22's bundled npm fails
-      # `npm ci` on the @qamposer/react git dependency.
+      # Node 20 like ci.yml / deploy-pocket.yml (@qamposer/react is vendored
+      # since 2026-10-17, see pocket-app/vendor/README.md).
       - uses: actions/setup-node@v4
         with:
           node-version: 20
