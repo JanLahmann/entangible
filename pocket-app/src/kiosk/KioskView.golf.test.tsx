@@ -64,6 +64,8 @@ describe('KioskView golf mode', () => {
     const goal = container.querySelector('.bo-golf-goal');
     expect(goal).not.toBeNull();
     expect(goal!.textContent).toBe('Goal: a fair 50/50 coin.');
+    // The line wraps (kiosk.css), so there is no tooltip copy of it.
+    expect(goal!.hasAttribute('title')).toBe(false);
   });
 
   it('swaps out the composer panels for the golf sidebar', () => {

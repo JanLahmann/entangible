@@ -78,8 +78,9 @@ export function GolfBoard({
       <div
         key="golfview"
         className={`pk-side-hero${underSphere ? ' has-gatebar' : ''}`}
-        // The tap grid's row count — phone CSS sizes the sphere with it so a
-        // 5-qubit hole still fits one screen (pocket.css "tap to play").
+        // The tap grid's row count — only the no-container-units fallback of
+        // the phone sphere sizing reads it (pocket.css "tap to play"); with
+        // container units the sphere simply takes the height that is left.
         style={underSphere ? ({ ['--rows' as string]: stateQubits } as CSSProperties) : undefined}
       >
         {/* The view names itself now (EvolvingState's view-label) — no extra
@@ -99,15 +100,12 @@ export function GolfBoard({
             replayKey={replayKey}
             onStep={underSphere ? setStep : undefined}
           />
-          {/* The goal in plain words, right under the target ket. One line,
-              ellipsized; the full sentence is the tooltip. Hidden while a
-              course is dealt (the target is the course being left) and once
-              the course is complete (there is no hole to aim at). */}
-          {!dealing && !state.complete && (
-            <p className="pk-golf-goal" title={goal}>
-              {goal}
-            </p>
-          )}
+          {/* The goal in plain words, right under the target ket. Wraps to as
+              many lines as it needs — never cut off (on a phone the sphere
+              above gives up the height, pocket.css "tap to play"). Hidden
+              while a course is dealt (the target is the course being left)
+              and once the course is complete (there is no hole to aim at). */}
+          {!dealing && !state.complete && <p className="pk-golf-goal">{goal}</p>}
           {advanceHole && state.holedIn && !underSphere && (
             <button type="button" className="pk-golf-next pk-golf-next--sphere" onClick={advanceHole}>
               {state.complete ? t.golf.playAgain : t.golf.nextHole}

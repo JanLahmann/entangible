@@ -176,8 +176,9 @@ describe('golf goal line — mode × setting sweep', () => {
     await openApp(search);
     const goal = document.querySelector('.pk-golf-goal');
     expect(goal?.textContent).toBe('Goal: a fair 50/50 coin.');
-    // The full sentence rides along as the tooltip for the ellipsized line.
-    expect(goal?.getAttribute('title')).toBe('Goal: a fair 50/50 coin.');
+    // The line wraps instead of being cut off, so there is no tooltip copy
+    // of it (VoiceOver would read the sentence twice).
+    expect(goal?.hasAttribute('title')).toBe(false);
     // It sits with the target, in the sphere's well.
     expect(goal?.closest('.pk-side-hero')).not.toBeNull();
   });

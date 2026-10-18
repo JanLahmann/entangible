@@ -279,11 +279,21 @@ them:
     (`display: none`) on the same controlled circuit, so a tablet turned or a
     window resized is always in sync; on tablets and desktops it stays below
     as the drag extra. Portrait phone: sphere, clubs, grid, buttons + score as
-    one screen. The sphere takes what is left — `100dvh − --tap-fixed (330 px,
-    measured on the bundle) − rows × 46 px` (`--rows` set by `GolfBoard`),
-    floor 84 px, cap `min(52vw, 22vh)` — so a 5-qubit hole fits the iOS app's
-    ~390×680 web view (last row at 671 px; 1-/2-qubit holes 500 / 562 px,
-    measured in German) and the iPhone SE's 375×667 (658 px). Up to 439 px
+    one screen. The sphere takes what is LEFT: the sphere panel fills the
+    screen (`min-height: 100%`) as a chain of flex columns (panel → well →
+    evolution view → sphere box) in which only the sphere box grows; it is a
+    size container and the sphere is the largest square in it, `min(100cqw,
+    100cqh)`, floor 84 px (below that the column scrolls), the box capped at
+    the screen width. The view label, the reset-orientation button (44 px)
+    and the phase wheel are overlays in the box's empty corners. The goal line
+    WRAPS to as many lines as it needs and is never cut off — a longer goal
+    simply takes height from the sphere. Measured on the bundle in German at
+    390×680 (the iOS app's web view): sphere 338 / 292 / 246 / 200 / 154 px
+    for 1- to 5-qubit holes (was 150 / 150 / 150 / 150 / 120), the score's row
+    ending at 672 px every time; the longest random-course goal (111
+    characters, two lines, a 5-qubit hole) 137 px. At 375×667: 325 / 216 /
+    124 px for 1/3/5 qubits, ending at 659 px. Without container units
+    (before iOS 16) the old viewport formula is the fallback. Up to 439 px
     wide the score stacks into the button row (German "Übereinstimmung"
     wrapped it onto a line of its own at 390 px). **Holed in** (#13), "Next
     hole" (on the last hole "Play again") takes the clubs' place in the flow —
@@ -293,8 +303,11 @@ them:
     the evolution replay is at (`is-step`, `aria-current="step"`, via
     `GolfReplayContext`); a hole being played marks nothing. Landscape
     phone: one full-width column, sphere | (clubs or Next hole over the grid,
-    the buttons and score beside the grid); a 5-qubit grid ends at 358 of
-    390 px, "Next hole" at 67–111 px. The step scrubber's row is reserved so
+    the buttons and score beside the grid); the sphere column is as tall as
+    the screen and its sphere takes what the kets, scrubber and goal leave
+    (169 / 152 px for 1 / 3–5 qubits at 844×390, was 109); a 5-qubit grid ends
+    at 358 of 390 px, the sphere column at 368, "Next hole" at 67–111 px. The
+    step scrubber's row is reserved so
     nothing jumps after the first tap; its ↻ ‹ › are 44 px, its label a fixed
     ellipsized width and its dots wrap, so the row fits the landscape sphere
     column (it overran it by ~30 px with 4+ steps). Tablet portrait: the state panels
