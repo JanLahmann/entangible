@@ -51,6 +51,20 @@ describe('GolfApp — the golf-only shell', () => {
     expect(container.querySelector('.pk-golf-goal')?.textContent).toBeTruthy();
   });
 
+  it('plays a hole by taps: the gate bar under the sphere holes E1 with H on q0', async () => {
+    const { container } = await mount();
+    const bar = container.querySelector('.pk-side-hero > .pk-well + .pk-gatebar');
+    expect(bar, 'gate bar directly under the sphere well').not.toBeNull();
+    const editorGates = () => container.querySelectorAll('.pk-stage-editor .circuit-editor__gate').length;
+    expect(editorGates()).toBe(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Add H to qubit 0' }));
+    // The editor draws the tapped gate (same circuit, same path as a drag) …
+    expect(editorGates()).toBe(1);
+    // … and the engine scored it: one stroke, ball in, Next hole offered.
+    expect(bar!.querySelector('.pk-gatebar-score')!.textContent).toMatch(/strokes\s*1/);
+    expect(screen.getAllByRole('button', { name: /Next hole/ }).length).toBeGreaterThan(0);
+  });
+
   it('carries none of the site chrome: no header, footer, camera, settings or guide', async () => {
     const { container } = await mount();
     for (const sel of ['.pk-topbar', '.pk-footer', '.pk-cam', '.pk-gear', '.pk-help', '.pk-transfer-btn']) {

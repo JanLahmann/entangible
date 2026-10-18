@@ -618,6 +618,36 @@ export const de: Messages = {
 
   // ------------------------------------------------------------------ guide
   // ------------------------------------------------- golf-only bundle (iOS)
+  gateBar: {
+    aria: 'Gatter setzen',
+    clubsAria: 'Gatter',
+    qubit: 'Qubit',
+    control: 'Steuerung',
+    target: 'Ziel',
+    qubitAria: 'Qubit für das nächste Gatter',
+    controlAria: 'Steuer-Qubit für das nächste Gatter',
+    targetAria: 'Ziel-Qubit für Zwei-Qubit-Gatter',
+    qubitName: (q: number) => `Qubit ${q}`,
+    addOne: (gate: string, q: number) => `${gate} auf Qubit ${q} setzen`,
+    addTwo: (gate: string, control: number, target: number) =>
+      `${gate} setzen, Steuer-Qubit ${control}, Ziel-Qubit ${target}`,
+    needsTwo: (gate: string) => `${gate} braucht zwei Qubits – nicht auf diesem Loch`,
+    undo: 'Zurück',
+    undoAria: 'Letztes Gatter zurücknehmen',
+    clear: 'Leeren',
+    clearAria: 'Schaltung leeren (+1 Schlag)',
+    addedOne: (gate: string, q: number) => `${gate} auf Qubit ${q}.`,
+    addedTwo: (gate: string, control: number, target: number) =>
+      `${gate}, Steuer-Qubit ${control}, Ziel-Qubit ${target}.`,
+    removedOne: (gate: string, q: number) => `${gate} von Qubit ${q} entfernt.`,
+    removedTwo: (gate: string, control: number, target: number) =>
+      `${gate} entfernt, Steuer-Qubit ${control}, Ziel-Qubit ${target}.`,
+    cleared: 'Schaltung geleert.',
+    status: (strokes: number, par: number, fidelity: string) =>
+      `${strokes} ${strokes === 1 ? 'Schlag' : 'Schläge'}, Par ${par}, Übereinstimmung ${fidelity}.`,
+    holed: (score: string) => `Der Ball ist drin – ${score}!`,
+  },
+
   golfApp: {
     toolbarAria: 'Quanten-Golf-Steuerung',
     courseButton: 'Platz',
@@ -634,7 +664,7 @@ export const de: Messages = {
     rulesButton: 'So geht’s',
     rulesTitle: 'So geht’s',
     rules: [
-      'Jedes Loch gibt dir einen Ziel-Quantenzustand, als gestrichelte Ringe auf der Kugel eingezeichnet. Bau eine Schaltung, die ihn erzeugt: Zieh Gatter aus der Leiste auf die Leitungen. Ab 99 % Übereinstimmung ist der Ball drin.',
+      'Jedes Loch gibt dir einen Ziel-Quantenzustand, als gestrichelte Ringe auf der Kugel eingezeichnet. Bau eine Schaltung, die ihn erzeugt: Wähl unter der Kugel ein Qubit und tipp auf ein Gatter – es landet am Ende dieser Leitung (CX und CH brauchen eine Steuerung ● und ein Ziel ⊕) – oder zieh Gatter aus der Leiste auf die Leitungen. ↶ nimmt das letzte Gatter zurück. Ab 99 % Übereinstimmung ist der Ball drin.',
       'Achtzehn Löcher in vier Runden, und jede Runde bringt neue Schläger und eine neue Idee: Leicht spielt mit X, H und CX (Überlagerung, Bell, GHZ); Mittel bringt Y und damit Minuszeichen; Schwer bringt Z und S für imaginäre Phasen; Bonus bringt T und gesteuertes H.',
       'Jedes Gatter, das du hinzufügst oder entfernst, zählt als Schlag. Par hat zwei Schläge Puffer: Mit den wenigsten Gattern gibt es ein EAGLE, mit einem mehr ein BIRDIE. Brett leeren setzt ein Loch für einen einzigen Schlag zurück.',
       'Du hängst fest? Lösung zeigen zeichnet eine kurze Schaltung, die das Ziel baut – gratis, sobald der Ball drin ist, und mitten im Loch nach ein paar Schlägen über Par oder einer Minute, zum Preis von doppeltem Par.',

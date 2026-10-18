@@ -13,7 +13,9 @@
  * Surface differences come in as props: `challenge` (the site's challenge-a-
  * friend QR — the bundle has no QR code), `shareBase` (where a copied course
  * link points) and `courseExtra` (the bundle's code-entry / restart controls
- * under the pickers; the site passes nothing and renders exactly what it did).
+ * under the pickers; the site passes nothing and renders exactly what it did)
+ * and `underSphere` (the tap-to-play `GateBar`, seated inside the sphere panel
+ * so every layout keeps it directly under the target — build-on-screen only).
  */
 import { useMemo, type ReactNode } from 'react';
 import type { Circuit } from '@qamposer/react';
@@ -32,12 +34,14 @@ export function GolfBoard({
   challenge,
   shareBase,
   courseExtra,
+  underSphere,
 }: {
   game: GolfGame;
   circuit: Circuit;
   challenge?: ChallengeRenderer;
   shareBase?: string;
   courseExtra?: ReactNode;
+  underSphere?: ReactNode;
 }) {
   const t = useT();
   const { state, currentLevel, dealing, advanceHole } = game;
@@ -57,7 +61,7 @@ export function GolfBoard({
       {/* `pk-side-hero` marks the sphere as THE panel of the mode: in golf +
           build-on-screen the wide-desktop CSS seats it in its own tall column
           of the sidebar with the course/scorecard/results beside it (#92). */}
-      <div key="golfview" className="pk-side-hero">
+      <div key="golfview" className={`pk-side-hero${underSphere ? ' has-gatebar' : ''}`}>
         {/* The view names itself now (EvolvingState's view-label) — no extra
             panel label, it would double up. */}
         <div className={`pk-well${dealing ? ' is-dealing' : ''}`}>
@@ -88,6 +92,7 @@ export function GolfBoard({
             </button>
           )}
         </div>
+        {underSphere}
       </div>
       <div key="golfcourse">
         <div className="pk-label">{t.golf.course}</div>

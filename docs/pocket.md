@@ -210,6 +210,51 @@ them:
   first tap. Re-tapping the armed tile, or **Escape**, cancels. A tap on a
   placed gate opens the library's gate toolbar (edit — rotations and controlled
   gates only — and delete). Drag-and-drop is untouched, and a drag disarms.
+  (Device report, Oct 2026: in the iOS app's WKWebView tap-to-place does not
+  place anything, and the palette tiles are not accessible elements — hence
+  the golf gate bar below.)
+- **Gate bar — golf, tap to play** (`src/app/GateBar.tsx`,
+  `src/app/tapPlacement.ts`): in golf played on screen, a compact bar of real
+  buttons sits **directly under the sphere** (inside `.pk-side-hero`, via
+  `GolfBoard`'s `underSphere`). It is shown in every build-on-screen golf —
+  site and golf bundle, every screen size (it is also the keyboard and
+  screen-reader way to play) — and never in camera / booth golf, where the
+  physical board is the input.
+  - **Clubs**: exactly the hole's palette (`clubGateTypes` → `barClubs`; CNOT
+    is labelled CX). A tap appends the gate at the **end** of the chosen
+    wire(s): a column after every gate, then the library's `compactGates` —
+    the very circuit a drag dropped past the last column produces
+    (`tapPlacement.test.ts` pins the mirrored compaction against the library's
+    QASM round trip). A two-qubit club on a 1-qubit hole is shown disabled.
+  - **Qubit picker**: a radiogroup of q0…q(n−1) for the hole's n qubits (arrow
+    keys move, one tab stop); with a two-qubit club in the round it is the
+    **control** (●) and a second radiogroup picks the **target** (⊕). The
+    control's wire is not a target; picking the target as control swaps them.
+    Each gate button shows where it will land (`q0`, `q0→q1`).
+  - **↶ Undo** takes back the most recent gate the bar placed that is still on
+    the board (else the right-most gate); **Clear +1** is the scorecard's wipe
+    (`wipeBoard`, one flat stroke, #100; disabled once the ball is in).
+  - **Strokes**: the bar never counts anything. Every action produces the next
+    circuit and calls the same `ManualEditSource.setFromEditor` the editor's
+    `onCircuitChange` uses, so `useGolfGame.step` / `golfStep` charge it like
+    any edit: +1 per added gate, +1 per removed gate (`GateBar.test.tsx`
+    compares against the same hole fed the editor's circuits).
+  - **Score line** (par · strokes · fidelity) in the bar, so sphere, bar and
+    score are one screen on a phone; the full scorecard stays below.
+  - **Accessibility**: every control has a name ("Add H to qubit 0", "Add CX,
+    control qubit 0, target qubit 1", "Undo last gate", "Clear the circuit
+    (+1 stroke)"); a polite live region says what a tap did and where the hole
+    stands ("H on qubit 0. 1 stroke, par 4, fidelity 25.0%." / "The ball is
+    in — EAGLE!"). EN + DE (`gateBar` messages).
+  - **Layout**: ≥ 44 px targets everywhere; hover looks only under
+    `(hover: hover)`. Phone portrait: sphere (capped at `min(52vw, 22vh)`),
+    bar and score first, the circuit below as the picture — at 390×844 the bar
+    ends at ≤ 630 px on every classic hole (5-qubit holes: two picker rows).
+    The scrubber's row is reserved so the bar does not jump after the first
+    tap. Short landscape (≤ 450 px tall): the state column widens to 56 % and
+    seats sphere and bar side by side. Tablet portrait: the state panels come
+    first, the circuit below. Roomy landscape: the sphere is capped at 34vh so
+    the bar fits under it.
 - **booth-connected** (`BoothSocketSource`, read-only viewer — see below):
   follows a booth host over `/ws/state`.
 

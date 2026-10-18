@@ -11,7 +11,8 @@
  * (scripts/check-golf-bundle.mjs guards it).
  *
  * Layout: the pocket stylesheet's own golf + build-on-screen grid (stage with
- * palette + editor, sidebar with sphere / course / scorecard) under a slim
+ * palette + editor, sidebar with sphere + gate bar / course / scorecard; on a
+ * phone the sphere and the tap-to-play gate bar come first) under a slim
  * toolbar instead of the site header — the host app's title bar already names
  * the game. golf.css adds the touch / safe-area / hover policy on top.
  */
@@ -31,6 +32,7 @@ import { courseCode as toCourseCode } from '@quantum/golfRandom';
 import { ManualEditSource, BOARD_QUBITS } from '../sources/ManualEditSource';
 import type { StateUpdate } from '../sources/StateSource';
 import { Celebrations, type CelebrationRequest } from '../app/Celebrations';
+import { GateBar } from '../app/GateBar';
 import { GolfBoard } from '../app/GolfBoard';
 import { useGolfGame } from '../app/useGolfGame';
 import { editorScaleStyle, useEditorFit } from '../app/useEditorFit';
@@ -169,7 +171,12 @@ export function GolfApp() {
               </div>
             </section>
             <aside className="pk-side">
-              <GolfBoard game={golf} circuit={circuit} shareBase={SITE_URL} />
+              <GolfBoard
+                game={golf}
+                circuit={circuit}
+                shareBase={SITE_URL}
+                underSphere={<GateBar game={golf} circuit={circuit} onChange={onEditorChange} />}
+              />
             </aside>
           </main>
         </QamposerProvider>

@@ -11,7 +11,12 @@ The same game as the site's golf mode with the on-screen editor
 
 - the Bloch sphere / Q-sphere with the target ghost, goal line and evolution
   scrubber (`EvolvingState`);
-- the on-screen gate palette (narrowed to the round's clubs) and circuit editor;
+- the **gate bar** under the sphere — tap to play: the hole's clubs as real
+  buttons, a qubit picker (control ● / target ⊕ for CX and CH), ↶ undo, clear
+  (+1) and a one-line score; accessible names and a spoken status for
+  VoiceOver (details: [`pocket.md`](pocket.md), "Gate bar");
+- the on-screen gate palette (narrowed to the round's clubs) and circuit editor
+  below it — the picture of the circuit, and drag-and-drop as an extra;
 - the scorecard: 18 chips, par, strokes, fidelity, per-hole best, course clock,
   wipe (+1), "Show solution" with its price and the background optimal search;
 - the classic 18 holes, random 18 courses with course codes (deal a new one,
@@ -170,7 +175,11 @@ or open `dist-golf/index.html` straight from disk (`file://`) — it loads too
 browser's network panel: the only requests are the files of the bundle
 itself. Phone layouts: the device toolbar at 390×844 portrait / 844×390
 landscape, and an iPad size; the layout is pocket.css's golf + build-on-screen
-grid (phone stack, short-landscape two columns, tablet split).
+grid (phone stack, short-landscape two columns, tablet split), with the gate
+bar's adjustments: on a 390×844 portrait phone the sphere, the gate bar and the
+score line are one screen (the bar ends at ≤ 630 px on every classic hole) and
+the circuit follows below; in 844×390 landscape the sphere and the bar sit side
+by side in a widened state column. A hole can be played by taps alone.
 
 During development `npm run dev` also serves the bundle's entry at
 `http://localhost:5173/golf.html` (site config, so without the hover rewrite).

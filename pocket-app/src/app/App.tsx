@@ -68,6 +68,7 @@ import { editorScaleStyle as fitStyle, useEditorFit } from './useEditorFit';
 import { clubGateTypes } from '@quantum/golf';
 import type { ChallengeRenderer } from '@shared/display/Scorecard';
 import { CourseChallenge } from './CourseChallenge';
+import { GateBar } from './GateBar';
 import { GolfBoard } from './GolfBoard';
 import { useGolfGame } from './useGolfGame';
 import { mainClassName, stageClassName } from './layoutClasses';
@@ -994,7 +995,18 @@ export function App() {
   const sidebar = isGolf ? (
     <>
       {showCamera && cameraPanel}
-      <GolfBoard key="golf" game={golf} circuit={circuit} challenge={courseChallenge} />
+      {/* Build-on-screen golf gets the tap-to-play gate bar under the sphere
+          (every screen size: it is also the keyboard / screen-reader way to
+          play). Camera and booth golf do not — the board is the input there. */}
+      <GolfBoard
+        key="golf"
+        game={golf}
+        circuit={circuit}
+        challenge={courseChallenge}
+        underSphere={
+          manual ? <GateBar game={golf} circuit={circuit} onChange={onEditorChange} /> : undefined
+        }
+      />
       {hasPanel('results') && (
         <ResultsHistogram key="results" circuit={circuit} displayQubits={displayed.qubits} />
       )}

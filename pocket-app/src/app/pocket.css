@@ -3751,3 +3751,307 @@ body,
   justify-content: center;
   text-align: center;
 }
+
+/* == Golf gate bar: tap to play (GateBar.tsx, docs/pocket.md) =========== */
+/* Seated inside `.pk-side-hero`, right under the sphere well, in every layout.
+   All controls are ≥ 44 px on every pointer: this is the touch-first way to
+   play. Hover looks only under (hover: hover). */
+
+.pk-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.pk-gatebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  min-width: 0;
+}
+
+.pk-gatebar-clubs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.pk-gatebar-club {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.05rem;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid var(--entangle);
+  border-radius: 8px;
+  background: var(--bg-inset);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.pk-gatebar-club.is-two {
+  padding-inline: 0.3rem;
+}
+
+.pk-gatebar-sym {
+  font-family: var(--mono);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.pk-gatebar-where {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  color: var(--muted);
+  line-height: 1;
+}
+
+.pk-gatebar-club:active:not(:disabled),
+.pk-gatebar-act:active:not(:disabled),
+.pk-gatebar-q:active {
+  filter: brightness(1.25);
+}
+
+.pk-gatebar-club:disabled,
+.pk-gatebar-act:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pk-gatebar-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+}
+
+.pk-gatebar-pick {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.pk-gatebar-pick-label {
+  min-width: 0.9rem;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.pk-gatebar-radios {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.pk-gatebar-q {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.pk-gatebar-q.is-on {
+  border-color: var(--entangle);
+  background: var(--entangle);
+  color: #fff;
+  font-weight: 700;
+}
+
+.pk-gatebar-q[aria-disabled='true'] {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.pk-gatebar-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pk-gatebar-act {
+  min-height: 44px;
+  padding: 0 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.pk-gatebar-act--icon {
+  min-width: 44px;
+  padding: 0;
+  font-size: 1.15rem;
+}
+
+.pk-gatebar-cost {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.pk-gatebar-score {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.6rem;
+  margin: 0 0 0 auto;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.pk-gatebar-score > span {
+  white-space: nowrap;
+}
+
+.pk-gatebar-score b {
+  color: var(--text);
+}
+
+.pk-gatebar-score b.is-holed {
+  color: var(--ok);
+}
+
+.pk-gatebar :focus-visible {
+  outline: 2px solid var(--entangle-text);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .pk-gatebar-club:hover:not(:disabled),
+  .pk-gatebar-act:hover:not(:disabled) {
+    border-color: var(--entangle-text);
+  }
+
+  .pk-gatebar-q:hover:not(.is-on):not([aria-disabled='true']) {
+    color: var(--text);
+  }
+}
+
+/* Phones: the hero (sphere well + gate bar) is the first block of the column,
+   flush with the edges, so the bar takes a slim inset of its own. The clubs
+   share one row (the extra round's eight fit 375 px at 44 px each), and the
+   sphere gives up a little height so sphere + bar + score fit one screen
+   (390×844 minus a host app's bars) without scrolling; the circuit follows
+   below as the picture. */
+@media (max-width: 699px) {
+  .pk-side-hero > .pk-gatebar {
+    margin-top: 0.3rem;
+    padding: 0 0.5rem 0.5rem;
+  }
+
+  .pk-gatebar-clubs {
+    flex-wrap: nowrap;
+    gap: 2px;
+  }
+
+  .pk-gatebar-club {
+    flex: 1 1 0;
+  }
+
+  .pk-gatebar-score {
+    gap: 0.45rem;
+    font-size: 0.74rem;
+  }
+
+  .pk-side-hero.has-gatebar .pk-qs-svg,
+  .pk-side-hero.has-gatebar .pk-qsphere-svg,
+  .pk-side-hero.has-gatebar .pk-bl-svg {
+    max-width: min(52vw, 22vh);
+  }
+}
+
+/* Landscape phones (short viewport): 390 px of height cannot stack the sphere
+   over the bar, so on-screen golf (`pk-main--golf-manual`, exactly where the
+   bar is shown) widens the state column and seats sphere and bar side by side
+   in it; the circuit keeps the rest of the width as the picture. */
+@media (max-height: 450px) {
+  .pk-main.pk-main--golf-manual {
+    grid-template-columns: 1fr 56%;
+  }
+
+  .pk-main.pk-main--golf-manual.pk-side-left {
+    grid-template-columns: 56% 1fr;
+  }
+
+  .pk-main--golf-manual .pk-side-hero.has-gatebar {
+    display: grid;
+    /* The bar column holds a 5-qubit picker row: 5 × 44 px + its mark. */
+    grid-template-columns: minmax(0, 1fr) minmax(16.5rem, 1.2fr);
+    column-gap: 0.6rem;
+    align-items: start;
+  }
+
+  .pk-side-hero.has-gatebar > .pk-gatebar {
+    margin-top: 0;
+  }
+
+  .pk-side-hero.has-gatebar .pk-qs-svg,
+  .pk-side-hero.has-gatebar .pk-qsphere-svg,
+  .pk-side-hero.has-gatebar .pk-bl-svg {
+    max-width: min(100%, 34vh);
+  }
+}
+
+/* Tablet portrait, on-screen golf: the state panels (sphere + bar, course,
+   scorecard) come FIRST and the circuit below — the same sphere-forward order
+   as the phone, so a 5-wire editor never pushes the bar off the screen. */
+@media (orientation: portrait) and (min-width: 700px) {
+  .pk-main.pk-main--golf-manual {
+    grid-template-rows: auto 1fr;
+  }
+
+  .pk-main--golf-manual .pk-side {
+    order: -1;
+    border-top: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* The scorecard makes the panels taller than the screen; the circuit keeps
+     a real height below them (the column scrolls). */
+  .pk-main--golf-manual .pk-stage {
+    min-height: 22rem;
+  }
+}
+
+/* Roomy landscape (iPad, desktop): leave the bar room under the sphere. */
+@media (min-width: 900px) and (min-height: 500px) and (orientation: landscape) {
+  .pk-main--golf-manual .pk-side-hero.has-gatebar .pk-qsphere-svg,
+  .pk-main--golf-manual .pk-side-hero.has-gatebar .pk-qs-svg,
+  .pk-main--golf-manual .pk-side-hero.has-gatebar .pk-bl-svg {
+    max-width: min(100%, 34vh, 30rem);
+  }
+}
+
+/* No layout shift under the finger: the step scrubber appears with the first
+   gate, which would push the bar ~44 px down between two taps (a second tap
+   then lands on the goal line). With the bar present its row is reserved
+   from the start: label, sphere, state ket, target ket, scrubber. */
+.pk-side-hero.has-gatebar .pk-evo {
+  grid-template-rows: repeat(4, auto) minmax(2.75rem, auto);
+}

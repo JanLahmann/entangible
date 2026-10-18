@@ -632,6 +632,39 @@ export const en = {
 
   // ------------------------------------------------------------------ guide
   /** The Guide's chrome; its prose is in pocket-app/src/app/guide/. */
+  // ------------------------------------------------------- golf gate bar
+  /** Tap-to-place gates under the sphere (pocket-app/src/app/GateBar.tsx). */
+  gateBar: {
+    aria: 'Place gates',
+    clubsAria: 'Gates',
+    qubit: 'Qubit',
+    control: 'Control',
+    target: 'Target',
+    qubitAria: 'Qubit for the next gate',
+    controlAria: 'Control qubit for the next gate',
+    targetAria: 'Target qubit for two-qubit gates',
+    qubitName: (q: number) => `qubit ${q}`,
+    addOne: (gate: string, q: number) => `Add ${gate} to qubit ${q}`,
+    addTwo: (gate: string, control: number, target: number) =>
+      `Add ${gate}, control qubit ${control}, target qubit ${target}`,
+    needsTwo: (gate: string) => `${gate} needs two qubits — not on this hole`,
+    undo: 'Undo',
+    undoAria: 'Undo last gate',
+    clear: 'Clear',
+    clearAria: 'Clear the circuit (+1 stroke)',
+    /** Spoken after each tap (aria-live); the status line follows it. */
+    addedOne: (gate: string, q: number) => `${gate} on qubit ${q}.`,
+    addedTwo: (gate: string, control: number, target: number) =>
+      `${gate}, control qubit ${control}, target qubit ${target}.`,
+    removedOne: (gate: string, q: number) => `Removed ${gate} from qubit ${q}.`,
+    removedTwo: (gate: string, control: number, target: number) =>
+      `Removed ${gate}, control qubit ${control}, target qubit ${target}.`,
+    cleared: 'Circuit cleared.',
+    status: (strokes: number, par: number, fidelity: string) =>
+      `${strokes} ${strokes === 1 ? 'stroke' : 'strokes'}, par ${par}, fidelity ${fidelity}.`,
+    holed: (score: string) => `The ball is in — ${score}!`,
+  },
+
   // ------------------------------------------------- golf-only bundle (iOS)
   /** The offline Quantum Golf bundle's own chrome (src/golf/GolfApp.tsx). */
   golfApp: {
@@ -650,7 +683,7 @@ export const en = {
     rulesButton: 'How to play',
     rulesTitle: 'How to play',
     rules: [
-      'Each hole hands you a target quantum state, drawn on the sphere as dashed rings. Build a circuit that makes it: drag gates from the palette onto the wires. At 99 % fidelity the ball is in.',
+      'Each hole hands you a target quantum state, drawn on the sphere as dashed rings. Build a circuit that makes it: pick a qubit under the sphere and tap a gate — it lands at the end of that wire (CX and CH take a control ● and a target ⊕) — or drag gates from the palette onto the wires. ↶ takes the last gate back. At 99 % fidelity the ball is in.',
       'Eighteen holes in four rounds, and every round unlocks new clubs and a new idea: Easy plays with X, H and CX (superposition, Bell, GHZ); Medium adds Y and, with it, minus signs; Difficult adds Z and S for imaginary phases; Extra adds T and controlled-H.',
       'Every gate you add or remove counts a stroke. Par carries a two-stroke margin: build the hole in the fewest gates for an EAGLE, one more for a BIRDIE. Wipe board starts a hole over for a single stroke.',
       'Stuck? Show solution draws a short circuit that builds the target — free once the ball is in, and offered mid-hole after a few strokes over par or a minute, at the price of double par.',

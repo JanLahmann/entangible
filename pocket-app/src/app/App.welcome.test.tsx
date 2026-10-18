@@ -187,3 +187,23 @@ describe('golf goal line — mode × setting sweep', () => {
     expect(document.querySelector('.pk-golf-goal')).toBeNull();
   });
 });
+
+describe('golf gate bar — on-screen golf only', () => {
+  it.each([['?mode=golf&input=manual&wires=compact'], ['?mode=golf&input=manual&wires=all']])(
+    '%s → the tap-to-play bar sits under the sphere',
+    async (search) => {
+      await openApp(search);
+      const bar = document.querySelector('.pk-gatebar');
+      expect(bar?.closest('.pk-side-hero')).not.toBeNull();
+      expect(screen.getByRole('button', { name: 'Add H to qubit 0' })).toBeTruthy();
+    },
+  );
+
+  it.each([['?mode=golf&input=camera'], ['?mode=composer&input=manual']])(
+    '%s → no gate bar (the board, or no golf)',
+    async (search) => {
+      await openApp(search);
+      expect(document.querySelector('.pk-gatebar')).toBeNull();
+    },
+  );
+});
