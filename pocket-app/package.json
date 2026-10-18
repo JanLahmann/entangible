@@ -8,6 +8,8 @@
     "dev": "vite",
     "prebuild": "node scripts/fetch-family.mjs",
     "build": "tsc --noEmit && vite build",
+    "build:golf": "tsc --noEmit && vite build --config vite.golf.config.ts",
+    "check:golf": "node scripts/check-golf-bundle.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

@@ -617,6 +617,35 @@ export const de: Messages = {
   },
 
   // ------------------------------------------------------------------ guide
+  // ------------------------------------------------- golf-only bundle (iOS)
+  golfApp: {
+    toolbarAria: 'Quanten-Golf-Steuerung',
+    courseButton: 'Platz',
+    courseTitle: 'Platz wählen',
+    courseIntro:
+      'Die klassischen 18 merken sich deine Bestleistung pro Loch. Zufalls-18 sind jedes Mal neu – teile den Code, und andere spielen dieselben Löcher.',
+    restart: 'Diesen Platz neu starten',
+    enterCode: 'Platz-Code',
+    codePlaceholder: 'z. B. 1x8k3q',
+    playCode: 'Spielen',
+    badCode: 'Das ist kein Platz-Code – Buchstaben und Ziffern, höchstens 7.',
+    nowClassic: 'Gerade gespielt: Klassische 18',
+    nowRandom: (code: string) => `Gerade gespielt: Zufalls-18 · #${code}`,
+    rulesButton: 'So geht’s',
+    rulesTitle: 'So geht’s',
+    rules: [
+      'Jedes Loch gibt dir einen Ziel-Quantenzustand, als gestrichelte Ringe auf der Kugel eingezeichnet. Bau eine Schaltung, die ihn erzeugt: Zieh Gatter aus der Leiste auf die Leitungen. Ab 99 % Übereinstimmung ist der Ball drin.',
+      'Achtzehn Löcher in vier Runden, und jede Runde bringt neue Schläger und eine neue Idee: Leicht spielt mit X, H und CX (Überlagerung, Bell, GHZ); Mittel bringt Y und damit Minuszeichen; Schwer bringt Z und S für imaginäre Phasen; Bonus bringt T und gesteuertes H.',
+      'Jedes Gatter, das du hinzufügst oder entfernst, zählt als Schlag. Par hat zwei Schläge Puffer: Mit den wenigsten Gattern gibt es ein EAGLE, mit einem mehr ein BIRDIE. Brett leeren setzt ein Loch für einen einzigen Schlag zurück.',
+      'Du hängst fest? Lösung zeigen zeichnet eine kurze Schaltung, die das Ziel baut – gratis, sobald der Ball drin ist, und mitten im Loch nach ein paar Schlägen über Par oder einer Minute, zum Preis von doppeltem Par.',
+      'Tipp auf ein Feld der Scorekarte, um dieses Loch zu spielen. Zufalls-18 erstellt einen frischen Platz mit Code: Derselbe Code ergibt auf jedem Gerät dieselben achtzehn Löcher.',
+    ],
+    moreLead: 'Dieselben Schaltungen mit gedruckten Plättchen und Kamera bauen:',
+    close: 'Schließen',
+    language: 'English',
+    languageAria: 'Switch to English',
+  },
+
   guide: {
     back: 'Zurück',
     aria: 'Anleitung und Infos',

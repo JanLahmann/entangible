@@ -632,6 +632,36 @@ export const en = {
 
   // ------------------------------------------------------------------ guide
   /** The Guide's chrome; its prose is in pocket-app/src/app/guide/. */
+  // ------------------------------------------------- golf-only bundle (iOS)
+  /** The offline Quantum Golf bundle's own chrome (src/golf/GolfApp.tsx). */
+  golfApp: {
+    toolbarAria: 'Quantum Golf controls',
+    courseButton: 'Course',
+    courseTitle: 'Choose a course',
+    courseIntro:
+      'The classic 18 keeps your best score per hole. A random 18 is new every time — share its code and a friend plays the same holes.',
+    restart: 'Restart this course',
+    enterCode: 'Course code',
+    codePlaceholder: 'e.g. 1x8k3q',
+    playCode: 'Play',
+    badCode: 'That is not a course code — letters and digits, up to 7.',
+    nowClassic: 'Now playing: Classic 18',
+    nowRandom: (code: string) => `Now playing: Random 18 · #${code}`,
+    rulesButton: 'How to play',
+    rulesTitle: 'How to play',
+    rules: [
+      'Each hole hands you a target quantum state, drawn on the sphere as dashed rings. Build a circuit that makes it: drag gates from the palette onto the wires. At 99 % fidelity the ball is in.',
+      'Eighteen holes in four rounds, and every round unlocks new clubs and a new idea: Easy plays with X, H and CX (superposition, Bell, GHZ); Medium adds Y and, with it, minus signs; Difficult adds Z and S for imaginary phases; Extra adds T and controlled-H.',
+      'Every gate you add or remove counts a stroke. Par carries a two-stroke margin: build the hole in the fewest gates for an EAGLE, one more for a BIRDIE. Wipe board starts a hole over for a single stroke.',
+      'Stuck? Show solution draws a short circuit that builds the target — free once the ball is in, and offered mid-hole after a few strokes over par or a minute, at the price of double par.',
+      'Tap any chip on the scorecard to play that hole. Random 18 deals a fresh course with a code: the same code deals the same eighteen holes on any device.',
+    ],
+    moreLead: 'Build the same circuits with printed tiles and a camera:',
+    close: 'Close',
+    language: 'Deutsch',
+    languageAria: 'Auf Deutsch umschalten',
+  },
+
   guide: {
     back: 'Back',
     aria: 'Guide and about',

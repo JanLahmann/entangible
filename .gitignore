@@ -24,6 +24,8 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+# pocket-app golf-only bundle (npm run build:golf)
+dist-golf/
 downloads/
 eggs/
 .eggs/

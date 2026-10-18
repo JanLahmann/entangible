@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Golf-only bundle (docs/golf-bundle.md) — embedded offline by the Fun with
+         Quantum iOS app. viewport-fit=cover: the page pads itself with the
+         safe-area insets (golf.css). Pinch-zoom stays available. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0f1117" />
+    <title>Quantum Golf</title>
+    <!-- No icon to fetch: the host app owns the chrome (and blocks requests). -->
+    <link rel="icon" href="data:," />
+    <!-- Boot splash colours are shared/tokens.css (--bg, --text, --muted,
+         --entangle); dark-only like the site, so no light flash. -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #0f1117;
+        color-scheme: dark;
+      }
+      .boot-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0f1117;
+        color: #8a91a0;
+        font-family: 'IBM Plex Sans', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+        font-size: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="boot-splash" role="status">Quantum Golf</div>
+    </div>
+    <script type="module" src="/src/golf/main.tsx"></script>
+  </body>
+</html>
