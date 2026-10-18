@@ -30,7 +30,7 @@
  * VoiceOver: every gate button is named ("Apply H to qubit 0"); one polite live
  * region speaks each coin / obstacle (lane probabilities, lives, score) —
  * throttled to one line per `announceGapMs`, the latest pending line spoken at
- * the end of the gap — and, at once, game over, a new run, pause and the
+ * the end of the gap — and, at once, game over, a new run, pause, a reset and the
  * countdown.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -79,7 +79,7 @@ function usePrefersReducedMotion(): boolean {
  * One polite live region, throttled: a line is spoken at once when the last
  * one is at least `gapMs` old; otherwise it waits, and only the LATEST waiting
  * line is spoken when the gap ends. `urgent` lines (game over, new run, pause,
- * countdown) skip the queue and drop whatever was waiting.
+ * reset, countdown) skip the queue and drop whatever was waiting.
  */
 export function useThrottledAnnouncer(gapMs: number) {
   const [text, setText] = useState('');
@@ -468,7 +468,8 @@ export function RunnerGame({
           disabled={!running}
           onClick={() => {
             dispatch({ type: 'reset' });
-            announce(t.announceReset(laneSummary(level, probabilities(resetAmplitudes(state.amps)))));
+            // A user action: confirmed at once (urgent), never queued or dropped.
+            announce(t.announceReset(laneSummary(level, probabilities(resetAmplitudes(state.amps)))), true);
           }}
         >
           {t.reset(level)}

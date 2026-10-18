@@ -37,7 +37,7 @@ partial credit and a projector that snaps you into one branch and takes a life.
   **Balance:** free — no score or life cost — and it changes nothing else:
   columns, lives, score and timing are untouched, and the next obstacle
   measures the reset state like any other (reset into an obstacle on `|00⟩` is
-  a certain hit). The live region says "Reset. |00⟩ 100%." The How to play
+  a certain hit). The live region says "Reset. |00⟩ 100%." at once (not throttled). The How to play
   rules carry one line on it.
 - **Coins** scroll in and, when a coin column crosses the runner line, add the
   **expected value** `Σ P(coin lane)` to the score (shown as `+0.7`-style

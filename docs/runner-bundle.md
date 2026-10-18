@@ -54,7 +54,7 @@ The host app's title bar names the game, so the page has no title of its own.
   "3 lives", the pause button "Pause the run", the reset button "Reset the
   qubit to 0" / "Reset all qubits to 0" ("Qubit auf 0 zurücksetzen" / "Alle
   Qubits auf 0 zurücksetzen"); a reset is spoken as "Reset. |00⟩ 100%."
-  (throttled like a coin line).
+  (at once, like pause and game over: a user action is never queued).
 - One polite live region (`role="status"`) speaks each coin and obstacle:
   what happened ("Coin, plus 0.5." / "Obstacle: hit, one life lost." /
   "Obstacle: passed."), the lane probabilities ("|00⟩ 50%, |11⟩ 50%" —
@@ -62,7 +62,7 @@ The host app's title bar names the game, so the page has no title of its own.
   every 2 s; events in between are not queued — the latest waiting line is
   spoken when the gap ends.
 - Spoken at once (not throttled): game over (score, distance, best / "New
-  best!"), a new run ("New run, 2 qubits."), "Paused.", the countdown and
+  best!"), a new run ("New run, 2 qubits."), "Paused.", "Reset. |00⟩ 100%.", the countdown and
   "Go!".
 
 ### Layout (phones first)

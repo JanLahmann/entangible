@@ -337,6 +337,17 @@ describe('RunnerGame — VoiceOver', () => {
     expect(spoken()).toBe('Zurückgesetzt. |0⟩ 100%.');
   });
 
+  it('speaks a reset at once, even right after an event line (not throttled)', () => {
+    fakeClock();
+    // A coin crosses first, so the throttle gap is running when Reset is tapped.
+    const s = staged([{ kind: 'coin', lanes: [0, 1], x: 0.001 }]);
+    render(<RunnerGame rng={mulberry32(1)} storage={null} initialState={s} />);
+    act(() => void vi.advanceTimersByTime(100));
+    expect(spoken()).toMatch(/^Coin, plus 1\.0\./);
+    fireEvent.click(screen.getByRole('button', { name: 'Reset the qubit to 0' }));
+    expect(spoken()).toBe('Reset. |0⟩ 100%.');
+  });
+
   it('names the 2-qubit reset in German too', () => {
     render(
       <LangProvider lang="de">
