@@ -1,7 +1,8 @@
 /*
  * Quantum Runner styles (task #52). Pocket-namespaced (`pk-runner*`), reusing
  * the shared token palette (shared/tokens.css). Phone-first: the field stacks
- * lanes vertically and the gate buttons live in a thumb row at the bottom.
+ * lanes vertically and takes the height that is left; the gate grid sits at
+ * the bottom (beside the field on a short landscape screen).
  * All motion is gated on `prefers-reduced-motion` (the JS suppresses the flash
  * class; this stylesheet also zeroes transitions/animations under the query).
  */
@@ -216,20 +217,74 @@
   }
 }
 
-/* --- Gate thumb row ----------------------------------------------------- */
+/* --- Gate grid ----------------------------------------------------------
+ * Level 1: one row, X₀ H₀. Level 2: two rows of three, one per qubit —
+ * X₀ H₀ CX 0→1 / X₁ H₁ CX 1→0 (`--gate-cols` comes from GATE_COLUMNS). Equal
+ * columns, labels on one line, never under 44 px tall. */
 .pk-runner-gates {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(var(--gate-cols, 2), minmax(0, 1fr));
   gap: 0.4rem;
-  flex-wrap: wrap;
-  justify-content: center;
 }
 
 .pk-runner-gate {
-  flex: 1 1 auto;
-  min-width: 3.2rem;
+  min-width: 0;
+  min-height: 44px;
   font-size: 1rem;
   font-weight: 600;
-  padding: 0.7rem 0.5rem;
+  padding: 0.5rem 0.25rem;
+  white-space: nowrap;
+}
+
+/* --- Reset (HUD, left of pause; far from the gate grid) ------------------ */
+.pk-runner-reset {
+  margin-left: auto;
+  min-height: 44px;
+  min-width: 44px;
+  flex: none;
+  padding: 0 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-inset);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.pk-runner-reset:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Short landscape (phones on their side): the gates sit BESIDE the field, at
+ * the bottom right under the thumb, so the lanes keep the full height. */
+@media (orientation: landscape) and (max-height: 450px) and (min-width: 600px) {
+  .pk-runner {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .pk-runner-hud {
+    grid-column: 1 / -1;
+  }
+
+  .pk-runner-field {
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 0;
+  }
+
+  .pk-runner-gates {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: end;
+    grid-template-columns: repeat(var(--gate-cols, 2), 5.2rem);
+  }
 }
 
 /* --- Game over ---------------------------------------------------------- */

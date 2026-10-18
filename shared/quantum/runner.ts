@@ -67,11 +67,18 @@ export type Level = 1 | 2;
  * second qubit's X1/H1 and both CX directions. */
 export type GateButton = 'X0' | 'H0' | 'X1' | 'H1' | 'CX01' | 'CX10';
 
-/** Which buttons a level offers, in the fixed thumb-row order. */
+/**
+ * Which buttons a level offers, in the fixed reading order. Level 2 is laid
+ * out as two rows of three (the UI's grid): one row per qubit, each ending in
+ * the CX that qubit controls — `X₀ H₀ CX 0→1` / `X₁ H₁ CX 1→0`.
+ */
 export const GATE_BUTTONS: Record<Level, readonly GateButton[]> = {
   1: ['X0', 'H0'],
-  2: ['X0', 'X1', 'H0', 'H1', 'CX01', 'CX10'],
+  2: ['X0', 'H0', 'CX01', 'X1', 'H1', 'CX10'],
 };
+
+/** Buttons per row in the gate grid: level 1 one row of two, level 2 two rows of three. */
+export const GATE_COLUMNS: Record<Level, number> = { 1: 2, 2: 3 };
 
 /** Qubit count for a level. */
 export function qubitsForLevel(level: Level): number {
@@ -218,6 +225,25 @@ export function projectiveMeasure(
   return { hit, p, newState: renormalize(collapsed) };
 }
 
+/**
+ * Reset every qubit to |0⟩ — the RESET operation, NOT a gate. It is
+ * non-unitary: whatever the state was (superposition, entangled), all of its
+ * probability mass is moved onto lane |0…0⟩ and the result is renormalised, so
+ * the previous state is forgotten (no gate sequence can undo it). Physically
+ * this is a measurement in the computational basis followed by an X on every
+ * qubit read as 1; the outcome is |0…0⟩ on every branch, so the pure
+ * post-reset state is exactly |0…0⟩ (a global phase is meaningless and
+ * dropped).
+ */
+export function resetAmplitudes(amps: readonly Complex[]): Complex[] {
+  let norm2 = 0;
+  for (const a of amps) norm2 += abs2(a);
+  const out = amps.map(() => ZERO);
+  // Move the whole (renormalised) mass onto lane 0.
+  out[0] = { re: norm2 > 0 ? Math.sqrt(norm2) : 1, im: 0 };
+  return renormalize(out);
+}
+
 /** Expected coins banked when a coin column crosses: Σ P(coin lane). */
 export function coinScore(amps: readonly Complex[], lanes: readonly number[]): number {
   const probs = probabilities(amps);
@@ -304,6 +330,7 @@ export interface RunnerConfig {
   startLives: number;
 }
 
+/** The level-1 pacing (and the historical default for both levels). */
 export const DEFAULT_RUNNER_CONFIG: RunnerConfig = {
   baseSpeed: 0.2,
   speedRamp: 0.006,
@@ -313,6 +340,37 @@ export const DEFAULT_RUNNER_CONFIG: RunnerConfig = {
   minSpawn: 0.7,
   startLives: 3,
 };
+
+/**
+ * Level-2 pacing: four lanes and six gates need more thinking time, so the
+ * run starts slower and takes longer to reach full speed (same top speed and
+ * minimum spacing as level 1). Start speed is 70 % of level 1's; the climb to
+ * top speed lasts ~140 s instead of 70 s and the spawn interval reaches its
+ * minimum after ~185 s instead of ~92 s.
+ */
+export const LEVEL2_RUNNER_CONFIG: RunnerConfig = {
+  ...DEFAULT_RUNNER_CONFIG,
+  baseSpeed: 0.14,
+  speedRamp: 0.0034,
+  spawnBase: 2.1,
+  spawnRamp: 0.0076,
+};
+
+/** The pacing a level plays at. */
+export const LEVEL_RUNNER_CONFIG: Record<Level, RunnerConfig> = {
+  1: DEFAULT_RUNNER_CONFIG,
+  2: LEVEL2_RUNNER_CONFIG,
+};
+
+/** Time (s) until a config reaches top speed. */
+export function secondsToMaxSpeed(config: RunnerConfig): number {
+  return (config.maxSpeed - config.baseSpeed) / config.speedRamp;
+}
+
+/** Time (s) until a config's spawn interval reaches its minimum. */
+export function secondsToMinSpawn(config: RunnerConfig): number {
+  return (config.spawnBase - config.minSpawn) / config.spawnRamp;
+}
 
 /** Current column speed at an elapsed time. */
 export function speedAt(config: RunnerConfig, elapsed: number): number {
@@ -371,8 +429,8 @@ const CULL_X = -0.2;
 /** Per-tick dt is clamped to keep the physics stable under a stalled rAF. */
 const MAX_DT = 0.1;
 
-/** A fresh run for a level. */
-export function initRunner(level: Level, config: RunnerConfig = DEFAULT_RUNNER_CONFIG): RunnerState {
+/** A fresh run for a level (at that level's own pacing unless a config is given). */
+export function initRunner(level: Level, config: RunnerConfig = LEVEL_RUNNER_CONFIG[level]): RunnerState {
   return {
     level,
     amps: initialAmplitudes(level),
@@ -393,13 +451,15 @@ export function initRunner(level: Level, config: RunnerConfig = DEFAULT_RUNNER_C
 /** Events the reducer accepts. */
 export type RunnerEvent =
   | { type: 'gate'; gate: GateButton }
+  /** Reset every qubit to |0⟩ (non-unitary; see `resetAmplitudes`). */
+  | { type: 'reset' }
   | { type: 'tick'; dt: number }
   | { type: 'setLevel'; level: Level }
   | { type: 'restart' };
 
 /**
  * The pure game reducer. `rng` is consumed only by `tick` (spawns + obstacle
- * measurements); `gate`/`restart`/`setLevel` ignore it. Deterministic under a
+ * measurements); `gate`/`reset`/`restart`/`setLevel` ignore it. Deterministic under a
  * seeded `rng` — the basis of the playthrough golden test.
  */
 export function runnerReducer(state: RunnerState, event: RunnerEvent, rng: Rng): RunnerState {
@@ -407,11 +467,21 @@ export function runnerReducer(state: RunnerState, event: RunnerEvent, rng: Rng):
     case 'restart':
       return initRunner(state.level, state.config);
     case 'setLevel':
-      // Changing level is a fresh run (the lane count changes).
-      return initRunner(event.level, state.config);
+      // Changing level is a fresh run (the lane count changes) at the new
+      // level's own pacing — unless the run plays a custom (non-level) config.
+      return initRunner(
+        event.level,
+        state.config === LEVEL_RUNNER_CONFIG[state.level] ? LEVEL_RUNNER_CONFIG[event.level] : state.config,
+      );
     case 'gate': {
       if (state.status !== 'playing') return state;
       return { ...state, amps: applyGate(state.amps, state.level, event.gate) };
+    }
+    case 'reset': {
+      // Free: no score or life cost, and the columns, lives, score and timing
+      // are untouched — the next obstacle still measures the (now |0…0⟩) state.
+      if (state.status !== 'playing') return state;
+      return { ...state, amps: resetAmplitudes(state.amps) };
     }
     case 'tick': {
       if (state.status !== 'playing') return state;

@@ -22,7 +22,9 @@ What replaces the site header is a slim toolbar
   is off here); the choice is remembered;
 - **DE / EN** — the site's `resolveLang`: `?lang=`, then the stored choice,
   then the device language (German if it starts with `de`), else English;
-- **How to play** — short rules (EN / informal German "du"), the credit line
+- **How to play** — short rules (EN / informal German "du"; one line says
+  Reset is a real but non-unitary operation, not a gate: it forgets the
+  state), the credit line
   "Based on Quantum Runner by the QAMPoser project." / "Nach Quantum Runner
   vom QAMPoser-Projekt.", and one plain link to entangible.org (the host opens
   it in Safari).
@@ -49,7 +51,10 @@ The host app's title bar names the game, so the page has no title of its own.
 - Gate buttons are named: "Apply H to qubit 0", "Apply X to qubit 1",
   "Apply CX, control qubit 0, target qubit 1" (German "H auf Qubit 0
   anwenden", "CX anwenden, Steuer-Qubit 0, Ziel-Qubit 1"); the hearts read
-  "3 lives", the pause button "Pause the run".
+  "3 lives", the pause button "Pause the run", the reset button "Reset the
+  qubit to 0" / "Reset all qubits to 0" ("Qubit auf 0 zurücksetzen" / "Alle
+  Qubits auf 0 zurücksetzen"); a reset is spoken as "Reset. |00⟩ 100%."
+  (at once, like pause and game over: a user action is never queued).
 - One polite live region (`role="status"`) speaks each coin and obstacle:
   what happened ("Coin, plus 0.5." / "Obstacle: hit, one life lost." /
   "Obstacle: passed."), the lane probabilities ("|00⟩ 50%, |11⟩ 50%" —
@@ -57,25 +62,40 @@ The host app's title bar names the game, so the page has no title of its own.
   every 2 s; events in between are not queued — the latest waiting line is
   spoken when the gap ends.
 - Spoken at once (not throttled): game over (score, distance, best / "New
-  best!"), a new run ("New run, 2 qubits."), "Paused.", the countdown and
+  best!"), a new run ("New run, 2 qubits."), "Paused.", "Reset. |00⟩ 100%.", the countdown and
   "Go!".
 
 ### Layout (phones first)
 
-One screen, no scrolling: toolbar, HUD (score · hearts · ❚❚), the lane field
-(flexes), one row of gate buttons. 44 px minimum for every control (gates
-52 px, 44 px on short landscape, 60 px on tablets), `touch-action:
+One screen, no scrolling: toolbar, HUD (score · hearts · Reset · ❚❚), the
+lane field (flexes: it takes whatever height is left, at least 6rem), the gate
+grid — one row `X₀ H₀` at 1 qubit, two rows of three at 2 qubits (`X₀ H₀
+CX 0→1` over `X₁ H₁ CX 1→0`). On a short landscape screen (≤ 450 px tall,
+≥ 600 px wide) the grid sits beside the field, bottom right, so the lanes keep
+the full height. Reset ("Reset |00⟩" / "Zurück auf |00⟩") lives in the HUD
+next to ❚❚, the whole field away from the gates, so it is not hit by
+accident. 44 px minimum for every control (gates 50 px at 1 qubit, 48 px at
+2 qubits, 44 px on short landscape, 60 px on tablets), `touch-action:
 manipulation` on all buttons (no 300 ms delay, no double-tap zoom; pinch-zoom
 stays), safe-area insets on every edge (`viewport-fit=cover`), no text
-selection / callout on long press. Measured in Chrome (bundle in an iframe of
-the exact size, Oct 2026):
+selection / callout on long press. Measured in Chrome (built bundle in an
+iframe of the exact size, EN and DE, Oct 2026; DE's longer "Zurück auf |00⟩"
+changes only the reset width — 125 px vs 93 px):
 
-| Viewport | Gate row (top–bottom) | Field height | Page scroll |
-| --- | --- | --- | --- |
-| 390×680 (the app's web view) | 618–670 | 493 | none |
-| 375×667 (iPhone SE), 2 qubits | 605–657 | 479 | none (6 gates × 53 px, no overflow) |
-| 844×390 landscape, 2 qubits | 340–384 | 228 | none |
-| 820×1180 (iPad) | 1104–1164 | 972 | none |
+| Viewport | Qubits | Gates (top–bottom, rows) | Field height (lane) | Lowest control | Page scroll |
+| --- | --- | --- | --- | --- | --- |
+| 390×680 (the app's web view) | 1 | 620–670, 1 row, 182×50 | 495 (246) | 670 | none |
+| 390×680 | 2 | 568–670, 2 rows, 119×48 | 442 (110) | 670 | none |
+| 375×667 (iPhone SE) | 1 | 607–657, 1 row, 175×50 | 482 (240) | 657 | none |
+| 375×667 | 2 | 555–657, 2 rows, 114×48 | 429 (107) | 657 | none |
+| 844×390 landscape | 1 | beside the field, 340–384, 83×44 | 278 (138) | 384 | none |
+| 844×390 landscape | 2 | beside the field, 290–384, 2 rows, 83×44 | 278 (69) | 384 | none |
+| 820×1180 (iPad) | 1 | 1104–1164, 1 row, 391×60 | 972 (485) | 1164 | none |
+| 820×1180 | 2 | 1038–1164, 2 rows, 258×60 | 905 (226) | 1164 | none |
+
+No gate or reset label is clipped (scrollWidth ≤ clientWidth) at any size;
+the smallest control is 44 px tall. Reset sits 12 px left of ❚❚ and ≥ 400 px
+above the gates on portrait phones.
 
 ## Build
 
@@ -208,5 +228,7 @@ During development `npm run dev` also serves the bundle's entry at
 `http://localhost:5173/runner.html` (site config, so without the hover rewrite).
 
 Tests: `src/runner/RunnerApp.test.tsx` (shell: no site chrome, Start +
-countdown, qubit choice, How to play + credit, German), and the pause /
-VoiceOver / `onEvent` / best-score cases in `src/app/RunnerGame.test.tsx`.
+countdown, qubit choice, How to play + credit + reset line, German, reset in
+the HUD, the bundle's 44 px gate rules), and the gate grid / reset / pause /
+VoiceOver / `onEvent` / best-score cases in `src/app/RunnerGame.test.tsx`;
+the engine's reset and per-level pacing in `shared/quantum/runner.test.ts`.

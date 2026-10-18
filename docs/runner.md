@@ -24,9 +24,21 @@ partial credit and a projector that snaps you into one branch and takes a life.
 - **The runner is everywhere at once.** It renders as a ghost in every lane with
   **opacity = probability**. There is no circuit history — this is a *state*, not
   a circuit; the gate buttons mutate the live amplitudes directly.
-- **Gate buttons** (a thumb row at the bottom): level 1 offers `X₀ H₀`; level 2
-  adds the second qubit and both CX directions — `X₀ X₁ H₀ H₁ CX0→1 CX1→0`. Each
-  tap applies immediately.
+- **Gate buttons** (a grid at the bottom): level 1 offers one row `X₀ H₀`;
+  level 2 two rows of three, one per qubit, each ending in the CX that qubit
+  controls — `X₀ H₀ CX 0→1` over `X₁ H₁ CX 1→0` (`GATE_BUTTONS` /
+  `GATE_COLUMNS`). Each tap applies immediately. On a short landscape screen
+  (≤ 450 px tall) the grid sits beside the field, bottom right.
+- **Reset** (HUD, left of ❚❚): "Reset |0⟩" / "Reset |00⟩" (German "Zurück auf
+  |0⟩" / "Zurück auf |00⟩"; VoiceOver "Reset all qubits to 0") puts every qubit
+  back to `|0⟩` — the engine's `reset` event, `resetAmplitudes`. It is a real
+  operation but **not a gate**: non-unitary, it moves all the probability onto
+  `|0…0⟩` (renormalised) and forgets the state, so no gate sequence undoes it.
+  **Balance:** free — no score or life cost — and it changes nothing else:
+  columns, lives, score and timing are untouched, and the next obstacle
+  measures the reset state like any other (reset into an obstacle on `|00⟩` is
+  a certain hit). The live region says "Reset. |00⟩ 100%." at once (not throttled). The How to play
+  rules carry one line on it.
 - **Coins** scroll in and, when a coin column crosses the runner line, add the
   **expected value** `Σ P(coin lane)` to the score (shown as `+0.7`-style
   floats; the running score is fractional, one decimal). Coins are deliberately
@@ -44,8 +56,24 @@ partial credit and a projector that snaps you into one branch and takes a life.
   runner is **perfectly safe**. Building entanglement to become immune to a
   measurement is the lesson.
 - **Lives + pacing.** Three lives; the run ends at zero with a game-over screen
-  (score + distance + "measurement got you" flavour + restart). Speed ramps so a
-  typical run lasts ~45–90 s.
+  (score + distance + "measurement got you" flavour + restart). Speed and
+  spawn rate ramp per level (`LEVEL_RUNNER_CONFIG` in the engine):
+
+  | | Level 1 (unchanged) | Level 2 |
+  | --- | --- | --- |
+  | Start speed (field-widths/s; time a column needs to cross) | 0.20 (5.0 s) | 0.14 (7.1 s) |
+  | Speed ramp | +0.006 /s | +0.0034 /s |
+  | Top speed (crossing) | 0.62 (1.6 s), after 70 s | 0.62 (1.6 s), after 141 s |
+  | Column spacing at start → minimum | 1.9 s → 0.7 s, after 92 s | 2.1 s → 0.7 s, after 184 s |
+
+  Level 2 starts slower and takes about twice as long to get fast (four lanes
+  and six gates need more thinking). A level change picks up the new level's
+  pacing. A simulated player (attends to the nearest obstacle, plans the
+  shortest safe gate sequence after a fixed reaction time, taps a gate every
+  0.35 s; 150 seeded runs) lasts at 2 qubits a median ~103 s / 50 obstacles
+  with the level-1 pacing and ~193 s / 78 obstacles with the new one (0.9 s
+  reaction); it only fails once the column spacing nears its minimum, so real
+  players, who also misplan, end sooner.
 
 - **Best score** per level is kept in `localStorage`
   (`entangible.pocket.runner.best`, `{"1": 12.3, "2": 4.5}`) and shown on the

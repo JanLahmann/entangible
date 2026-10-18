@@ -624,6 +624,9 @@ export const de: Messages = {
     announceNewRun: (level: string) => `Neuer Lauf, ${level}.`,
     announcePaused: 'Angehalten.',
     announceGo: 'Los!',
+    reset: (level: 1 | 2) => (level === 1 ? 'Zurück auf |0⟩' : 'Zurück auf |00⟩'),
+    resetAria: (level: 1 | 2) => (level === 1 ? 'Qubit auf 0 zurücksetzen' : 'Alle Qubits auf 0 zurücksetzen'),
+    announceReset: (lanes: string) => `Zurückgesetzt. ${lanes}.`,
   },
 
   runnerApp: {
@@ -637,6 +640,7 @@ export const de: Messages = {
       'Münzen (◉) werden nie gemessen: Du bekommst die Wahrscheinlichkeit gutgeschrieben, in den Münzbahnen zu sein – eine Superposition bringt also einen Teil einer Münze.',
       'Hindernisse (rot) messen dich. Mit der Wahrscheinlichkeit, in ihren Bahnen zu sein, wirst du getroffen und verlierst ein Leben; sonst kommst du vorbei. So oder so kollabiert dein Zustand. Pro Lauf hast du drei Leben.',
       'Zwei Qubits? Probier H₀ und dann CX 0→1: Dieser Bell-Zustand lebt nur in |00⟩ und |11⟩, ein Hindernis auf |01⟩ und |10⟩ kann dich also nie treffen.',
+      '„Zurück auf |0⟩“ setzt jedes Qubit auf |0⟩ zurück. Das ist eine echte Operation, aber kein Gatter: Sie ist nicht umkehrbar und vergisst deinen Zustand. Sie kostet nichts und hält das nächste Hindernis nicht davon ab, dich zu messen.',
       'Verlässt du die App, hält der Lauf an. Tippe auf Weiter, und nach einem kurzen Countdown geht es weiter.',
     ],
     credit: 'Nach Quantum Runner vom QAMPoser-Projekt.',
