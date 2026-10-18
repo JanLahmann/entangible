@@ -118,7 +118,8 @@ Serverless equivalents of the booth's /debug controls — all local
     (#73); only *leaving* the hole (hole-in advance, course-complete clear,
     post-course restart) tees the next one off at zero with an empty baseline,
     so a teardown never lands on the next hole. **Par = minimum + 2** (#69), so
-    minimum play scores an eagle and one extra a birdie; classic course par 101.
+    minimum play scores an eagle and one extra a birdie; classic course par 108
+    (the holes: [`golf-course.md`](golf-course.md)).
   - **Hole-in** at fidelity ≥ 0.99 → purple banner ("EAGLE!/BIRDIE!/PAR!/
     HOLE IN +n" by strokes vs par) + confetti; clearing the board advances.
     Finishing hole 18 fires a celebration whose intensity and wording scale

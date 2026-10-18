@@ -418,7 +418,7 @@ export function Scorecard({
   const totals = courseTotals(state.best, playing);
   const totalLabel = totals.completed > 0 ? formatVsPar(totals.vsPar) : 'E';
   // A generated course sums its own pars; the fixed FULL round keeps the
-  // constant, which is what makes par 101 a number people quote.
+  // constant, which is what makes par 108 a number people quote.
   const fullPar =
     state.course === 'random' || state.scope !== 'full' ? coursePar(playing) : COURSE_PAR;
 

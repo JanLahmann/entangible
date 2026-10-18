@@ -122,8 +122,8 @@ from entangible.org — nothing is shared with the site).
 
 | Key | What | Same as the site? |
 | --- | --- | --- |
-| `entangible.pocket.golf.holes` | best strokes per classic hole (`{"1":3,…}`) | yes — written by the shared engine (`saveBest`) |
-| `entangible.pocket.golf.revealed` | classic holes whose mid-hole solution was paid for | yes (`saveRevealed`) |
+| `entangible.pocket.golf.v2.holes` | best strokes per classic hole (`{"1":3,…}`), per course version (`GOLF_COURSE_VERSION`) | yes — written by the shared engine (`saveBest`) |
+| `entangible.pocket.golf.v2.revealed` | classic holes whose mid-hole solution was paid for | yes (`saveRevealed`) |
 | `entangible.lang` | explicit EN/DE choice | yes (`shared/i18n`) |
 | `entangible.golf.course` | `{"courseCode": "<base36>"\|null, "courseScope": "E"\|"M"\|"D"\|"X"\|null}` | **bundle only** — the site keeps these two fields inside `entangible.pocket.settings`, whose other fields (mode, camera, booth…) do not exist here |
 | `qamposer-theme` | the editor library's theme (always dark) | yes (library) |

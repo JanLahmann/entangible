@@ -1889,6 +1889,8 @@ body,
 
 .pk-golf-ket {
   font-size: 0.78rem;
+  /* Long classic kets (X5 Waterfall) have no spaces: let them wrap. */
+  overflow-wrap: anywhere;
   color: var(--entangle-text);
 }
 

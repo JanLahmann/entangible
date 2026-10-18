@@ -850,7 +850,7 @@ describe('Scorecard (shared)', () => {
 
   it('shows each completed hole’s result on its chip, coloured by score (#74)', () => {
     // E1 par 3 in 1 (eagle), E2 par 4 in 3 (birdie), E3 par 5 in 5 (par),
-    // E4 par 6 in 9 (over). E5 is untouched.
+    // E4 par 7 in 9 (over). E5 is untouched.
     const state = initialGolfState({ 1: 1, 2: 3, 3: 5, 4: 9 });
     const { container } = render(<Scorecard state={state} circuit={bell} classPrefix="pk" />);
     const chips = Array.from(container.querySelectorAll('.pk-golf-chip')).slice(0, 5);
@@ -864,7 +864,7 @@ describe('Scorecard (shared)', () => {
     expect(read(0)).toEqual({ best: '1', vsPar: '−2', kind: 'eagle' });
     expect(read(1)).toEqual({ best: '3', vsPar: '−1', kind: 'birdie' });
     expect(read(2)).toEqual({ best: '5', vsPar: 'E', kind: 'par' });
-    expect(read(3)).toEqual({ best: '9', vsPar: '+3', kind: 'over' });
+    expect(read(3)).toEqual({ best: '9', vsPar: '+2', kind: 'over' });
     // An unplayed hole is unchanged: a dot, no vs-par, no score colour.
     expect(read(4)).toEqual({ best: '·', vsPar: null, kind: undefined });
     expect(chips[4].classList.contains('is-done')).toBe(false);
@@ -875,7 +875,7 @@ describe('Scorecard (shared)', () => {
 
   it('scores the card over the competition’s scope, not the whole course (#102)', () => {
     // Difficult round, third hole: the header counts within the round, and the
-    // total is measured against the round's par (30), not the course's 101.
+    // total is measured against the round's par (33), not the course's 108.
     const dPar = (n: number) => HOLES[n - 1].par;
     const best: Record<number, number> = { 11: dPar(11) - 1, 12: dPar(12) }; // D1 birdie, D2 par
     const state = {
@@ -898,7 +898,7 @@ describe('Scorecard (shared)', () => {
       'Difficult round complete! ⛳',
     );
     expect(summary.container.querySelector('.pk-golf-qubits')?.textContent).toBe(
-      `${dPar(11) - 1 + dPar(12)} strokes · par 30`,
+      `${dPar(11) - 1 + dPar(12)} strokes · par 33`,
     );
   });
 

@@ -12,17 +12,45 @@
  */
 import type { Messages } from './en';
 
-/** Golf hole names on the classic course, by their English name (#70). */
+/** Golf hole names on the classic course, by their English name (#70) — only
+ *  the ones a language spells differently; the rest show as named. */
 const HOLE_NAMES: Record<string, string> = {
   Superposition: 'Überlagerung',
-  'Bit flip': 'Bitflip',
-  'Flipped GHZ-3': 'Gekipptes GHZ-3',
-  'Flipped GHZ-4': 'Gekipptes GHZ-4',
-  'Flipped GHZ-5': 'Gekipptes GHZ-5',
-  'Minus GHZ-4': 'Minus-GHZ-4',
-  'Magic T': 'Magisches T',
+  'Coin, flip, coin': 'Münze, Flip, Münze',
+  'Two couples': 'Zwei Pärchen',
+  Singlet: 'Singulett',
+  'Singlet + coin': 'Singulett + Münze',
+  'Minus couples': 'Minus-Pärchen',
+  'Odd one out': 'Der Außenseiter',
+  'i-coin': 'i-Münze',
+  Rainbow: 'Regenbogen',
+  'Twisted couples': 'Verdrehte Pärchen',
+  'Three-quarter GHZ': 'Dreiviertel-GHZ',
+  'Lopsided coin': 'Schiefe Münze',
   Cascade: 'Kaskade',
-  'Golden GHZ': 'Goldenes GHZ',
+  Waterfall: 'Wasserfall',
+};
+
+/** Die Ziel-Zeile jedes klassischen Lochs, nach englischem Namen (siehe en.ts). */
+const HOLE_GOALS: Record<string, string> = {
+  Superposition: 'Ziel: eine faire 50/50-Münze – H ist dein erster Schläger.',
+  Bell: 'Ziel: verschränke zwei Kugeln, sodass sie immer übereinstimmen.',
+  'Coin, flip, coin': 'Ziel: Münze, sichere 1, Münze – ganz ohne Verschränkung.',
+  'Two couples': 'Ziel: zwei getrennte Pärchen – eins stimmt überein, eins nie.',
+  'GHZ-5': 'Ziel: verschränke alle 5 Kugeln – immer 00000 oder 11111.',
+  Minus: 'Ziel: 50/50 wie bei E1, aber mit Minuszeichen.',
+  Singlet: 'Ziel: immer verschieden, mit Minus – probier Y.',
+  'Singlet + coin': 'Ziel: ein Singulett-Paar plus eine eigene faire Münze.',
+  'Minus couples': 'Ziel: gleiche Chancen wie E4 – aber beide Pärchen mit Minus.',
+  'Odd one out': 'Ziel: eine Kugel gegen die anderen vier, mit Minus.',
+  'i-coin': 'Ziel: 50/50 wie bei E1, aber mit Viertel-Phasendrehung (S).',
+  'i-Bell': 'Ziel: ein Bell-Paar mit Viertel-Phasendrehung auf 11.',
+  Rainbow: 'Ziel: drei freie Münzen mit drei verschiedenen Phasen.',
+  'Twisted couples': 'Ziel: zwei i-verdrehte Pärchen – i mal i ergibt −1.',
+  'Three-quarter GHZ': 'Ziel: verschränke alle 5 mit Dreiviertel-Drehung (−i).',
+  'Lopsided coin': 'Ziel: eine unfaire Münze – etwa 85 % auf 1.',
+  Cascade: 'Ziel: ungleiche Chancen – 50 % 000, 25 % 001, 25 % 111.',
+  Waterfall: 'Ziel: jede Stufe halb so wahrscheinlich – 50, 25, 12,5 … %.',
 };
 
 /** "beide Kugeln" / "alle 3 Kugeln" — how many balls a clause is about (k ≥ 2). */
@@ -296,6 +324,7 @@ export const de: Messages = {
       over: (vsPar: string, time: string) => `Platz geschafft – ${vsPar}${time}.`,
     },
     holeNames: HOLE_NAMES,
+    holeGoals: HOLE_GOALS,
     randomHole: (code: string) => `Zufall ${code}`,
     course: 'Platz',
     courseAria: 'Golfplatz',
@@ -726,7 +755,7 @@ export const de: Messages = {
     rulesTitle: 'So geht’s',
     rules: [
       'Jedes Loch gibt dir einen Ziel-Quantenzustand, als gestrichelte Ringe auf der Kugel eingezeichnet. Bau eine Schaltung, die ihn erzeugt: Tipp unter der Kugel auf ein Gatter, um es zu wählen, dann auf ein leeres Feld der Schaltung, um es dort zu setzen – oder auf die dünne Linie zwischen zwei Schritten, um es dort einzufügen. Bei CX und CH tippst du zuerst die Steuerung (●), dann eins der leuchtenden Zielfelder (⊕). Das Gatter bleibt für den nächsten Tipp gewählt; tipp es noch mal an, um es abzulegen. Ohne gewähltes Gatter wählst du mit einem Tipp ein gesetztes Gatter aus: Löschen entfernt es, ein anderes Gatter ersetzt es. ↶ nimmt die letzte Änderung zurück. Ab 99 % Übereinstimmung ist der Ball drin.',
-      'Achtzehn Löcher in vier Runden, und jede Runde bringt neue Schläger und eine neue Idee: Leicht spielt mit X, H und CX (Überlagerung, Bell, GHZ); Mittel bringt Y und damit Minuszeichen; Schwer bringt Z und S für imaginäre Phasen; Bonus bringt T und gesteuertes H.',
+      'Achtzehn Löcher in vier Runden, und jede Runde bringt neue Schläger und eine neue Idee: Leicht spielt mit X, H und CX (Überlagerung, Bell-Paare, getrennte Kugeln, GHZ); Mittel bringt Y und damit Minuszeichen; Schwer bringt Z und S für imaginäre Phasen; Bonus bringt T und gesteuertes H.',
       'Jedes Gatter, das du hinzufügst oder entfernst, zählt als Schlag – ein Gatter ersetzen zählt zwei, wie ein Plättchen tauschen. Par hat zwei Schläge Puffer: Mit den wenigsten Gattern gibt es ein EAGLE, mit einem mehr ein BIRDIE. Leeren setzt ein Loch für einen einzigen Schlag zurück.',
       'Du hängst fest? Lösung zeigen zeichnet eine kurze Schaltung, die das Ziel baut – gratis, sobald der Ball drin ist, und mitten im Loch nach ein paar Schlägen über Par oder einer Minute, zum Preis von doppeltem Par.',
       'Tipp auf ein Feld der Scorekarte, um dieses Loch zu spielen. Zufalls-18 erstellt einen frischen Platz mit Code: Derselbe Code ergibt auf jedem Gerät dieselben achtzehn Löcher.',

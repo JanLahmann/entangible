@@ -167,25 +167,27 @@ Compare against canonical states up to global phase, fidelity ≥ 0.99.
 - **Golf-mode layout**: sidebar widens (22% → ~30%). Below the scorecard, a
   **mini recognized-circuit panel** (compact wires + gates) — visitors must
   always see what the camera read, in every mode.
-- **The course (#50)**: 18 holes in four rounds, played 1→18 — **Easy** (E1–E5:
-  superposition / Bell / GHZ-3/4/5, the original 5 levels), **Medium** (M1–M5:
-  bit-flip variants — "same entanglement, different face"), **Difficult**
-  (D1–D5: relative-phase targets, minus / i-GHZ …, whose Q-sphere node colour
-  betrays the phase fidelity catches), and **Extra** (X1/X3/X5: a T-phase magic
-  state, the CH-only **Cascade** unequal superposition, and a golden GHZ). Each
+- **The course (#50; version 2, [`golf-course.md`](golf-course.md))**: 18
+  holes in four rounds, played 1→18, one new idea per hole — **Easy** (E1–E5:
+  superposition, Bell, a product state, two separate couples, GHZ-5),
+  **Medium** (M1–M5: Y brings the minus sign — |−⟩, the singlet, a singlet plus
+  a coin, two minus couples, odd one out), **Difficult** (D1–D5: quarter-turn
+  phases seen only as Q-sphere colour — |i⟩, i-Bell, a three-colour product,
+  twisted couples, a −i GHZ-5), and **Extra** (X1/X3/X5: uneven odds — a
+  lopsided T coin, the CH **Cascade**, a halving CH **Waterfall**). Each
   round names its "clubs" (a cumulative gate-set hint) on the scorecard; the
   board can't enforce them, so they are pedagogy, not a lock. The scorecard
   shows round + hole ("Difficult · hole 13/18"), the target ket, par, live
   strokes/fidelity, per-hole best, and a running total-vs-par; clearing the
   board after hole 18 shows the final score, and a re-clear restarts. Best
-  strokes persist per hole on the pocket app (in memory on the booth); the old
-  5-level best migrates once into E1–E5.
+  strokes persist per hole on the pocket app (in memory on the booth), keyed
+  by course version — records from the version-1 holes are ignored.
 - **Strokes and par (#68, #69, #73)**: strokes count every gate ADD and DELETE
   on the hole, cumulatively — sliding a tile to another column is free (the
   column is not part of a gate's identity), rewiring or retyping one costs 2.
   Par is the hole's MINIMUM stroke count **+ 2** (#69): minimum play scores an
   EAGLE, one extra stroke a BIRDIE, a small fumble still makes par. Classic
-  course par is **101** (E 25 + M 29 + D 30 + X 17). Two rules keep the count
+  course par is **108** (E 26 + M 31 + D 33 + X 18). Two rules keep the count
   honest: once a hole is holed in the pencil goes down (lifting the tiles to
   advance is not a stroke), and only *leaving* a hole — the post-hole-in
   advance, the course-complete clear, the post-course restart — resets strokes

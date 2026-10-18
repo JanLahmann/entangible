@@ -255,7 +255,8 @@ export const guideEn: GuideProse = {
         <p>
           Switch <b>Settings → Mode → Golf</b> and each hole hands you a state to build. Eighteen
           holes in four rounds, and every round unlocks new clubs <i>and</i> a new idea:{' '}
-          <b>Easy</b> plays with X, H and CX (superposition, Bell, GHZ); <b>Medium</b> adds{' '}
+          <b>Easy</b> plays with X, H and CX (superposition, Bell pairs, separate balls, GHZ);{' '}
+          <b>Medium</b> adds{' '}
           <b>Y</b> and, with it, minus signs; <b>Difficult</b> adds <b>Z</b> and <b>S</b> for
           imaginary phases; <b>Extra</b> adds <b>T</b> and <b>controlled-H</b>, for eighth-turn
           phases and uneven splits.

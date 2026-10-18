@@ -2,21 +2,26 @@
  * Quantum Golf engine — pure logic for the "quantum mini-golf" course.
  *
  * Shared home for BOTH apps (pocket imports it via its `@quantum` alias; the
- * booth imports it relatively). The course is **18 holes** in four rounds:
+ * booth imports it relatively). The classic course is **18 holes** in four
+ * rounds, each unlocking clubs, with a qubit stair inside each round (1→5,
+ * Extra 1/3/5). Every hole brings ONE new idea (course version 2; the table,
+ * solutions and physical-tile needs are in docs/golf-course.md):
  *
- *   EASY      E1–E5  — superposition / Bell / GHZ-3/4/5 (the original 5 levels).
- *   MEDIUM    M1–M5  — bit-flip variants ("same entanglement, different face").
- *   DIFFICULT D1–D5  — relative-phase targets (minus / i-GHZ …), visible on the
- *                       Q-sphere as node colour; fidelity catches the phase.
- *   EXTRA     X1/X3/X5 — T-phase + a CH-only "Cascade" (an UNequal superposition
- *                       unreachable without a controlled-H).
+ *   EASY      E1–E5  — superposition, Bell, a product state, two separate
+ *                       couples, GHZ-5 (no phases: plain positive amplitudes).
+ *   MEDIUM    M1–M5  — Y brings the minus sign: |−⟩, the singlet, a singlet
+ *                       plus a coin, two minus couples (E4's twin), odd one out.
+ *   DIFFICULT D1–D5  — Z/S bring quarter-turn phases, visible only as Q-sphere
+ *                       colour: |i⟩, i-Bell, a three-colour product, twisted
+ *                       couples (i·i = −1), a −i GHZ-5.
+ *   EXTRA     X1/X3/X5 — T and controlled-H bring uneven odds: a lopsided coin,
+ *                       the Cascade, a halving Waterfall.
  *
- * Each hole's target is a fixed statevector over `k = qubits`; we score the
+ * Each hole's target is a fixed statevector over `k = qubits` (the state its
+ * reference solution prepares); we score the
  * player's live circuit by the *best* fidelity over any placement of those
- * qubits — symmetric targets (GHZ/Bell/1q/phase-GHZ) compare against every
- * unordered k-subset, asymmetric targets (the flip families, the Cascade)
- * against every ORDERED arrangement so the answer can be built on any rows in
- * any order. "Strokes" = every gate ADD and every gate DELETE since the hole was
+ * qubits — every ORDERED k-arrangement, so the answer can be built on any rows
+ * in any order. "Strokes" = every gate ADD and every gate DELETE since the hole was
  * teed off (#68) — deleting a wrong tile and retrying costs strokes, like real
  * golf. Hole-in at fidelity ≥ 0.99;
  * clearing the board then advances to the next hole (after hole 18 the course
@@ -52,21 +57,39 @@
  * clock, the celebration and a shared result all mean the same thing to both
  * players.
  *
- * Bit convention: leftmost ket bit = first arrangement qubit, matching
- * shared/display/outcomes.ts. Internally targets live in the little-endian
- * statevector basis (index i has qubit q set when (i >> q) & 1).
+ * Bit convention: a hole's `targetKet` is written like the bra-ket line under
+ * the sphere (`KetDisplay`) — MSB-first, leftmost bit = the highest wire
+ * q(k−1). Internally targets live in the little-endian statevector basis
+ * (index i has qubit q set when (i >> q) & 1).
  */
 import type { Circuit, Gate, GateType } from '@qamposer/react';
 import { fidelity, statevector, DIM, NUM_QUBITS, type Complex, type StateVector } from './statevector';
 import { en, type Messages } from '@shared/i18n/en';
 
 export const HOLE_IN_THRESHOLD = 0.99;
-/** Legacy per-LEVEL best key (the original 5-level course). Read once, migrated. */
-export const GOLF_STORAGE_KEY = 'entangible.pocket.golf';
-/** Per-HOLE best key (the 18-hole course; keyed by hole number 1..18). */
-export const GOLF_HOLES_KEY = 'entangible.pocket.golf.holes';
+/**
+ * The classic course's version. Version 1 was the GHZ ladder (GHZ-1…5, then
+ * flipped / minus / i-GHZ variants, par 101); version 2 is the varied course
+ * of `COURSE` below. Bests and reveals are stored PER VERSION (the keys below
+ * carry it), so a record set on an old hole never shows against the new hole
+ * of the same number. Bump it whenever a classic hole's target changes.
+ */
+export const GOLF_COURSE_VERSION = 2;
+/** Per-HOLE best key of the current classic course (keyed by hole number 1..18). */
+export const GOLF_HOLES_KEY = `entangible.pocket.golf.v${GOLF_COURSE_VERSION}.holes`;
 /** Which holes were solved with a mid-hole reveal (#99), keyed by hole number. */
-export const GOLF_REVEALED_KEY = 'entangible.pocket.golf.revealed';
+export const GOLF_REVEALED_KEY = `entangible.pocket.golf.v${GOLF_COURSE_VERSION}.revealed`;
+/**
+ * Keys earlier course versions wrote — the 5-level course's per-level bests and
+ * version 1's per-hole bests and reveals. They belong to holes that no longer
+ * exist, so they are never read (and never migrated); left in place, they cost
+ * nothing and break nothing.
+ */
+export const GOLF_LEGACY_KEYS: readonly string[] = [
+  'entangible.pocket.golf',
+  'entangible.pocket.golf.holes',
+  'entangible.pocket.golf.revealed',
+];
 
 /** Which view a hole plays on (1-qubit holes on the Bloch sphere, else Q-sphere). */
 export type GolfView = 'bloch' | 'qsphere';
@@ -74,9 +97,9 @@ export type GolfView = 'bloch' | 'qsphere';
 export type GolfRound = 'easy' | 'medium' | 'difficult' | 'extra';
 
 /** Full par of the course. Par is the MINIMAL stroke count + 2 per hole
- *  (E 25 + M 29 + D 30 + X 17): optimal play scores an eagle, one extra
+ *  (E 26 + M 31 + D 33 + X 18): optimal play scores an eagle, one extra
  *  stroke a birdie, and a small fumble still makes par. */
-export const COURSE_PAR = 101;
+export const COURSE_PAR = 108;
 
 /** Human label + accent per round (Scorecard header). */
 export const ROUND_LABEL: Readonly<Record<GolfRound, string>> = {
@@ -155,18 +178,14 @@ export function clubGateTypes(hole: Hole): GateType[] {
 }
 
 // ---------------------------------------------------------------------------
-// Target construction (custom statevectors per hole)
+// Target construction — every classic target is the state its reference
+// solution prepares, matched on every ordered placement
 // ---------------------------------------------------------------------------
 
-const R = Math.SQRT1_2;
 const amp = (re: number, im = 0): Complex => ({ re, im });
-/** ω = e^{iπ/4}; the T-phase on |1…1⟩ contributes ω·R = (½, ½). */
-const OMEGA_R: Complex = { re: 0.5, im: 0.5 };
-/** i·R for the S-phase (i-GHZ) targets. */
-const I_R: Complex = { re: 0, im: R };
 
 /** One basis term of a target: a bit pattern over the arrangement positions
- *  (leftmost = position 0 = first arrangement qubit) with its amplitude. */
+ *  (position j = arrangement qubit j) with its amplitude. */
 interface Term {
   readonly bits: readonly number[];
   readonly amp: Complex;
@@ -189,24 +208,6 @@ function buildTarget(arrangement: readonly number[], terms: readonly Term[]): St
     s[idx] = t.amp;
   }
   return s;
-}
-
-/** All size-`k` subsets of {0..NUM_QUBITS-1} (ascending). */
-function subsets(k: number): number[][] {
-  const out: number[][] = [];
-  const choose = (start: number, acc: number[]) => {
-    if (acc.length === k) {
-      out.push([...acc]);
-      return;
-    }
-    for (let q = start; q < NUM_QUBITS; q++) {
-      acc.push(q);
-      choose(q + 1, acc);
-      acc.pop();
-    }
-  };
-  choose(0, []);
-  return out;
 }
 
 /** All ORDERED k-arrangements of {0..NUM_QUBITS-1} (permutations of each subset). */
@@ -232,43 +233,14 @@ function arrangements(k: number): number[][] {
   return out;
 }
 
-const zeros = (k: number): number[] => new Array(k).fill(0);
-const ones = (k: number): number[] => new Array(k).fill(1);
-
-/** A GHZ-style target: |0…0⟩ with amplitude `a`, |1…1⟩ with amplitude `b`. */
-function ghzTerms(k: number, a: Complex, b: Complex): Term[] {
-  return [
-    { bits: zeros(k), amp: a },
-    { bits: ones(k), amp: b },
-  ];
-}
-
-/** How a hole enumerates its target vectors over the 5-qubit board. */
-interface TargetSpec {
-  /** 'subset' for permutation-invariant targets, 'ordered' for asymmetric ones. */
-  readonly placement: 'subset' | 'ordered';
-  /** One or more term-lists; every list is placed on every placement. Multiple
-   *  lists express a "family" (e.g. any single-flip GHZ variant). */
-  readonly families: readonly (readonly Term[])[];
-}
-
-/** Build every target statevector for a spec across all valid placements. */
-function buildTargets(k: number, spec: TargetSpec): StateVector[] {
-  const places = spec.placement === 'ordered' ? arrangements(k) : subsets(k);
-  const out: StateVector[] = [];
-  for (const place of places) for (const terms of spec.families) out.push(buildTarget(place, terms));
-  return out;
-}
-
 /** Below this probability an amplitude is not a term of a placed target. */
 const TERM_EPS = 1e-12;
 
 /**
  * Every ORDERED placement of an arbitrary `canonical` target (a state living on
- * qubits 0..k−1) across the 5-qubit board — the same machinery the Cascade hole
- * uses, opened up for the generated random course (#70). A generated target has
- * no symmetry to exploit, so like the Cascade it is matched against every
- * ordered k-arrangement: the answer can be built on ANY k wires in any order.
+ * qubits 0..k−1) across the 5-qubit board. Both courses score through this: a
+ * target is matched against every ordered k-arrangement, so the answer can be
+ * built on ANY k wires in any order — relabelling the wires is always free.
  */
 export function orderedPlacements(k: number, canonical: StateVector): StateVector[] {
   const terms: Term[] = [];
@@ -280,207 +252,169 @@ export function orderedPlacements(k: number, canonical: StateVector): StateVecto
     for (let j = 0; j < k; j++) bits.push((i >> j) & 1);
     terms.push({ bits, amp: a });
   }
-  return buildTargets(k, { placement: 'ordered', families: [terms] });
-}
-
-// -- per-hole term families --------------------------------------------------
-
-/** The single-flip GHZ family on k qubits: GHZ with EXACTLY one qubit disagreeing.
- *  One family entry per flipped position (leftmost = position 0). */
-function flippedGhzFamilies(k: number): Term[][] {
-  const fams: Term[][] = [];
-  for (let f = 0; f < k; f++) {
-    const a = zeros(k);
-    const b = ones(k);
-    a[f] = 1; // flip that position in the |0…0⟩ branch …
-    b[f] = 0; // … and its complement in the |1…1⟩ branch.
-    fams.push([
-      { bits: a, amp: amp(R) },
-      { bits: b, amp: amp(R) },
-    ]);
-  }
-  return fams;
-}
-
-/** Cascade (√2|000⟩ + |100⟩ + |111⟩)/2 — leftmost = position 0. */
-const CASCADE_TERMS: Term[] = [
-  { bits: [0, 0, 0], amp: amp(R) }, // √2/2 = R
-  { bits: [1, 0, 0], amp: amp(0.5) },
-  { bits: [1, 1, 1], amp: amp(0.5) },
-];
-
-/** Ψ-plus (|01⟩ + |10⟩)/√2 — symmetric under swap, so a subset suffices. */
-const PSI_PLUS_TERMS: Term[] = [
-  { bits: [0, 1], amp: amp(R) },
-  { bits: [1, 0], amp: amp(R) },
-];
-
-/** Target spec keyed by hole number. */
-function holeSpec(hole: number, k: number): TargetSpec {
-  switch (hole) {
-    // EASY — GHZ family (symmetric).
-    case 1:
-    case 2:
-    case 3:
-    case 4:
-    case 5:
-      return { placement: 'subset', families: [ghzTerms(k, amp(R), amp(R))] };
-    // MEDIUM.
-    case 6: // M1 |1⟩
-      return { placement: 'subset', families: [[{ bits: [1], amp: amp(1) }]] };
-    case 7: // M2 Ψ-plus (symmetric under swap)
-      return { placement: 'subset', families: [PSI_PLUS_TERMS] };
-    case 8: // M3 flipped GHZ-3 family
-    case 9: // M4 flipped GHZ-4 family
-    case 10: // M5 flipped GHZ-5 family
-      return { placement: 'subset', families: flippedGhzFamilies(k) };
-    // DIFFICULT — relative-phase GHZ (symmetric).
-    case 11: // D1 minus
-      return { placement: 'subset', families: [[{ bits: [0], amp: amp(R) }, { bits: [1], amp: amp(-R) }]] };
-    case 12: // D2 Φ-minus
-      return { placement: 'subset', families: [ghzTerms(k, amp(R), amp(-R))] };
-    case 13: // D3 i-GHZ-3
-      return { placement: 'subset', families: [ghzTerms(k, amp(R), I_R)] };
-    case 14: // D4 minus GHZ-4
-      return { placement: 'subset', families: [ghzTerms(k, amp(R), amp(-R))] };
-    case 15: // D5 i-GHZ-5
-      return { placement: 'subset', families: [ghzTerms(k, amp(R), I_R)] };
-    // EXTRA.
-    case 16: // X1 magic-T
-      return { placement: 'subset', families: [[{ bits: [0], amp: amp(R) }, { bits: [1], amp: OMEGA_R }]] };
-    case 17: // X3 Cascade (asymmetric → ordered)
-      return { placement: 'ordered', families: [CASCADE_TERMS] };
-    case 18: // X5 golden GHZ (T-phase)
-      return { placement: 'subset', families: [ghzTerms(k, amp(R), OMEGA_R)] };
-    default:
-      return { placement: 'subset', families: [ghzTerms(k, amp(R), amp(R))] };
-  }
+  return arrangements(k).map((place) => buildTarget(place, terms));
 }
 
 // ---------------------------------------------------------------------------
-// Solutions — the worked answer offered after a hole-in (#71)
-// ---------------------------------------------------------------------------
-
-/**
- * One gate of a solution. `position` is the column it occupies, so the sequence
- * reads left to right exactly as it would sit on the board.
- */
-function sg(type: GateType, position: number, extra: Partial<Gate>): Gate {
-  return {
-    id: `sol-${type}-${position}-${extra.qubit ?? extra.control ?? 0}`,
-    type,
-    position,
-    ...extra,
-  };
-}
-
-/** GHZ-k on q0..q(k−1): H on q0, then a fan of CNOTs out of q0. */
-function ghzGates(k: number, base = 0): Gate[] {
-  const gates: Gate[] = [sg('H', base, { qubit: 0 })];
-  for (let t = 1; t < k; t++) gates.push(sg('CNOT', base + t, { control: 0, target: t }));
-  return gates;
-}
-
-const solCircuit = (gates: Gate[]): Circuit => ({ qubits: NUM_QUBITS, gates });
-
-/**
- * The reference answer for classic hole `n` — the MINIMAL preparation of its
- * target, i.e. exactly `par − 2` gates (#69 sets par at the minimum + 2), so a
- * player who fumbled to +4 can see the clean path.
- *
- * These are the course's own reference paths: they are what the pars were
- * derived from, and `golf.test.ts` asserts against this very data that each one
- * still holes in and still costs par − 2. The S/T holes use the native S/T
- * clubs; the printed tiles' RZ(π/2)/RZ(π/4) spelling holes in just as well
- * (`bestFidelity` applies both), it is simply not what we print.
- */
-export function holeSolution(n: number): Circuit {
-  switch (n) {
-    // EASY — the GHZ family.
-    case 1: // E1 superposition
-      return solCircuit([sg('H', 0, { qubit: 0 })]);
-    case 2: // E2 Bell
-      return solCircuit(ghzGates(2));
-    case 3: // E3 GHZ-3
-      return solCircuit(ghzGates(3));
-    case 4: // E4 GHZ-4
-      return solCircuit(ghzGates(4));
-    case 5: // E5 GHZ-5
-      return solCircuit(ghzGates(5));
-    // MEDIUM — bit-flip variants.
-    case 6: // M1 |1⟩
-      return solCircuit([sg('X', 0, { qubit: 0 })]);
-    case 7: // M2 Ψ-plus = Bell + X
-      return solCircuit([...ghzGates(2), sg('X', 2, { qubit: 0 })]);
-    case 8: // M3 flipped GHZ-3 = GHZ-3 + X
-      return solCircuit([...ghzGates(3), sg('X', 3, { qubit: 2 })]);
-    case 9: // M4 flipped GHZ-4 = GHZ-4 + X
-      return solCircuit([...ghzGates(4), sg('X', 4, { qubit: 3 })]);
-    case 10: // M5 flipped GHZ-5 = GHZ-5 + X
-      return solCircuit([...ghzGates(5), sg('X', 5, { qubit: 4 })]);
-    // DIFFICULT — relative phase.
-    case 11: // D1 minus = H·Z
-      return solCircuit([sg('H', 0, { qubit: 0 }), sg('Z', 1, { qubit: 0 })]);
-    case 12: // D2 Φ-minus = Bell + Z
-      return solCircuit([...ghzGates(2), sg('Z', 2, { qubit: 0 })]);
-    case 13: // D3 i-GHZ-3 = GHZ-3 + S
-      return solCircuit([...ghzGates(3), sg('S', 3, { qubit: 0 })]);
-    case 14: // D4 minus GHZ-4 = GHZ-4 + Z
-      return solCircuit([...ghzGates(4), sg('Z', 4, { qubit: 0 })]);
-    case 15: // D5 i-GHZ-5 = GHZ-5 + S
-      return solCircuit([...ghzGates(5), sg('S', 5, { qubit: 0 })]);
-    // EXTRA.
-    case 16: // X1 magic-T = H·T
-      return solCircuit([sg('H', 0, { qubit: 0 }), sg('T', 1, { qubit: 0 })]);
-    case 17: // X3 Cascade = H q0; CH q0→q1; CX q1→q2
-      return solCircuit([
-        sg('H', 0, { qubit: 0 }),
-        sg('CH', 1, { control: 0, target: 1 }),
-        sg('CNOT', 2, { control: 1, target: 2 }),
-      ]);
-    case 18: // X5 golden GHZ = GHZ-5 + T
-      return solCircuit([...ghzGates(5), sg('T', 5, { qubit: 0 })]);
-    default:
-      throw new Error(`no solution for hole ${n}`);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// The course
+// The course (version 2, "the varied 18")
 // ---------------------------------------------------------------------------
 
 interface HoleDef {
-  round: GolfRound;
-  qubits: number;
-  name: string;
-  targetKet: string;
-  par: number;
+  readonly round: GolfRound;
+  readonly qubits: number;
+  /** English name — also the key of the hole's name and goal in `t.golf`. */
+  readonly name: string;
+  /** Display ket in the bra-ket line's convention: MSB-first, i.e. the
+   *  leftmost bit is the HIGHEST wire q(k−1), exactly as `KetDisplay` and the
+   *  Q-sphere label the same state. `golf.test.ts` re-derives the state from
+   *  this string and checks it against the target. */
+  readonly targetKet: string;
+  readonly par: number;
+  /**
+   * The reference solution, one gate per column on wires 0..k−1, in a tiny
+   * notation: `h0` = H on q0, `cx0,1` = CNOT control q0 → target q1,
+   * `ch0,1` = controlled-H. It is a SHORTEST circuit for the target (par − 2
+   * gates; `optimal.test.ts` proves nothing shorter exists), and it DEFINES the
+   * target: the hole asks for exactly the state this circuit prepares.
+   */
+  readonly solution: string;
 }
 
 const COURSE: readonly HoleDef[] = [
-  // EASY
-  { round: 'easy', qubits: 1, name: 'Superposition', targetKet: '(|0⟩+|1⟩)/√2', par: 3 },
-  { round: 'easy', qubits: 2, name: 'Bell', targetKet: '(|00⟩+|11⟩)/√2', par: 4 },
-  { round: 'easy', qubits: 3, name: 'GHZ-3', targetKet: '(|000⟩+|111⟩)/√2', par: 5 },
-  { round: 'easy', qubits: 4, name: 'GHZ-4', targetKet: '(|0000⟩+|1111⟩)/√2', par: 6 },
-  { round: 'easy', qubits: 5, name: 'GHZ-5', targetKet: '(|00000⟩+|11111⟩)/√2', par: 7 },
-  // MEDIUM
-  { round: 'medium', qubits: 1, name: 'Bit flip', targetKet: '|1⟩', par: 3 },
-  { round: 'medium', qubits: 2, name: 'Ψ-plus', targetKet: '(|01⟩+|10⟩)/√2', par: 5 },
-  { round: 'medium', qubits: 3, name: 'Flipped GHZ-3', targetKet: '(|001⟩+|110⟩)/√2', par: 6 },
-  { round: 'medium', qubits: 4, name: 'Flipped GHZ-4', targetKet: '(|0001⟩+|1110⟩)/√2', par: 7 },
-  { round: 'medium', qubits: 5, name: 'Flipped GHZ-5', targetKet: '(|00001⟩+|11110⟩)/√2', par: 8 },
-  // DIFFICULT
-  { round: 'difficult', qubits: 1, name: 'Minus', targetKet: '(|0⟩−|1⟩)/√2', par: 4 },
-  { round: 'difficult', qubits: 2, name: 'Φ-minus', targetKet: '(|00⟩−|11⟩)/√2', par: 5 },
-  { round: 'difficult', qubits: 3, name: 'i-GHZ-3', targetKet: '(|000⟩+i|111⟩)/√2', par: 6 },
-  { round: 'difficult', qubits: 4, name: 'Minus GHZ-4', targetKet: '(|0000⟩−|1111⟩)/√2', par: 7 },
-  { round: 'difficult', qubits: 5, name: 'i-GHZ-5', targetKet: '(|00000⟩+i|11111⟩)/√2', par: 8 },
-  // EXTRA-HARD
-  { round: 'extra', qubits: 1, name: 'Magic T', targetKet: '(|0⟩+ω|1⟩)/√2', par: 4 },
-  { round: 'extra', qubits: 3, name: 'Cascade', targetKet: '(√2|000⟩+|100⟩+|111⟩)/2', par: 5 },
-  { round: 'extra', qubits: 5, name: 'Golden GHZ', targetKet: '(|00000⟩+ω|11111⟩)/√2', par: 8 },
+  // EASY — X, H, CX. Plain positive superpositions, no phases.
+  { round: 'easy', qubits: 1, name: 'Superposition', targetKet: '(|0⟩+|1⟩)/√2', par: 3, solution: 'h0' },
+  { round: 'easy', qubits: 2, name: 'Bell', targetKet: '(|00⟩+|11⟩)/√2', par: 4, solution: 'h0 cx0,1' },
+  { round: 'easy', qubits: 3, name: 'Coin, flip, coin', targetKet: '|+⟩|1⟩|+⟩', par: 5, solution: 'h0 x1 h2' },
+  {
+    round: 'easy',
+    qubits: 4,
+    name: 'Two couples',
+    targetKet: '(|01⟩+|10⟩)(|00⟩+|11⟩)/2',
+    par: 7,
+    solution: 'h0 cx0,1 x2 h3 cx3,2',
+  },
+  {
+    round: 'easy',
+    qubits: 5,
+    name: 'GHZ-5',
+    targetKet: '(|00000⟩+|11111⟩)/√2',
+    par: 7,
+    solution: 'h0 cx0,1 cx0,2 cx0,3 cx0,4',
+  },
+  // MEDIUM — adds Y: a flip and a minus sign in one stroke.
+  { round: 'medium', qubits: 1, name: 'Minus', targetKet: '(|0⟩−|1⟩)/√2', par: 4, solution: 'x0 h0' },
+  { round: 'medium', qubits: 2, name: 'Singlet', targetKet: '(|01⟩−|10⟩)/√2', par: 5, solution: 'h0 cx0,1 y0' },
+  {
+    round: 'medium',
+    qubits: 3,
+    name: 'Singlet + coin',
+    targetKet: '|+⟩(|01⟩−|10⟩)/√2',
+    par: 6,
+    solution: 'h0 cx0,1 y0 h2',
+  },
+  {
+    round: 'medium',
+    qubits: 4,
+    name: 'Minus couples',
+    targetKet: '(|01⟩−|10⟩)(|00⟩−|11⟩)/2',
+    par: 8,
+    solution: 'x0 h0 cx0,1 h2 cx2,3 y2',
+  },
+  {
+    round: 'medium',
+    qubits: 5,
+    name: 'Odd one out',
+    targetKet: '(|00001⟩−|11110⟩)/√2',
+    par: 8,
+    solution: 'h0 cx0,1 cx0,2 cx0,3 cx0,4 y0',
+  },
+  // DIFFICULT — adds Z and S: quarter-turn (imaginary) phases.
+  { round: 'difficult', qubits: 1, name: 'i-coin', targetKet: '(|0⟩+i|1⟩)/√2', par: 4, solution: 'h0 s0' },
+  { round: 'difficult', qubits: 2, name: 'i-Bell', targetKet: '(|00⟩+i|11⟩)/√2', par: 5, solution: 'h0 cx0,1 s0' },
+  { round: 'difficult', qubits: 3, name: 'Rainbow', targetKet: '|i⟩|−⟩|+⟩', par: 7, solution: 'h0 x1 h1 h2 s2' },
+  {
+    round: 'difficult',
+    qubits: 4,
+    name: 'Twisted couples',
+    targetKet: '(|00⟩+i|11⟩)(|00⟩+i|11⟩)/2',
+    par: 8,
+    solution: 'h0 cx0,1 s0 h2 cx2,3 s2',
+  },
+  {
+    round: 'difficult',
+    qubits: 5,
+    name: 'Three-quarter GHZ',
+    targetKet: '(|00000⟩−i|11111⟩)/√2',
+    par: 9,
+    solution: 'h0 cx0,1 cx0,2 cx0,3 cx0,4 s0 z0',
+  },
+  // EXTRA — adds T and controlled-H: uneven odds.
+  {
+    round: 'extra',
+    qubits: 1,
+    name: 'Lopsided coin',
+    targetKet: 'sin(π/8)|0⟩+i·cos(π/8)|1⟩',
+    par: 6,
+    solution: 'x0 h0 t0 h0',
+  },
+  {
+    round: 'extra',
+    qubits: 3,
+    name: 'Cascade',
+    targetKet: '(√2|000⟩+|001⟩+|111⟩)/2',
+    par: 5,
+    solution: 'h0 ch0,1 cx1,2',
+  },
+  {
+    round: 'extra',
+    qubits: 5,
+    name: 'Waterfall',
+    targetKet: '(4|00000⟩+2√2|00001⟩+2|00011⟩+√2|00111⟩+|01111⟩+|11111⟩)/(4√2)',
+    par: 7,
+    solution: 'h0 ch0,1 ch1,2 ch2,3 ch3,4',
+  },
 ];
+
+/** Gate types of the solution notation (`cx` is the library's CNOT). */
+const SOLUTION_TYPES: Readonly<Record<string, GateType>> = {
+  h: 'H',
+  x: 'X',
+  y: 'Y',
+  z: 'Z',
+  s: 'S',
+  t: 'T',
+  cx: 'CNOT',
+  ch: 'CH',
+};
+
+/** Parse a solution string (see `HoleDef.solution`) into board gates, one per
+ *  column, left to right. Throws on a malformed token — the course is static
+ *  data, so a typo must fail loudly at load (and in every test), never draw. */
+function parseSolution(spec: string): Gate[] {
+  return spec.split(' ').map((tok, position) => {
+    const m = /^([a-z]+)(\d)(?:,(\d))?$/.exec(tok);
+    const type = m ? SOLUTION_TYPES[m[1]] : undefined;
+    if (!m || !type) throw new Error(`bad solution token "${tok}"`);
+    const controlled = m[3] !== undefined;
+    if (controlled !== (m[1] === 'cx' || m[1] === 'ch')) throw new Error(`bad wiring "${tok}"`);
+    return controlled
+      ? { id: `sol-${type}-${position}-${m[2]}`, type, position, control: Number(m[2]), target: Number(m[3]) }
+      : { id: `sol-${type}-${position}-${m[2]}`, type, position, qubit: Number(m[2]) };
+  });
+}
+
+/**
+ * The reference answer for classic hole `n` (#71) — a SHORTEST preparation of
+ * its target, i.e. exactly `par − 2` gates (par = minimum + 2, #69), so a
+ * player who fumbled to +4 can see the clean path. The S/T holes use the native
+ * S/T clubs; the printed tiles' RZ(π/2)/RZ(π/4) spelling holes in just as well
+ * (`bestFidelity` applies both), it is simply not what we draw.
+ */
+export function holeSolution(n: number): Circuit {
+  const def = COURSE[n - 1];
+  if (!def) throw new Error(`no solution for hole ${n}`);
+  return { qubits: NUM_QUBITS, gates: parseSolution(def.solution) };
+}
 
 /**
  * The one-letter code of each round — the letter its holes are numbered with
@@ -519,9 +453,15 @@ export const HOLES: readonly Hole[] = (() => {
   });
 })();
 
-// Precompute the target statevectors for every hole (keyed by hole number).
+/** Each classic hole's canonical target (on wires 0..k−1): the state its
+ *  reference solution prepares. Keyed by hole number. */
+const CANONICAL: Map<number, StateVector> = new Map(
+  HOLES.map((h) => [h.hole, statevector(h.solution!)]),
+);
+
+// Precompute every placement of every classic target (keyed by hole number).
 const TARGETS: Map<number, StateVector[]> = new Map(
-  HOLES.map((h) => [h.hole, buildTargets(h.qubits, holeSpec(h.hole, h.qubits))]),
+  HOLES.map((h) => [h.hole, orderedPlacements(h.qubits, CANONICAL.get(h.hole)!)]),
 );
 
 /** The hole's canonical target statevector (built on the lowest qubits) — the
@@ -530,11 +470,9 @@ const TARGETS: Map<number, StateVector[]> = new Map(
 export function holeTargetState(hole: Hole): StateVector {
   // Generated holes (random course) carry their own canonical target.
   if (hole.canonicalTarget) return hole.canonicalTarget;
-  const spec = holeSpec(hole.hole, hole.qubits);
-  return buildTarget(
-    Array.from({ length: hole.qubits }, (_, i) => i),
-    spec.families[0],
-  );
+  const canonical = CANONICAL.get(hole.hole);
+  if (!canonical) throw new Error(`no target for hole ${hole.hole}`);
+  return canonical.map((a) => ({ ...a }));
 }
 
 /** The canonical target's nonzero basis indices (built on the lowest qubits),
@@ -551,8 +489,8 @@ export function holeHighlight(hole: Hole): Set<number> {
 
 /**
  * Best fidelity of `circuit`'s state against a hole's target over every valid
- * placement (unordered subsets for symmetric targets, ordered arrangements for
- * asymmetric ones; a "family" hole tries each variant too).
+ * placement: every ORDERED arrangement of its k wires across the board, so a
+ * relabelled answer (any rows, any order) scores exactly like the canonical one.
  *
  * The D/X clubs S and T reach us either as native `S`/`T` gates (the on-screen
  * palette) or as RZ(π/2)/RZ(π/4) (the printed tiles 40/41 emit their RZ
@@ -826,7 +764,7 @@ export type GolfCourse = 'classic' | 'random';
 /**
  * How much of the course counts (#102) — the competition's scope.
  *
- * `'full'` is the round everyone knows: eighteen holes, par 101 on the classic
+ * `'full'` is the round everyone knows: eighteen holes, par 108 on the classic
  * course. The four others each play ONE round of the course as a competition in
  * its own right — five easy holes, or the three extra ones — with their own par,
  * their own clock and their own finish. A table of beginners can race the easy
@@ -1367,29 +1305,16 @@ function parseRecord(raw: string): Record<number, number> {
 }
 
 /**
- * Load per-hole best scores. Prefers the per-hole key; if only the legacy
- * per-LEVEL key is present, migrate it once (level N → hole N, i.e. E1..E5),
- * persist under the new key, and drop the old one.
+ * Load per-hole best scores of the CURRENT course version. Older keys
+ * (`GOLF_LEGACY_KEYS`) are ignored: their holes no longer exist, so a "best 3
+ * on hole 7" from the GHZ ladder would be a lie on today's hole 7. Missing or
+ * corrupt storage reads as no bests at all.
  */
 export function loadBest(storage?: ReadableStorage | null): Record<number, number> {
   if (!storage) return {};
   try {
-    const rawHoles = storage.getItem(GOLF_HOLES_KEY);
-    if (rawHoles) return parseRecord(rawHoles);
-    const rawLegacy = storage.getItem(GOLF_STORAGE_KEY);
-    if (rawLegacy) {
-      const legacy = parseRecord(rawLegacy);
-      const migrated: Record<number, number> = {};
-      // Level 1..5 map to holes 1..5 (E1..E5) one-for-one.
-      for (const [k, v] of Object.entries(legacy)) {
-        const level = Number(k);
-        if (level >= 1 && level <= 5) migrated[level] = v;
-      }
-      storage.setItem?.(GOLF_HOLES_KEY, JSON.stringify(migrated));
-      storage.removeItem?.(GOLF_STORAGE_KEY);
-      return migrated;
-    }
-    return {};
+    const raw = storage.getItem(GOLF_HOLES_KEY);
+    return raw ? parseRecord(raw) : {};
   } catch {
     return {};
   }

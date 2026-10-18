@@ -165,11 +165,11 @@ describe('golf in German', () => {
     await openApp('?mode=golf&input=manual', 'de');
     expect(screen.getByText(/Scorekarte · Leicht · Loch 1\/18/)).toBeTruthy();
     const goal = document.querySelector('.pk-golf-goal');
-    expect(goal?.textContent).toBe('Ziel: eine faire 50/50-Münze.');
+    expect(goal?.textContent).toBe('Ziel: eine faire 50/50-Münze – H ist dein erster Schläger.');
     expect(screen.getByText(/E1 — Überlagerung/)).toBeTruthy();
     expect(screen.getAllByText('Quanten-Golf').length).toBeGreaterThan(0);
     expect(screen.queryByText(/Scorecard ·/)).toBeNull();
-    expect(screen.queryByText('Goal: a fair 50/50 coin.')).toBeNull();
+    expect(screen.queryByText('Goal: a fair 50/50 coin — H is your first club.')).toBeNull();
     expect(screen.getByRole('button', { name: 'Klassische 18' })).toBeTruthy();
   });
 });
@@ -220,7 +220,7 @@ describe('the kiosk in German (?kiosk&lang=de)', () => {
     const { container } = renderKiosk();
     expect(screen.getByText(/Scorekarte · Leicht · Loch 1\/18/)).toBeTruthy();
     expect(container.querySelector('.bo-golf-goal')?.textContent).toBe(
-      'Ziel: eine faire 50/50-Münze.',
+      'Ziel: eine faire 50/50-Münze – H ist dein erster Schläger.',
     );
     expect(screen.getByText('Golf')).toBeTruthy();
     expect(screen.queryByText('golf')).toBeNull();

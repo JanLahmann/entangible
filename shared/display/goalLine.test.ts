@@ -8,15 +8,18 @@
  * shaped like a goal, and every SPECIFIC claim a template makes ("certain to
  * land on …", "always … or …", "N outcomes, all equally likely", no twist) is
  * re-checked against the state itself, so a template can be vague but never
- * wrong. Round 1 (Easy) is pinned word for word: it is the first thing a new
- * player reads.
+ * wrong. The classic course's holes show an AUTHORED line instead
+ * (`t.golf.holeGoals`, checked claim by claim in golfCourse.test.ts); their
+ * generated reading (`autoGoal`) is still swept here, so the templates keep
+ * being exercised on hand-made states.
  */
 import { describe, it, expect } from 'vitest';
 import { HOLES, holeTargetState, type Hole } from '@quantum/golf';
 import { generateCourse } from '@quantum/golfRandom';
 import { basisVisuals } from '@quantum/qsphere';
 import type { StateVector } from '@quantum/statevector';
-import { GOAL_FALLBACK, classifyGoal, goalSentence, holeGoal, renderGoal } from './goalLine';
+import { GOAL_FALLBACK, autoGoal, classifyGoal, goalSentence, holeGoal, renderGoal } from './goalLine';
+import { en } from '@shared/i18n/en';
 import { de } from '@shared/i18n/de';
 
 const R = Math.SQRT1_2;
@@ -142,7 +145,7 @@ describe('goalSentence — the families', () => {
 
   it('falls back honestly on unequal weights (the Cascade)', () => {
     const cascade = HOLES.find((h) => h.name === 'Cascade')!;
-    expect(holeGoal(cascade)).toBe(GOAL_FALLBACK);
+    expect(autoGoal(cascade)).toBe(GOAL_FALLBACK);
     expect(goalSentence(vec({ 0: c(Math.sqrt(0.8)), 1: c(Math.sqrt(0.2)) }), 1)).toBe(
       GOAL_FALLBACK,
     );
@@ -150,21 +153,31 @@ describe('goalSentence — the families', () => {
 });
 
 describe('goalSentence — totality over the built-in course', () => {
-  it('pins round 1 (Easy) word for word — the first lines a new player reads', () => {
+  it('shows the classic course its authored lines, in either language', () => {
+    for (const h of HOLES) {
+      expect(holeGoal(h), h.code).toBe(en.golf.holeGoals[h.name]);
+      expect(holeGoal(h, de), h.code).toBe(de.golf.holeGoals[h.name]);
+    }
+    expect(holeGoal(HOLES[0])).toBe('Goal: a fair 50/50 coin — H is your first club.');
+  });
+
+  it('pins the generated reading of round 1 (Easy) word for word', () => {
     const easy = HOLES.filter((h) => h.round === 'easy');
-    expect(easy.map((h) => [h.code, holeGoal(h)])).toEqual([
+    expect(easy.map((h) => [h.code, autoGoal(h)])).toEqual([
       ['E1', 'Goal: a fair 50/50 coin.'],
       ['E2', 'Goal: entangle the two balls so they always agree.'],
-      ['E3', 'Goal: entangle all 3 balls so they always agree.'],
-      ['E4', 'Goal: entangle all 4 balls so they always agree.'],
+      ['E3', 'Goal: 4 outcomes, all equally likely.'],
+      ['E4', 'Goal: 4 outcomes, all equally likely.'],
       ['E5', 'Goal: entangle all 5 balls so they always agree.'],
     ]);
   });
 
-  it('pins the medium round’s first two holes (the flip and the anti-Bell)', () => {
+  it('reads the medium round’s first two holes (the minus and the singlet)', () => {
     const [m1, m2] = HOLES.filter((h) => h.round === 'medium');
-    expect(holeGoal(m1)).toBe('Goal: make the ball certain to land on 1 — flip it.');
-    expect(holeGoal(m2)).toBe('Goal: entangle the two balls so they always disagree.');
+    expect(autoGoal(m1)).toBe('Goal: a fair 50/50 coin, plus a half-turn phase twist.');
+    expect(autoGoal(m2)).toBe(
+      'Goal: entangle the two balls so they always disagree, plus a half-turn phase twist.',
+    );
   });
 
   it('every hole of all four rounds gets a well-formed, honest sentence', () => {
@@ -173,15 +186,15 @@ describe('goalSentence — totality over the built-in course', () => {
       expect(HOLES.some((h) => h.round === round)).toBe(true);
     }
     for (const h of HOLES) {
-      const s = holeGoal(h);
+      const s = autoGoal(h);
       assertWellFormed(s);
       assertHonest(s, holeTargetState(h), h.qubits);
     }
   });
 
-  it('only the unequal-weight hole needs the fallback on the classic course', () => {
-    const fallbacks = HOLES.filter((h) => holeGoal(h) === GOAL_FALLBACK).map((h) => h.code);
-    expect(fallbacks).toEqual(['X3']);
+  it('only the uneven-odds holes (the extra round) need the fallback reading', () => {
+    const fallbacks = HOLES.filter((h) => autoGoal(h) === GOAL_FALLBACK).map((h) => h.code);
+    expect(fallbacks).toEqual(['X1', 'X3', 'X5']);
   });
 });
 
@@ -273,8 +286,8 @@ function assertWellFormedDe(sentence: string) {
 /** Both languages say the same thing: one classification, two renderings. */
 function assertSameReading(h: Hole) {
   const goal = classifyGoal(holeTargetState(h), h.qubits);
-  const enLine = holeGoal(h);
-  const deLine = holeGoal(h, de);
+  const enLine = autoGoal(h);
+  const deLine = autoGoal(h, de);
   expect(enLine).toBe(renderGoal(goal));
   expect(deLine).toBe(renderGoal(goal, de));
   expect(enLine === GOAL_FALLBACK).toBe(deLine === de.goal.fallback);
@@ -282,13 +295,13 @@ function assertSameReading(h: Hole) {
 }
 
 describe('goalSentence — German', () => {
-  it('pins round 1 (Easy) word for word in German', () => {
+  it('pins the generated reading of round 1 (Easy) word for word in German', () => {
     const easy = HOLES.filter((h) => h.round === 'easy');
-    expect(easy.map((h) => [h.code, holeGoal(h, de)])).toEqual([
+    expect(easy.map((h) => [h.code, autoGoal(h, de)])).toEqual([
       ['E1', 'Ziel: eine faire 50/50-Münze.'],
       ['E2', 'Ziel: beide Kugeln verschränken – sie landen immer gleich.'],
-      ['E3', 'Ziel: alle 3 Kugeln verschränken – sie landen immer gleich.'],
-      ['E4', 'Ziel: alle 4 Kugeln verschränken – sie landen immer gleich.'],
+      ['E3', 'Ziel: 4 Ergebnisse, alle gleich wahrscheinlich.'],
+      ['E4', 'Ziel: 4 Ergebnisse, alle gleich wahrscheinlich.'],
       ['E5', 'Ziel: alle 5 Kugeln verschränken – sie landen immer gleich.'],
     ]);
   });
@@ -330,7 +343,7 @@ describe('goalSentence — German', () => {
 
   it('every classic hole: well-formed, honest German from the same reading as English', () => {
     for (const h of HOLES) {
-      const s = holeGoal(h, de);
+      const s = autoGoal(h, de);
       assertWellFormedDe(s);
       assertHonestDe(s, holeTargetState(h), h.qubits);
       assertSameReading(h);

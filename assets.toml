@@ -60,7 +60,7 @@ formats = ["A4", "A3", "Letter"]
 [kit]                       # booth kit tile quantities — the one shared kit (32 tiles)
                             # the 3D beds print too (hardware KIT_BEDS); keep in step
 H = 5                       # five-qubit uniform superposition: an H on every wire
-X = 5                       # GHZ-5 targets (x4) + one spare for the flipped variants
+X = 5                       # GHZ-5 targets (x4) + one spare (golf M5/D5 need 4 + Y/S/Z)
 Y = 2
 Z = 2
 S = 2

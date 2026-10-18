@@ -232,7 +232,21 @@ export function goalSentence(target: StateVector, qubits: number, t: Messages = 
   return renderGoal(classifyGoal(target, qubits), t);
 }
 
-/** The goal line for a golf hole — `goalSentence` of its canonical target. */
+/**
+ * The goal line for a golf hole. A CLASSIC hole has an authored line
+ * (`t.golf.holeGoals`, by its English name) that also says what is new about
+ * the hole; a generated hole — or a classic one a language has no line for —
+ * reads `goalSentence` of its canonical target. Generated holes are told apart
+ * by the canonical target they carry, so a random hole can never borrow a
+ * classic hole's line through a shared name.
+ */
 export function holeGoal(hole: Hole, t: Messages = en): string {
+  const authored = hole.canonicalTarget ? undefined : t.golf.holeGoals[hole.name];
+  return authored ?? autoGoal(hole, t);
+}
+
+/** The generated goal line of a hole — `goalSentence` of its canonical target,
+ *  whatever course it is on (the classic course's authored lines aside). */
+export function autoGoal(hole: Hole, t: Messages = en): string {
   return goalSentence(holeTargetState(hole), hole.qubits, t);
 }

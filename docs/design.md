@@ -220,7 +220,8 @@ preset overrides the local setting while connected.
 ### Quantum Golf (as built)
 
 The golf engine lives in `shared/quantum/` (one implementation for standalone
-and booth): 18 holes in four club-unlock rounds, strokes counting adds *and*
+and booth): 18 holes in four club-unlock rounds (the Classic 18, one new
+idea per hole: [`golf-course.md`](golf-course.md)), strokes counting adds *and*
 removals, par = minimum + 2; random courses from a 32-bit seed with difficulty
 floors and club-necessity rules, shareable as `Course #…` codes / `?course=`
 links (course generation is a cooperative generator dealt asynchronously

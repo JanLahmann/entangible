@@ -74,10 +74,10 @@ describe('canonicalKey — states modulo global phase', () => {
 });
 
 describe('findOptimal — exact minima', () => {
-  it('needs one gate for |1⟩ and two for a Bell pair', () => {
-    const one = findOptimal(holeTargetState(hole(6)), EASY, 1, { maxDepth: 4 });
+  it('needs one gate for |+⟩ and two for a Bell pair', () => {
+    const one = findOptimal(holeTargetState(hole(1)), EASY, 1, { maxDepth: 4 });
     expect(one?.length).toBe(1);
-    expect(one?.[0].type).toBe('X');
+    expect(one?.[0].type).toBe('H');
 
     const bell = findOptimal(holeTargetState(hole(2)), EASY, 2, { maxDepth: 4 });
     expect(bell?.length).toBe(2);

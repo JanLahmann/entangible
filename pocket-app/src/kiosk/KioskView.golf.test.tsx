@@ -63,7 +63,7 @@ describe('KioskView golf mode', () => {
     // we pin that the kiosk golf well carries it at all.
     const goal = container.querySelector('.bo-golf-goal');
     expect(goal).not.toBeNull();
-    expect(goal!.textContent).toBe('Goal: a fair 50/50 coin.');
+    expect(goal!.textContent).toBe('Goal: a fair 50/50 coin — H is your first club.');
   });
 
   it('swaps out the composer panels for the golf sidebar', () => {

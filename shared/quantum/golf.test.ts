@@ -24,7 +24,8 @@ import {
   formatVsPar,
   loadBest,
   saveBest,
-  GOLF_STORAGE_KEY,
+  GOLF_LEGACY_KEYS,
+  GOLF_COURSE_VERSION,
   GOLF_HOLES_KEY,
   GOLF_REVEALED_KEY,
   holeScore,
@@ -94,15 +95,15 @@ describe('course definition', () => {
     ]);
   });
 
-  it('has the spec pars (minimum + 2) and a course par of 101', () => {
+  it('has the spec pars (minimum + 2) and a course par of 108', () => {
     expect(HOLES.map((h) => h.par)).toEqual([
-      3, 4, 5, 6, 7, // easy = 25
-      3, 5, 6, 7, 8, // medium = 29
-      4, 5, 6, 7, 8, // difficult = 30
-      4, 5, 8, // extra = 17
+      3, 4, 5, 7, 7, // easy = 26
+      4, 5, 6, 8, 8, // medium = 31
+      4, 5, 7, 8, 9, // difficult = 33
+      6, 5, 7, // extra = 18
     ]);
-    expect(HOLES.reduce((s, h) => s + h.par, 0)).toBe(101);
-    expect(COURSE_PAR).toBe(101);
+    expect(HOLES.reduce((s, h) => s + h.par, 0)).toBe(108);
+    expect(COURSE_PAR).toBe(108);
   });
 
   it('1-qubit holes play Bloch, the rest Q-sphere', () => {
@@ -180,11 +181,16 @@ describe('reachability — every published solution holes in', () => {
   });
 
   it('S and T tiles are equivalent to RZ(π/2)/RZ(π/4) (normalized)', () => {
-    // D3 with an RZ(π/2) instead of the S tile also holes in.
-    const rzHalf = circuit([...ghz(3), g('RZ', 3, { qubit: 0, parameter: Math.PI / 2 })]);
-    expect(evaluate(rzHalf, hole(13)).holedIn).toBe(true);
-    // X1 with an RZ(π/4) instead of the T tile also holes in.
-    const rzQuarter = circuit([g('H', 0, { qubit: 0 }), g('RZ', 1, { qubit: 0, parameter: Math.PI / 4 })]);
+    // D2 (i-Bell) with an RZ(π/2) instead of the S tile also holes in.
+    const rzHalf = circuit([...ghz(2), g('RZ', 2, { qubit: 0, parameter: Math.PI / 2 })]);
+    expect(evaluate(rzHalf, hole(12)).holedIn).toBe(true);
+    // X1 (lopsided coin) with an RZ(π/4) instead of the T tile also holes in.
+    const rzQuarter = circuit([
+      g('X', 0, { qubit: 0 }),
+      g('H', 1, { qubit: 0 }),
+      g('RZ', 2, { qubit: 0, parameter: Math.PI / 4 }),
+      g('H', 3, { qubit: 0 }),
+    ]);
     expect(evaluate(rzQuarter, hole(16)).holedIn).toBe(true);
   });
 
@@ -197,20 +203,21 @@ describe('reachability — every published solution holes in', () => {
   });
 });
 
-describe('phase discrimination — phase-blind circuits cannot hole D/X', () => {
-  it('a plain GHZ does not clear the relative-phase holes', () => {
-    // D3 i-GHZ-3, D5 i-GHZ-5, D4 minus GHZ-4, X5 golden GHZ-5.
-    expect(evaluate(circuit(ghz(3)), hole(13)).holedIn).toBe(false);
-    expect(evaluate(circuit(ghz(4)), hole(14)).holedIn).toBe(false);
-    expect(evaluate(circuit(ghz(5)), hole(15)).holedIn).toBe(false);
-    expect(evaluate(circuit(ghz(5)), hole(18)).holedIn).toBe(false);
-    // fidelity(GHZ, i-GHZ) is measurably below threshold (≈ 0.5).
-    expect(bestFidelity(circuit(ghz(3)), hole(13))).toBeLessThan(0.99);
-    expect(bestFidelity(circuit(ghz(5)), hole(18))).toBeLessThan(0.99);
-  });
-
-  it('a plain superposition does not clear the magic-T hole', () => {
-    expect(evaluate(circuit([g('H', 0, { qubit: 0 })]), hole(16)).holedIn).toBe(false);
+describe('same odds, different state — the colour decides (twin holes)', () => {
+  // E1/M1/D1 are all fair coins, E2/D2 and E4/M4 share their histograms: only
+  // the phase (the Q-sphere colour) tells them apart, and fidelity must too.
+  const twins: [number, number][] = [
+    [1, 6], [1, 11], [6, 11], // |+⟩, |−⟩, |i⟩
+    [2, 12], // Φ+ vs i-Bell
+    [4, 9], // two couples vs minus couples
+    [5, 15], // GHZ-5 vs −i GHZ-5
+  ];
+  it('a twin\'s answer never holes the other twin in', () => {
+    for (const [a, b] of twins) {
+      expect(evaluate(refCircuit(a), hole(b)).holedIn, `${hole(a).code} on ${hole(b).code}`).toBe(false);
+      expect(evaluate(refCircuit(b), hole(a)).holedIn, `${hole(b).code} on ${hole(a).code}`).toBe(false);
+      expect(bestFidelity(refCircuit(a), hole(b))).toBeLessThan(0.9);
+    }
   });
 
   it('a bare H does not clear the Bell hole', () => {
@@ -236,22 +243,36 @@ describe('Cascade (X3) exact amplitudes', () => {
   });
 });
 
-describe('flip families accept any single-qubit flip', () => {
-  it('M3 clears with the odd qubit in any position', () => {
-    for (const flipped of [0, 1, 2]) {
-      const c = circuit([...ghz(3), g('X', 3, { qubit: flipped })]);
-      expect(evaluate(c, hole(8)).holedIn, `flip q${flipped}`).toBe(true);
+describe('relabelling is free — any wires, any order', () => {
+  it('E3 (coin, flip, coin) clears with the sure 1 on any wire', () => {
+    for (const one of [0, 1, 2, 3, 4]) {
+      const coins = [0, 1, 2, 3, 4].filter((q) => q !== one).slice(0, 2);
+      const c = circuit([
+        g('X', 0, { qubit: one }),
+        g('H', 1, { qubit: coins[0] }),
+        g('H', 2, { qubit: coins[1] }),
+      ]);
+      expect(evaluate(c, hole(3)).holedIn, `the 1 on q${one}`).toBe(true);
     }
-    // But a plain GHZ-3 (no flip) does NOT clear M3.
-    expect(evaluate(circuit(ghz(3)), hole(8)).holedIn).toBe(false);
+    // Three coins (no flip) do NOT clear it.
+    const threeCoins = circuit([0, 1, 2].map((q) => g('H', q, { qubit: q })));
+    expect(evaluate(threeCoins, hole(3)).holedIn).toBe(false);
+  });
+
+  it('M5 (odd one out) clears with any ball as the odd one', () => {
+    for (const odd of [0, 1, 2, 3, 4]) {
+      const c = circuit([...ghz(5), g('Y', 5, { qubit: odd })]);
+      expect(evaluate(c, hole(10)).holedIn, `odd q${odd}`).toBe(true);
+    }
+    expect(evaluate(circuit(ghz(5)), hole(10)).holedIn).toBe(false);
   });
 });
 
 describe('holeHighlight', () => {
   it('names the canonical target basis states on the lowest qubits', () => {
-    expect(holeHighlight(hole(3))).toEqual(new Set([0, 7])); // GHZ-3: |000⟩,|111⟩
-    expect(holeHighlight(hole(6))).toEqual(new Set([1])); // |1⟩ on q0
-    expect(holeHighlight(hole(7))).toEqual(new Set([1, 2])); // Ψ-plus |01⟩,|10⟩
+    expect(holeHighlight(hole(2))).toEqual(new Set([0, 3])); // Bell: |00⟩,|11⟩
+    expect(holeHighlight(hole(3))).toEqual(new Set([2, 3, 6, 7])); // |+⟩|1⟩|+⟩: q1 = 1
+    expect(holeHighlight(hole(7))).toEqual(new Set([1, 2])); // singlet |01⟩,|10⟩
     expect(holeHighlight(hole(17))).toEqual(new Set([0, 1, 7])); // Cascade
   });
 });
@@ -472,45 +493,45 @@ describe('cumulative strokes per hole (#68)', () => {
     // Deliberate: the tile stabiliser upstream already hysteresis-filters, so a
     // gate that disappears and comes back is a REAL table event, worth a delete
     // plus an add. No extra debouncing lives in the engine.
-    let step = golfStep(holeState(3), circuit(ghz(3)));
-    expect(step.strokes).toBe(3);
-    expect(step.justHoledIn).toBe(true);
-    expect(step.state.best[3]).toBe(3);
-
-    // Replay the same hole: a flicker mid-build costs two strokes.
-    let state = golfStep(step.state, empty).state; // clear → advance to hole 4
-    state = { ...state, levelIndex: 2, holedIn: false }; // back on hole 3
-    step = golfStep(state, circuit(ghz(2)));
-    expect(step.strokes).toBe(2);
-    step = golfStep(step.state, circuit([g('H', 0, { qubit: 0 })])); // CNOT occluded
-    expect(step.strokes).toBe(3);
-    step = golfStep(step.state, circuit(ghz(2))); // … and back
-    expect(step.strokes).toBe(4);
-    step = golfStep(step.state, circuit(ghz(3)));
+    let step = golfStep(holeState(5), circuit(ghz(5)));
     expect(step.strokes).toBe(5);
     expect(step.justHoledIn).toBe(true);
-    expect(step.scoreName).toBe('PAR'); // par 5 (min 3 + 2), five strokes
-    expect(step.state.best[3]).toBe(3); // the flicker-free run keeps the best
+    expect(step.state.best[5]).toBe(5);
+
+    // Replay the same hole: a flicker mid-build costs two strokes.
+    let state = golfStep(step.state, empty).state; // clear → advance to hole 6
+    state = { ...state, levelIndex: 4, holedIn: false }; // back on hole 5
+    step = golfStep(state, circuit(ghz(4)));
+    expect(step.strokes).toBe(4);
+    step = golfStep(step.state, circuit(ghz(3))); // a CNOT occluded
+    expect(step.strokes).toBe(5);
+    step = golfStep(step.state, circuit(ghz(4))); // … and back
+    expect(step.strokes).toBe(6);
+    step = golfStep(step.state, circuit(ghz(5)));
+    expect(step.strokes).toBe(7);
+    expect(step.justHoledIn).toBe(true);
+    expect(step.scoreName).toBe('PAR'); // par 7 (min 5 + 2), seven strokes
+    expect(step.state.best[5]).toBe(5); // the flicker-free run keeps the best
   });
 
   it('keeps counting through a mid-hole wipe (#73), and resets on the restart', () => {
-    let step = golfStep(holeState(3), circuit(ghz(2)));
+    let step = golfStep(holeState(5), circuit(ghz(2)));
     expect(step.strokes).toBe(2);
     // Sweeping the board without holing in is neither an advance nor a do-over:
     // the two tiles lifted are two more strokes, and the hole plays on.
     step = golfStep(step.state, empty);
     expect(step.advanced).toBe(false);
-    expect(step.state.levelIndex).toBe(2);
+    expect(step.state.levelIndex).toBe(4);
     expect(step.strokes).toBe(4);
     expect(step.state.strokes).toBe(4);
     expect(step.state.gateKeys).toEqual({});
 
     // Rebuilding from the swept board keeps adding to the same card, so a
     // player cannot wipe an expensive hole clean by starting over.
-    step = golfStep(step.state, circuit(ghz(3)));
-    expect(step.strokes).toBe(7);
+    step = golfStep(step.state, circuit(ghz(5)));
+    expect(step.strokes).toBe(9);
     expect(step.justHoledIn).toBe(true);
-    expect(step.state.best[3]).toBe(7);
+    expect(step.state.best[5]).toBe(9);
 
     // The complete screen: tiles sitting on it cost nothing, the restart is clean.
     const done = { ...initialGolfState({ 1: 1 }), levelIndex: 17, complete: true };
@@ -652,23 +673,37 @@ describe('best persistence + migration', () => {
     expect(storage._map.has(GOLF_HOLES_KEY)).toBe(true);
   });
 
-  it('migrates the legacy per-level best into E1..E5 and drops the old key', () => {
-    const storage = fakeStorage({ [GOLF_STORAGE_KEY]: JSON.stringify({ 1: 1, 3: 3, 5: 5 }) });
-    const best = loadBest(storage);
-    expect(best).toEqual({ 1: 1, 3: 3, 5: 5 }); // levels 1/3/5 → holes E1/E3/E5
-    // Persisted under the new key, old key removed.
-    expect(storage._map.has(GOLF_HOLES_KEY)).toBe(true);
-    expect(storage._map.has(GOLF_STORAGE_KEY)).toBe(false);
-    // A second load reads the migrated key unchanged.
-    expect(loadBest(storage)).toEqual({ 1: 1, 3: 3, 5: 5 });
+  it('keys bests and reveals by the course version', () => {
+    expect(GOLF_COURSE_VERSION).toBe(2);
+    expect(GOLF_HOLES_KEY).toBe('entangible.pocket.golf.v2.holes');
+    expect(GOLF_REVEALED_KEY).toBe('entangible.pocket.golf.v2.revealed');
+    expect(GOLF_LEGACY_KEYS).not.toContain(GOLF_HOLES_KEY);
+    expect(GOLF_LEGACY_KEYS).not.toContain(GOLF_REVEALED_KEY);
   });
 
-  it('prefers the per-hole key over a stale legacy key', () => {
+  it('ignores every older course\'s records — they belong to holes that are gone', () => {
+    // Version 1's per-hole bests/reveals and the 5-level course's per-level
+    // bests, as a device that played them still holds them.
     const storage = fakeStorage({
-      [GOLF_HOLES_KEY]: JSON.stringify({ 12: 3 }),
-      [GOLF_STORAGE_KEY]: JSON.stringify({ 1: 1 }),
+      'entangible.pocket.golf': JSON.stringify({ 1: 1, 3: 3 }),
+      'entangible.pocket.golf.holes': JSON.stringify({ 1: 1, 7: 3, 17: 3 }),
+      'entangible.pocket.golf.revealed': JSON.stringify({ 2: true }),
     });
-    expect(loadBest(storage)).toEqual({ 12: 3 });
+    expect(loadBest(storage)).toEqual({});
+    expect(loadRevealed(storage)).toEqual({});
+    // Nothing is migrated, rewritten or deleted.
+    expect([...storage._map.keys()].sort()).toEqual([...GOLF_LEGACY_KEYS].sort());
+    // Corrupt legacy data cannot crash a load either.
+    const junk = fakeStorage(Object.fromEntries(GOLF_LEGACY_KEYS.map((k) => [k, '{ nope'])));
+    expect(loadBest(junk)).toEqual({});
+    expect(loadRevealed(junk)).toEqual({});
+  });
+
+  it('a new best lands beside the old records, never on top of them', () => {
+    const storage = fakeStorage({ 'entangible.pocket.golf.holes': JSON.stringify({ 1: 1 }) });
+    saveBest(storage, { 1: 3 });
+    expect(loadBest(storage)).toEqual({ 1: 3 });
+    expect(storage._map.get('entangible.pocket.golf.holes')).toBe(JSON.stringify({ 1: 1 }));
   });
 
   it('tolerates missing / corrupt storage', () => {
@@ -763,16 +798,17 @@ describe('the price of the mid-hole reveal (#99)', () => {
 describe('the empty board is scored like any circuit (#12)', () => {
   const holeState = (n: number) => ({ ...initialGolfState(), levelIndex: n - 1 });
 
-  it('|0…0⟩ reports its real fidelity: 50 % on E1, Bell (E2) and the GHZ holes', () => {
+  it('|0…0⟩ reports its real fidelity: 50 % on E1, E2, E5; 0 where a wire must be 1', () => {
+    const expected = [0.5, 0.5, 0, 0, 0.5]; // E3 and E4 carry a certain / paired 1
     for (const n of [1, 2, 3, 4, 5]) {
       const ev = evaluate(empty, hole(n));
-      expect(ev.fidelity, hole(n).code).toBeCloseTo(0.5, 12);
+      expect(ev.fidelity, hole(n).code).toBeCloseTo(expected[n - 1], 12);
       expect(ev.holedIn).toBe(false);
       expect(ev.gateCount).toBe(0);
       // Tee-off through the engine: the step reports the same number.
-      expect(golfStep(holeState(n), empty).fidelity, hole(n).code).toBeCloseTo(0.5, 12);
+      expect(golfStep(holeState(n), empty).fidelity, hole(n).code).toBeCloseTo(expected[n - 1], 12);
     }
-    expect(evaluate(empty, hole(6)).fidelity).toBeCloseTo(0, 12); // M1 |1⟩: orthogonal
+    expect(evaluate(empty, hole(10)).fidelity).toBeCloseTo(0, 12); // M5: orthogonal
   });
 
   it('after a mid-hole sweep and after a wipe the board reads |0…0⟩ again', () => {
@@ -982,7 +1018,7 @@ describe('per-round competition scope (#102)', () => {
     const pars = (['easy', 'medium', 'difficult', 'extra'] as const).map((s) =>
       coursePar(scopeHoles(HOLES, s)),
     );
-    expect(pars).toEqual([25, 29, 30, 17]);
+    expect(pars).toEqual([26, 31, 33, 18]);
     expect(pars.reduce((a, b) => a + b, 0)).toBe(COURSE_PAR);
     expect(coursePar(scopeHoles(HOLES, 'full'))).toBe(COURSE_PAR);
   });
@@ -1013,7 +1049,7 @@ describe('per-round competition scope (#102)', () => {
     // The card's result is the scope's: three holes against the extra par.
     const totals = courseTotals(state.best, scopeHoles(HOLES, 'extra'));
     expect(totals.completed).toBe(3);
-    expect(totals.par).toBe(17);
+    expect(totals.par).toBe(18);
   });
 
   it('restarts a scoped round on the scope’s own first hole', () => {

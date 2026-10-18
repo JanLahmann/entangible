@@ -272,7 +272,7 @@ export const guideDe: GuideProse = {
           Stell <b>Einstellungen → Modus → Quanten-Golf</b> ein, und jedes Loch gibt dir einen
           Zustand zum Nachbauen. Achtzehn Löcher in vier Runden, und jede Runde bringt neue
           Schläger <i>und</i> eine neue Idee: <b>Leicht</b> spielt mit X, H und CX (Überlagerung,
-          Bell, GHZ); <b>Mittel</b> bringt <b>Y</b> und damit Minuszeichen; <b>Schwer</b> bringt{' '}
+          Bell-Paare, getrennte Kugeln, GHZ); <b>Mittel</b> bringt <b>Y</b> und damit Minuszeichen; <b>Schwer</b> bringt{' '}
           <b>Z</b> und <b>S</b> für imaginäre Phasen; <b>Bonus</b> bringt <b>T</b> und{' '}
           <b>gesteuertes H</b> für Achtel-Phasendrehungen und ungleiche Aufteilungen.
         </p>

@@ -19,17 +19,51 @@
  * language behind one typed interface.
  */
 
-/** Golf hole names on the classic course, by their English name (#70). */
+/** Golf hole names on the classic course, by their English name (#70) — only
+ *  the ones a language spells differently; the rest show as named. */
 const HOLE_NAMES: Record<string, string> = {
   Superposition: 'Superposition',
-  'Bit flip': 'Bit flip',
-  'Flipped GHZ-3': 'Flipped GHZ-3',
-  'Flipped GHZ-4': 'Flipped GHZ-4',
-  'Flipped GHZ-5': 'Flipped GHZ-5',
-  'Minus GHZ-4': 'Minus GHZ-4',
-  'Magic T': 'Magic T',
+  'Coin, flip, coin': 'Coin, flip, coin',
+  'Two couples': 'Two couples',
+  Singlet: 'Singlet',
+  'Singlet + coin': 'Singlet + coin',
+  'Minus couples': 'Minus couples',
+  'Odd one out': 'Odd one out',
+  'i-coin': 'i-coin',
+  Rainbow: 'Rainbow',
+  'Twisted couples': 'Twisted couples',
+  'Three-quarter GHZ': 'Three-quarter GHZ',
+  'Lopsided coin': 'Lopsided coin',
   Cascade: 'Cascade',
-  'Golden GHZ': 'Golden GHZ',
+  Waterfall: 'Waterfall',
+};
+
+/**
+ * The goal line of each CLASSIC hole, by its English name: what the hole asks
+ * for and what is NEW about it, on one phone line. Like the generated goal line
+ * (shared/display/goalLine.ts) it may be vague but never wrong: golf.test.ts
+ * checks every bitstring, percentage, sign and phase a line names against the
+ * hole's target, in both languages. Random holes keep the generated line.
+ */
+const HOLE_GOALS: Record<string, string> = {
+  Superposition: 'Goal: a fair 50/50 coin — H is your first club.',
+  Bell: 'Goal: entangle two balls so they always agree.',
+  'Coin, flip, coin': 'Goal: coin, sure 1, coin — no entanglement needed.',
+  'Two couples': 'Goal: two separate pairs — one agrees, one disagrees.',
+  'GHZ-5': 'Goal: entangle all 5 balls — always 00000 or 11111.',
+  Minus: 'Goal: 50/50 like E1, but with a minus sign.',
+  Singlet: 'Goal: always disagree, with a minus — try Y.',
+  'Singlet + coin': 'Goal: a singlet pair plus a separate fair coin.',
+  'Minus couples': 'Goal: same odds as E4 — but both couples get a minus.',
+  'Odd one out': 'Goal: one ball against the other four, with a minus.',
+  'i-coin': 'Goal: 50/50 like E1, but a quarter-turn phase (S).',
+  'i-Bell': 'Goal: a Bell pair with a quarter-turn phase on 11.',
+  Rainbow: 'Goal: three free coins with three different phases.',
+  'Twisted couples': 'Goal: two i-twisted couples — i times i makes −1.',
+  'Three-quarter GHZ': 'Goal: entangle all 5 with a three-quarter turn (−i).',
+  'Lopsided coin': 'Goal: an unfair coin — about 85 % on 1.',
+  Cascade: 'Goal: uneven odds — 50 % 000, 25 % 001, 25 % 111.',
+  Waterfall: 'Goal: each step half as likely — 50, 25, 12.5 … %.',
 };
 
 export const en = {
@@ -299,6 +333,7 @@ export const en = {
       over: (vsPar: string, time: string) => `Course complete — ${vsPar}${time}.`,
     },
     holeNames: HOLE_NAMES,
+    holeGoals: HOLE_GOALS,
     randomHole: (code: string) => `Random ${code}`,
     // The pocket golf sidebar.
     course: 'Course',
@@ -749,7 +784,7 @@ export const en = {
     rulesTitle: 'How to play',
     rules: [
       'Each hole hands you a target quantum state, drawn on the sphere as dashed rings. Build a circuit that makes it: tap a gate under the sphere to pick it, then tap an empty cell of the circuit to place it — or the thin line between two steps to insert it there. For CX and CH tap the control (●), then one of the lit target cells (⊕). The gate stays picked for the next tap; tap it again to put it down. With no gate picked, tap a placed gate to select it: Delete removes it, another gate replaces it. ↶ undoes the last change. At 99 % fidelity the ball is in.',
-      'Eighteen holes in four rounds, and every round unlocks new clubs and a new idea: Easy plays with X, H and CX (superposition, Bell, GHZ); Medium adds Y and, with it, minus signs; Difficult adds Z and S for imaginary phases; Extra adds T and controlled-H.',
+      'Eighteen holes in four rounds, and every round unlocks new clubs and a new idea: Easy plays with X, H and CX (superposition, Bell pairs, separate balls, GHZ); Medium adds Y and, with it, minus signs; Difficult adds Z and S for imaginary phases; Extra adds T and controlled-H.',
       'Every gate you add or remove counts a stroke — replacing one counts two, like swapping a tile. Par carries a two-stroke margin: build the hole in the fewest gates for an EAGLE, one more for a BIRDIE. Clear starts a hole over for a single stroke.',
       'Stuck? Show solution draws a short circuit that builds the target — free once the ball is in, and offered mid-hole after a few strokes over par or a minute, at the price of double par.',
       'Tap any chip on the scorecard to play that hole. Random 18 deals a fresh course with a code: the same code deals the same eighteen holes on any device.',

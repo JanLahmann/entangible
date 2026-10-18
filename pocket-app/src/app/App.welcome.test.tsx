@@ -175,9 +175,9 @@ describe('golf goal line — mode × setting sweep', () => {
   ])('%s → the hole-1 goal under the target', async (search) => {
     await openApp(search);
     const goal = document.querySelector('.pk-golf-goal');
-    expect(goal?.textContent).toBe('Goal: a fair 50/50 coin.');
+    expect(goal?.textContent).toBe('Goal: a fair 50/50 coin — H is your first club.');
     // The full sentence rides along as the tooltip for the ellipsized line.
-    expect(goal?.getAttribute('title')).toBe('Goal: a fair 50/50 coin.');
+    expect(goal?.getAttribute('title')).toBe('Goal: a fair 50/50 coin — H is your first club.');
     // It sits with the target, in the sphere's well.
     expect(goal?.closest('.pk-side-hero')).not.toBeNull();
   });

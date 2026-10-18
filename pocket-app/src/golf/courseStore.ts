@@ -7,8 +7,8 @@
  * so the bundle never reads or writes the site's whole settings object (mode,
  * camera, booth link …), none of which exists here. The per-hole bests and the
  * paid-for reveals use the SITE's keys through the shared engine
- * (`entangible.pocket.golf.holes`, `entangible.pocket.golf.revealed`) — same
- * logic, same migration; in the iOS app the bundle's origin is its own, so the
+ * (`entangible.pocket.golf.v2.holes`, `entangible.pocket.golf.v2.revealed`) — same
+ * logic, same course versioning; in the iOS app the bundle's origin is its own, so the
  * two never meet anyway (docs/golf-bundle.md "Storage").
  *
  * `?course=<code>` / `&scope=<E|M|D|X>` in the page URL override the stored

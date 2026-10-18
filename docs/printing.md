@@ -50,7 +50,9 @@ one of every design, on purpose:
   under it in the same column, so an `X` below a `●` *is* the ⊕.
 - **No fixed-angle rotation tiles.** The dial tiles cover every angle.
 - **Sized for the demos:** GHZ-5 (`●` ×4 over `X` ×4, plus a spare `X`), the
-  five-qubit uniform superposition (`H` ×5) and Cascade.
+  five-qubit uniform superposition (`H` ×5), and every Classic 18 golf hole —
+  the tightest, the Waterfall, takes all five `H` and all four `●`
+  ([`golf-course.md`](golf-course.md#physical-kit-check-booth-mat)).
 
 The `sample` sheets still carry one of every gate, the target and the twelve
 fixed-angle rotations included. A quantity of `0` in `[kit]` simply leaves that

@@ -94,17 +94,17 @@ describe('BlochView labels', () => {
   });
 
   it('hole targets map to the expected flag directions (#65)', () => {
-    // M1 |1⟩ → south pole; E1 |+⟩ → +x; D1 |−⟩ → −x; X1 magic-T → equator at 45°.
+    // E1 |+⟩ → +x; M1 |−⟩ → −x; D1 |i⟩ → +y; X1 lopsided coin → tipped 45° below +y.
     const vecFor = (hole: number) => blochVector(holeTargetState(HOLES[hole - 1]), 0);
     const close = (v: { x: number; y: number; z: number }, e: [number, number, number]) => {
       expect(v.x).toBeCloseTo(e[0], 5);
       expect(v.y).toBeCloseTo(e[1], 5);
       expect(v.z).toBeCloseTo(e[2], 5);
     };
-    close(vecFor(6), [0, 0, -1]); // M1 |1⟩
     close(vecFor(1), [1, 0, 0]); // E1 |+⟩
-    close(vecFor(11), [-1, 0, 0]); // D1 |−⟩
+    close(vecFor(6), [-1, 0, 0]); // M1 |−⟩
+    close(vecFor(11), [0, 1, 0]); // D1 |i⟩
     const r = Math.SQRT1_2;
-    close(vecFor(16), [r, r, 0]); // X1 (|0⟩+e^{iπ/4}|1⟩)/√2
+    close(vecFor(16), [0, r, -r]); // X1 sin(π/8)|0⟩ + i·cos(π/8)|1⟩
   });
 });

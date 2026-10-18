@@ -103,6 +103,8 @@ function editorPlay(hole: number, boards: Gate[][]) {
 const H0: Gate = { id: 'e-h', type: 'H', qubit: 0, position: 0 };
 const CX01: Gate = { id: 'e-cx', type: 'CNOT', control: 0, target: 1, position: 1 };
 const CX12: Gate = { id: 'e-cx2', type: 'CNOT', control: 1, target: 2, position: 2 };
+const CX23: Gate = { id: 'e-cx3', type: 'CNOT', control: 2, target: 3, position: 3 };
+const CX34: Gate = { id: 'e-cx4', type: 'CNOT', control: 3, target: 4, position: 4 };
 
 describe('TapPlay — clubs and tool', () => {
   it('a 1-qubit hole: its clubs, CX shown but not playable, one row of empty cells', async () => {
@@ -178,8 +180,8 @@ describe('TapPlay — playing holes by taps scores like the editor', () => {
     expect(screen.getByRole('button', { name: 'Qubit 0, step 1, empty: place CX control' })).toBeTruthy();
   });
 
-  it('E3 (GHZ-3): the CX tool stays picked for a chain — control, target, control, target', async () => {
-    await mount(3);
+  it('E5 (GHZ-5): the CX tool stays picked for a chain — control, target, control, target', async () => {
+    await mount(5);
     tap('H gate');
     tap('Qubit 0, step 1, empty: place H');
     tap('CX gate');
@@ -187,15 +189,27 @@ describe('TapPlay — playing holes by taps scores like the editor', () => {
     tap('Qubit 1, step 2: place CX target');
     tap('Qubit 1, step 3, empty: place CX control');
     tap('Qubit 2, step 3: place CX target');
+    tap('Qubit 2, step 4, empty: place CX control');
+    tap('Qubit 3, step 4: place CX target');
+    tap('Qubit 3, step 5, empty: place CX control');
+    tap('Qubit 4, step 5: place CX target');
     expect(board()).toEqual([
       ['H', 0, null, null, 0],
       ['CNOT', null, 0, 1, 1],
       ['CNOT', null, 1, 2, 2],
+      ['CNOT', null, 2, 3, 3],
+      ['CNOT', null, 3, 4, 4],
     ]);
     expect(live.game!.state.holedIn).toBe(true);
-    const editor = editorPlay(3, [[H0], [H0, CX01], [H0, CX01, CX12]]);
+    const editor = editorPlay(5, [
+      [H0],
+      [H0, CX01],
+      [H0, CX01, CX12],
+      [H0, CX01, CX12, CX23],
+      [H0, CX01, CX12, CX23, CX34],
+    ]);
     expect(strokes()).toBe(editor.strokes);
-    expect(strokes()).toBe(3);
+    expect(strokes()).toBe(5);
   });
 
   it('inserts a column mid-circuit through the gap strip (1 stroke)', async () => {
@@ -340,7 +354,8 @@ describe('TapPlay — the empty board and a new hole (#12)', () => {
     expect(live.game!.currentLevel.hole).toBe(3);
     expect(pressed('CX gate')).toBe('false');
     expect(screen.getByRole('button', { name: 'Qubit 0, step 1, empty' })).toBeTruthy();
-    expect(scoreLine()).toMatch(/fidelity 50\.0%/);
+    // E3 (coin, flip, coin) needs a sure 1: the empty board shares nothing with it.
+    expect(scoreLine()).toMatch(/fidelity 0\.0%/);
   });
 
   it('(E1 too) Next hole by the game’s own advance', async () => {
