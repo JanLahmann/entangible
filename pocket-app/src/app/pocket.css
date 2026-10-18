@@ -3836,8 +3836,9 @@ body,
   --cell: 44px;
   --colgap: 8px;
   --label: 1.6rem;
+  --rowgap: 4px;
   display: grid;
-  row-gap: 4px;
+  row-gap: var(--rowgap);
   width: max-content;
   padding: 2px 4px 2px 0;
 }
@@ -3899,17 +3900,17 @@ body,
 
 .pk-tapgrid-cell.v-down::after {
   top: 50%;
-  bottom: -4px;
+  bottom: calc(-1 * var(--rowgap));
 }
 
 .pk-tapgrid-cell.v-up::after {
-  top: -4px;
+  top: calc(-1 * var(--rowgap));
   bottom: 50%;
 }
 
 .pk-tapgrid-cell.v-full::after {
-  top: -4px;
-  bottom: -4px;
+  top: calc(-1 * var(--rowgap));
+  bottom: calc(-1 * var(--rowgap));
 }
 
 .pk-tapgrid-mark {
@@ -4107,6 +4108,24 @@ body,
   .pk-main--golf-manual .pk-stage {
     display: none;
   }
+
+  /* "Next hole" floats over the bottom of the sphere panel (the goal line and
+     the scrubber row — the hole is done) instead of growing the panel, so
+     holing in never pushes it, or the grid, below the fold. */
+  .pk-side-hero.has-gatebar .pk-well {
+    position: relative;
+  }
+
+  .pk-side-hero.has-gatebar .pk-golf-next--sphere {
+    position: absolute;
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: 0.5rem;
+    z-index: 3;
+    width: auto;
+    margin: 0;
+    min-height: 44px;
+  }
 }
 
 /* Portrait phone: sphere, clubs, grid and score as one screen. The hero is
@@ -4132,10 +4151,55 @@ body,
     font-size: 0.74rem;
   }
 
+  /* Tighter vertical rhythm under the sphere. */
+  .pk-side-hero.has-gatebar .pk-well {
+    padding: 0.45rem 0.6rem;
+  }
+
+  .pk-side-hero.has-gatebar .pk-evo {
+    gap: 0.2rem;
+  }
+
+  .pk-side-hero.has-gatebar .pk-golf-goal {
+    margin-top: 0.2rem;
+  }
+
+  .pk-side-hero > .pk-gatebar {
+    gap: 0.3rem;
+  }
+
+  .pk-gatebar .pk-tapgrid {
+    --rowgap: 2px;
+  }
+
+  /* The sphere takes what the screen has left: the viewport minus everything
+     else on it (toolbar or header, panel chrome, kets, scrubber, clubs,
+     buttons — measured, --tap-fixed) minus the grid (--rows × 46 px, set by
+     GolfBoard). So a 5-qubit hole fits a 390×680 web view (the iOS app) with
+     a smaller sphere, and a 1-qubit hole keeps a big one. Floor 84 px, cap
+     min(52vw, 22vh). Measured on the golf bundle (its slim toolbar); the
+     site's header is taller, so there a 5-qubit hole may scroll a little. */
+  .pk-side-hero.has-gatebar {
+    --tap-fixed: 330px;
+  }
+
   .pk-side-hero.has-gatebar .pk-qs-svg,
   .pk-side-hero.has-gatebar .pk-qsphere-svg,
   .pk-side-hero.has-gatebar .pk-bl-svg {
-    max-width: min(52vw, 20vh);
+    max-width: clamp(84px, calc(100vh - var(--tap-fixed) - var(--rows, 1) * 46px), min(52vw, 22vh));
+    max-width: clamp(84px, calc(100dvh - var(--tap-fixed) - var(--rows, 1) * 46px), min(52vw, 22vh));
+  }
+}
+
+/* Narrowest phones (iPhone SE, 375 px): the score stacks into the button
+   row's own 44 px height instead of wrapping onto a line of its own. */
+@media (max-width: 380px) {
+  .pk-gatebar-score {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0;
+    font-size: 0.68rem;
+    line-height: 1.15;
   }
 }
 

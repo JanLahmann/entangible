@@ -180,8 +180,9 @@ itself. Phone layouts: the device toolbar at 390×844 portrait / 844×390
 landscape, and an iPad size; the layout is pocket.css's golf + build-on-screen
 grid (phone stack, short-landscape two columns, tablet split), with tap to
 play's adjustments: on a 390×844 portrait phone the sphere, the clubs, the
-tap grid and the score are one screen (the last row ends at ≤ 751 px on every
-classic hole) and the library editor is hidden; in 844×390 landscape the
+tap grid and the score are one screen — also in the iOS app's ~390×680 web
+view (5-qubit hole: last row at 671 px) and on a 375×667 iPhone SE (658 px) —
+and the library editor is hidden; in 844×390 landscape the
 sphere and tap to play sit side by side in one full-width column. A hole can
 be played by taps alone.
 

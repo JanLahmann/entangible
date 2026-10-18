@@ -271,12 +271,18 @@ them:
     on-screen golf: the grid is the circuit there. The editor stays mounted
     (`display: none`) on the same controlled circuit, so a tablet turned or a
     window resized is always in sync; on tablets and desktops it stays below
-    as the drag extra. Portrait phone: sphere (capped `min(52vw, 20vh)`),
-    clubs, grid, buttons + score; at 390×844 the last row ends at 543 px
-    (1-qubit hole) / 751 px (5-qubit hole). Landscape phone: one full-width
-    column, sphere | (clubs over grid, the buttons and score beside the grid);
-    a 5-qubit grid ends at 358 of 390 px. The step scrubber's row is reserved
-    so nothing jumps after the first tap. Tablet portrait: the state panels
+    as the drag extra. Portrait phone: sphere, clubs, grid, buttons + score as
+    one screen. The sphere takes what is left — `100dvh − --tap-fixed (330 px,
+    measured on the bundle) − rows × 46 px` (`--rows` set by `GolfBoard`),
+    floor 84 px, cap `min(52vw, 22vh)` — so a 5-qubit hole fits the iOS app's
+    ~390×680 web view (last row at 671 px; 1-/2-qubit holes 500 / 562 px) and
+    the iPhone SE's 375×667 (658 px; there the score stacks into the button
+    row). "Next hole" floats over the bottom of the sphere panel instead of
+    growing it, so holing in never pushes anything below the fold. Landscape
+    phone: one full-width column, sphere | (clubs over grid, the buttons and
+    score beside the grid); a 5-qubit grid ends at 358 of 390 px and "Next
+    hole" at 347. The step scrubber's row is reserved so nothing jumps after
+    the first tap. Tablet portrait: the state panels
     first, the editor below. Roomy landscape: the sphere is capped at 30vh.
 - **booth-connected** (`BoothSocketSource`, read-only viewer — see below):
   follows a booth host over `/ws/state`.

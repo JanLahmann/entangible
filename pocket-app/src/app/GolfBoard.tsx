@@ -17,7 +17,7 @@
  * and `underSphere` (`TapPlay`: clubs + tap grid, seated inside the sphere panel
  * so every layout keeps it directly under the target — build-on-screen only).
  */
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, type CSSProperties, type ReactNode } from 'react';
 import type { Circuit } from '@qamposer/react';
 import { EvolvingState } from '@shared/display/EvolvingState';
 import { Scorecard, type ChallengeRenderer } from '@shared/display/Scorecard';
@@ -61,7 +61,13 @@ export function GolfBoard({
       {/* `pk-side-hero` marks the sphere as THE panel of the mode: in golf +
           build-on-screen the wide-desktop CSS seats it in its own tall column
           of the sidebar with the course/scorecard/results beside it (#92). */}
-      <div key="golfview" className={`pk-side-hero${underSphere ? ' has-gatebar' : ''}`}>
+      <div
+        key="golfview"
+        className={`pk-side-hero${underSphere ? ' has-gatebar' : ''}`}
+        // The tap grid's row count — phone CSS sizes the sphere with it so a
+        // 5-qubit hole still fits one screen (pocket.css "tap to play").
+        style={underSphere ? ({ ['--rows' as string]: stateQubits } as CSSProperties) : undefined}
+      >
         {/* The view names itself now (EvolvingState's view-label) — no extra
             panel label, it would double up. */}
         <div className={`pk-well${dealing ? ' is-dealing' : ''}`}>
