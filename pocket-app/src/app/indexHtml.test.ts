@@ -37,6 +37,13 @@ describe('index.html', () => {
     const rel = image!.replace('https://entangible.org/', '');
     expect(existsSync(fileURLToPath(new URL(`../../public/${rel}`, import.meta.url)))).toBe(true);
   });
+
+  it('keeps the site card generic: the game cards live on the share pages', () => {
+    // entangible.org/golf/ and /runner/ carry og-golf.png / og-runner.png
+    // (sharePages.test.ts); the app page itself stays the Entangible card.
+    expect(meta('property', 'og:image')).toBe('https://entangible.org/og-image.png');
+    expect(meta('name', 'twitter:image')).toBe('https://entangible.org/og-image.png');
+  });
 });
 
 describe('index.html boot splash (no blank first paint)', () => {

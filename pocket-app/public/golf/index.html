@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Share entry for Quantum Golf (entangible.org/golf/). Link-preview
+         crawlers do not run JS, so a ?mode=golf deep link can only ever show
+         the site card; this static page carries the game's own card and sends
+         a visitor straight on to the app's golf deep link, keeping the query
+         (lang, utm_*, course, scope …) and hash. Not content of its own:
+         noindex, canonical = the deep link. Tests: src/app/sharePages.test.ts. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quantum Golf · Entangible</title>
+    <meta name="robots" content="noindex, follow" />
+    <link rel="canonical" href="https://entangible.org/?mode=golf&amp;input=manual" />
+    <script>
+      location.replace('../?mode=golf&input=manual' + location.search.replace(/^\?/, '&') + location.hash);
+    </script>
+    <noscript><meta http-equiv="refresh" content="0; url=../?mode=golf&amp;input=manual" /></noscript>
+    <meta
+      name="description"
+      content="Each hole hands you a target quantum state. Build a circuit that makes it — every gate counts a stroke. Eighteen holes in four rounds, on screen in your browser."
+    />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://entangible.org/golf/" />
+    <meta property="og:site_name" content="Entangible" />
+    <meta property="og:title" content="Quantum Golf — build the target quantum state" />
+    <meta
+      property="og:description"
+      content="Each hole hands you a target quantum state. Build a circuit that makes it — every gate counts a stroke. Eighteen holes in four rounds, on screen in your browser."
+    />
+    <meta property="og:image" content="https://entangible.org/og-golf.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Quantum Golf hole E2: a Q-sphere with the target state 1/√2|00⟩ + 1/√2|11⟩ and the goal “entangle two balls so they always agree”."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Quantum Golf — build the target quantum state" />
+    <meta
+      name="twitter:description"
+      content="Each hole hands you a target quantum state. Build a circuit that makes it — every gate counts a stroke. Eighteen holes in four rounds, on screen in your browser."
+    />
+    <meta name="twitter:image" content="https://entangible.org/og-golf.png" />
+    <meta
+      name="twitter:image:alt"
+      content="Quantum Golf hole E2: a Q-sphere with the target state 1/√2|00⟩ + 1/√2|11⟩ and the goal “entangle two balls so they always agree”."
+    />
+    <meta name="theme-color" content="#0f1117" />
+    <link rel="icon" type="image/svg+xml" href="../icons/icon.svg" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #0f1117;
+        color: #e6e9ef;
+        color-scheme: dark;
+        font-family: 'IBM Plex Sans', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+      }
+      main {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+        box-sizing: border-box;
+        text-align: center;
+      }
+      a {
+        color: #a996ff;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p><a href="../?mode=golf&amp;input=manual">Play Quantum Golf</a></p>
+    </main>
+  </body>
+</html>
