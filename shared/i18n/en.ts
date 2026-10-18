@@ -63,7 +63,7 @@ const HOLE_GOALS: Record<string, string> = {
   'Three-quarter GHZ': 'Goal: entangle all 5 with a three-quarter turn (−i).',
   'Lopsided coin': 'Goal: an unfair coin — about 85 % on 1.',
   Cascade: 'Goal: uneven odds — 50 % 000, 25 % 001, 25 % 111.',
-  Waterfall: 'Goal: each step half as likely — 50 %, 25 %, 12.5 % and on.',
+  Waterfall: 'Goal: each step half as likely — the last two equal.',
 };
 
 export const en = {

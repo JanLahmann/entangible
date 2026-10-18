@@ -432,6 +432,20 @@ describe('classic course v2 — the goal lines never contradict the target', () 
           expect(nums.length, where).toBeGreaterThan(0);
           for (const n of nums) expect(outs.some((o) => Math.abs(o.prob * 100 - n) < 0.6), `${where} (${n} %)`).toBe(true);
         }
+        // "each step half as likely": the odds, largest first, halve at every step —
+        // except the last step when the line says the last two are equal.
+        if (/half as likely|halb so oft/.test(line)) {
+          const ps = outs.map((o) => o.prob).sort((a, b) => b - a);
+          const tailEqual = /last two equal|letzten zwei gleich/.test(line);
+          expect(ps.length, where).toBeGreaterThan(2);
+          for (let i = 1; i < ps.length; i++) {
+            const want = tailEqual && i === ps.length - 1 ? ps[i - 1] : ps[i - 1] / 2;
+            expect(ps[i], `${where} (step ${i})`).toBeCloseTo(want, 9);
+          }
+        } else if (/last two equal|letzten zwei gleich/.test(line)) {
+          const ps = outs.map((o) => o.prob).sort((a, b) => b - a);
+          expect(ps.at(-1)!, where).toBeCloseTo(ps.at(-2)!, 9);
+        }
         // "50/50" is a fair coin on one wire.
         if (line.includes('50/50')) {
           expect(h.qubits, where).toBe(1);

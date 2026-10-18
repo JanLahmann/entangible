@@ -289,8 +289,8 @@ Tiles: a CX is ● + X, a CH is ● + H; "col" = mat columns the layout needs
 - **Reference solution** (drawn after a hole-in): `h q[0]; ch q[0],q[1]; ch q[1],q[2]; ch q[2],q[3]; ch q[3],q[4]`
 - **Optimal** 5 · **par** 7
 - **Par-length board** (kit check): `h q[0]; ch q[0],q[1]; ch q[1],q[2]; ch q[2],q[3]; ch q[3],q[4]; z q[0]; z q[0]`
-- **Goal** EN: Goal: each step half as likely — 50 %, 25 %, 12.5 % and on.  
-  DE: Ziel: jede Stufe nur halb so oft – 50 %, 25 %, 12,5 % usw.
+- **Goal** EN: Goal: each step half as likely — the last two equal.  
+  DE: Ziel: jede Stufe nur halb so oft – die letzten zwei gleich.
 - **New idea**: A chain of controlled-H halves the odds at every step.
 
 ## Physical kit check (booth mat)

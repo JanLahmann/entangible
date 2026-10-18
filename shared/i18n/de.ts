@@ -50,7 +50,7 @@ const HOLE_GOALS: Record<string, string> = {
   'Three-quarter GHZ': 'Ziel: verschränke alle 5 mit Dreiviertel-Drehung (−i).',
   'Lopsided coin': 'Ziel: eine unfaire Münze – etwa 85 % auf 1.',
   Cascade: 'Ziel: ungleiche Chancen – 50 % 000, 25 % 001, 25 % 111.',
-  Waterfall: 'Ziel: jede Stufe nur halb so oft – 50 %, 25 %, 12,5 % usw.',
+  Waterfall: 'Ziel: jede Stufe nur halb so oft – die letzten zwei gleich.',
 };
 
 /** "beide Kugeln" / "alle 3 Kugeln" — how many balls a clause is about (k ≥ 2). */
