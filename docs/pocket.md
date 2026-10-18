@@ -319,6 +319,10 @@ JSON (`qubits: 5`), QASM (`qreg q[5]`), moments, and golf are untouched.
 - Kiosk host serves it at `/pocket` (same origin; the /debug QR card gains a
   second QR later). qamposer.org deployment is a copy of `dist/` (real HTTPS
   → no cert tap-through at all).
+- `npm run build:golf` → `pocket-app/dist-golf`, the golf-only bundle
+  ("Quantum Golf") the Fun with Quantum iOS app embeds offline: same game
+  (`useGolfGame` + `GolfBoard`, shared with `App`), no camera / booth / other
+  modes, relative paths, no network — see [`golf-bundle.md`](golf-bundle.md).
 
 ## Verification
 

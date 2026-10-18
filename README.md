@@ -130,6 +130,10 @@ docs/                     # design, protocol, marker-ids, printing, pocket, boot
 tests/                    # fixtures + unit suites
 ```
 
+The pocket app also builds a golf-only bundle (`npm run build:golf`) that the
+Fun with Quantum iOS app embeds offline — see
+[`docs/golf-bundle.md`](docs/golf-bundle.md).
+
 ## Development
 
 ```sh

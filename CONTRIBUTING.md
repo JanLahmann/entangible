@@ -47,7 +47,15 @@ cd pocket-app && npx vitest run  # TS suites (includes shared/)
 cd pocket-app && npx tsc --noEmit
 ```
 
-CI (`ci.yml`) runs the same gates on every push and PR.
+CI (`ci.yml`) runs the same gates on every push and PR, plus the site build
+and the golf-only bundle with its guard — run those too when you touch golf,
+the pocket shell or its CSS:
+
+```sh
+cd pocket-app && npm run build:golf && node scripts/check-golf-bundle.mjs
+```
+
+(docs/golf-bundle.md).
 
 ## Printable artifacts
 

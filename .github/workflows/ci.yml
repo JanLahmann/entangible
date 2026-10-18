@@ -2,7 +2,8 @@
 #
 # Two independent jobs, mirroring the two toolchains:
 #   * python — the uv workspace (vision, assets, host, hardware): `uv run pytest`
-#   * pocket — the Vite/React app: typecheck, vitest, production build
+#   * pocket — the Vite/React app: typecheck, vitest, production build, and the
+#     golf-only bundle for the iOS app (build:golf + its guard, docs/golf-bundle.md)
 #
 # Every step runs a bare command so its real exit code fails the job; nothing is
 # piped into grep/tee, which would mask a non-zero status.
@@ -44,7 +45,7 @@ jobs:
         run: uv run pytest -q
 
   pocket:
-    name: pocket-app (typecheck, vitest, build)
+    name: pocket-app (typecheck, vitest, build, golf bundle)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -69,3 +70,12 @@ jobs:
 
       - name: build
         run: npm run build
+
+      # The golf-only bundle embedded offline by the Fun with Quantum iOS app,
+      # and its guard (relative paths, no network APIs, excluded modules
+      # absent, hover policy, licence files) plus a size report.
+      - name: build golf bundle
+        run: npm run build:golf
+
+      - name: check golf bundle
+        run: node scripts/check-golf-bundle.mjs
