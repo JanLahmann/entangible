@@ -46,9 +46,12 @@ describe('pocket.css golf sphere-forward split (#92)', () => {
     expect(css).toContain('.pk-main.pk-main--golf-manual.pk-side-left {');
   });
 
-  it('scopes EVERY golf-manual rule to a roomy landscape media query', () => {
+  it('scopes EVERY golf-manual rule to a media query: roomy landscape (#92) or tap to play’s phone / tablet layouts', () => {
     // Line scan with brace-depth tracking (pocket.css is one declaration per
     // line): each selector line carrying the class must sit inside an @media.
+    // #92's sphere-forward split is roomy-landscape only; golf tap to play
+    // (TapPlay, docs/pocket.md) adds the phone layouts (library editor hidden,
+    // the tap grid is the circuit) and tablet portrait (state panels first).
     let depth = 0;
     let media: string | null = null;
     const queries: string[] = [];
@@ -63,12 +66,17 @@ describe('pocket.css golf sphere-forward split (#92)', () => {
       depth += (line.match(/\{/g) ?? []).length - (line.match(/\}/g) ?? []).length;
       if (depth === 0) media = null;
     }
-    expect(queries.length).toBeGreaterThan(0);
-    for (const q of queries) {
-      expect(q).toMatch(/min-width:\s*(9\d\d|1\d{3})px/);
-      expect(q).toContain('min-height: 500px');
-      expect(q).toContain('orientation: landscape');
-    }
+    const roomy = (q: string) =>
+      /min-width:\s*(9\d\d|1\d{3})px/.test(q) &&
+      q.includes('min-height: 500px') &&
+      q.includes('orientation: landscape');
+    const tapPlay = new Set([
+      '@media (max-width: 699px), (max-height: 450px)',
+      '@media (max-height: 450px)',
+      '@media (orientation: portrait) and (min-width: 700px)',
+    ]);
+    expect(queries.filter(roomy).length).toBeGreaterThan(0);
+    for (const q of queries) expect(roomy(q) || tapPlay.has(q), q).toBe(true);
   });
 
   it('keeps the editor column above the library 400px min circuit width', () => {

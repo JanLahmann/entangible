@@ -2430,7 +2430,7 @@ body,
 }
 
 .pk-startcard-alt:hover {
-  background: color-mix(in srgb, var(--entangle) 14%, transparent);
+  background: rgba(122, 92, 255, 0.14);
 }
 
 /* Welcome card: three ways in (camera · build on screen · Quantum Golf). The
@@ -2473,7 +2473,7 @@ body,
 }
 
 .pk-welcome-path:hover {
-  background: color-mix(in srgb, var(--entangle) 14%, transparent);
+  background: rgba(122, 92, 255, 0.14);
 }
 
 .pk-welcome-path--primary {
@@ -3752,10 +3752,11 @@ body,
   text-align: center;
 }
 
-/* == Golf gate bar: tap to play (GateBar.tsx, docs/pocket.md) =========== */
-/* Seated inside `.pk-side-hero`, right under the sphere well, in every layout.
-   All controls are ≥ 44 px on every pointer: this is the touch-first way to
-   play. Hover looks only under (hover: hover). */
+/* == Golf, tap to play (TapPlay / GateBar / TapCircuit, docs/pocket.md) == */
+/* Seated inside `.pk-side-hero`, right under the sphere well, in every layout:
+   the clubs, the tap grid, Delete / Undo / Clear and a score line. Every
+   control is ≥ 44 px on every pointer (the gap strips are 24 px, over the
+   cells' edges). Hover looks only under (hover: hover). */
 
 .pk-sr-only {
   position: absolute;
@@ -3778,51 +3779,37 @@ body,
   min-width: 0;
 }
 
+/* ---- clubs -------------------------------------------------------------- */
+
 .pk-gatebar-clubs {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.3rem;
 }
 
 .pk-gatebar-club {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.05rem;
   min-width: 44px;
   min-height: 44px;
-  padding: 0.2rem 0.45rem;
+  padding: 0 0.4rem;
   border: 1px solid var(--entangle);
   border-radius: 8px;
   background: var(--bg-inset);
   color: var(--text);
-  font: inherit;
+  font-family: var(--mono);
+  font-size: 1rem;
+  font-weight: 700;
   cursor: pointer;
   touch-action: manipulation;
 }
 
-.pk-gatebar-club.is-two {
-  padding-inline: 0.3rem;
-}
-
-.pk-gatebar-sym {
-  font-family: var(--mono);
-  font-size: 1rem;
-  font-weight: 700;
-  line-height: 1.1;
-}
-
-.pk-gatebar-where {
-  font-family: var(--mono);
-  font-size: 0.62rem;
-  color: var(--muted);
-  line-height: 1;
+.pk-gatebar-club.is-on {
+  background: var(--entangle);
+  color: #fff;
+  box-shadow: 0 0 0 2px var(--entangle-text);
 }
 
 .pk-gatebar-club:active:not(:disabled),
-.pk-gatebar-act:active:not(:disabled),
-.pk-gatebar-q:active {
+.pk-gatebar-act:active:not(:disabled) {
   filter: brightness(1.25);
 }
 
@@ -3832,57 +3819,201 @@ body,
   cursor: default;
 }
 
-.pk-gatebar-picks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem 0.9rem;
-}
+/* ---- the tap grid ------------------------------------------------------- */
+/* Rows of 44 px cells, 8 px between columns, 4 px between rows. Only this box
+   scrolls sideways; the page never does. */
 
-.pk-gatebar-pick {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
+.pk-tapgrid-scroll {
+  max-width: 100%;
   min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
-.pk-gatebar-pick-label {
-  min-width: 0.9rem;
-  text-align: center;
+.pk-tapgrid {
+  --cell: 44px;
+  --colgap: 8px;
+  --label: 1.6rem;
+  display: grid;
+  row-gap: 4px;
+  width: max-content;
+  padding: 2px 4px 2px 0;
+}
+
+.pk-tapgrid-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--label) repeat(var(--cols), var(--cell));
+  column-gap: var(--colgap);
+  align-items: center;
+}
+
+.pk-tapgrid-q {
   font-family: var(--mono);
-  font-size: 0.95rem;
+  font-size: 0.72rem;
   color: var(--muted);
+  text-align: right;
 }
 
-.pk-gatebar-radios {
-  display: flex;
-  gap: 0.25rem;
-}
-
-.pk-gatebar-q {
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0 0.3rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
+.pk-tapgrid-cell {
+  position: relative;
+  width: var(--cell);
+  height: var(--cell);
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
   background: transparent;
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 0.82rem;
+  color: var(--text);
+  font: inherit;
   cursor: pointer;
   touch-action: manipulation;
 }
 
-.pk-gatebar-q.is-on {
-  border-color: var(--entangle);
-  background: var(--entangle);
-  color: #fff;
-  font-weight: 700;
-}
-
-.pk-gatebar-q[aria-disabled='true'] {
-  opacity: 0.35;
+.pk-tapgrid-cell[aria-disabled='true'] {
   cursor: default;
 }
+
+/* The wire, continuous across the column gaps. */
+.pk-tapgrid-cell::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--colgap) / -2);
+  right: calc(var(--colgap) / -2);
+  top: 50%;
+  height: 1px;
+  background: var(--border);
+}
+
+/* A controlled gate's vertical line, bridging the row gaps. */
+.pk-tapgrid-cell.v-down::after,
+.pk-tapgrid-cell.v-up::after,
+.pk-tapgrid-cell.v-full::after {
+  content: '';
+  position: absolute;
+  left: calc(50% - 1px);
+  width: 2px;
+  background: var(--entangle);
+}
+
+.pk-tapgrid-cell.v-down::after {
+  top: 50%;
+  bottom: -4px;
+}
+
+.pk-tapgrid-cell.v-up::after {
+  top: -4px;
+  bottom: 50%;
+}
+
+.pk-tapgrid-cell.v-full::after {
+  top: -4px;
+  bottom: -4px;
+}
+
+.pk-tapgrid-mark {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4rem;
+  font-family: var(--mono);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.pk-tapgrid-cell.is-single .pk-tapgrid-mark {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--entangle);
+  border-radius: 6px;
+  background: var(--bg-inset);
+  font-size: 0.95rem;
+}
+
+.pk-tapgrid-cell.is-control .pk-tapgrid-mark,
+.pk-tapgrid-cell.is-pending .pk-tapgrid-mark {
+  color: var(--entangle-text);
+  font-size: 1.15rem;
+}
+
+.pk-tapgrid-cell.is-target .pk-tapgrid-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--bg-panel);
+  color: var(--entangle-text);
+  font-size: 1.25rem;
+}
+
+.pk-tapgrid-cell.is-placeable .pk-tapgrid-mark {
+  color: var(--muted);
+  opacity: 0.45;
+  font-weight: 400;
+  font-size: 1.1rem;
+}
+
+.pk-tapgrid-cell.is-target-option {
+  background: rgba(122, 92, 255, 0.22);
+  box-shadow: inset 0 0 0 1px var(--entangle);
+}
+
+.pk-tapgrid-cell.is-target-option .pk-tapgrid-mark {
+  color: var(--entangle-text);
+  font-size: 1.1rem;
+}
+
+.pk-tapgrid-cell.is-pending {
+  box-shadow: inset 0 0 0 2px var(--entangle-text);
+}
+
+.pk-tapgrid-cell.is-selected {
+  box-shadow: inset 0 0 0 2px var(--entangle-text);
+  background: rgba(122, 92, 255, 0.14);
+}
+
+.pk-tapgrid-cell:active:not([aria-disabled='true']) {
+  filter: brightness(1.3);
+}
+
+/* The insert strip: 24 px centred on the gap BEFORE column `--gap`, over the
+   neighbouring cells' edges; a thin line shows where the column would open. */
+.pk-tapgrid-gap {
+  position: absolute;
+  top: 0;
+  z-index: 2;
+  width: 24px;
+  height: var(--cell);
+  left: calc(
+    var(--label) + var(--colgap) + var(--gap) * (var(--cell) + var(--colgap)) - var(--colgap) / 2 -
+      12px
+  );
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: manipulation;
+}
+
+.pk-tapgrid-gap::before {
+  content: '';
+  position: absolute;
+  left: calc(50% - 1px);
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--entangle);
+  opacity: 0.22;
+}
+
+.pk-tapgrid-gap:active::before {
+  opacity: 1;
+}
+
+/* ---- Delete · Undo · Clear · score -------------------------------------- */
 
 .pk-gatebar-foot {
   display: flex;
@@ -3948,17 +4079,39 @@ body,
     border-color: var(--entangle-text);
   }
 
-  .pk-gatebar-q:hover:not(.is-on):not([aria-disabled='true']) {
-    color: var(--text);
+  .pk-tapgrid-cell.is-placeable:hover .pk-tapgrid-mark {
+    opacity: 1;
+  }
+
+  .pk-tapgrid-gap:hover::before {
+    opacity: 1;
   }
 }
 
-/* Phones: the hero (sphere well + gate bar) is the first block of the column,
-   flush with the edges, so the bar takes a slim inset of its own. The clubs
-   share one row (the extra round's eight fit 375 px at 44 px each), and the
-   sphere gives up a little height so sphere + bar + score fit one screen
-   (390×844 minus a host app's bars) without scrolling; the circuit follows
-   below as the picture. */
+/* No layout shift under the finger: the step scrubber appears with the first
+   gate, which would push everything below ~44 px down between two taps. With
+   tap-to-play present its row is reserved from the start: label, sphere,
+   state ket, target ket, scrubber. */
+.pk-side-hero.has-gatebar .pk-evo {
+  grid-template-rows: repeat(4, auto) minmax(2.75rem, auto);
+}
+
+/* ---- phones: the tap grid IS the circuit -------------------------------- */
+/* Breakpoint: the pocket phone layouts — portrait stack (≤ 699 px wide) and
+   short landscape (≤ 450 px tall). There the library editor and its palette
+   (the stage) are hidden in on-screen golf: the tap grid shows the same
+   circuit state, and the drag editor stays the extra on tablets and desktops.
+   The editor stays MOUNTED (display: none), fed the same controlled circuit,
+   so turning a tablet or resizing a window never loses sync. */
+@media (max-width: 699px), (max-height: 450px) {
+  .pk-main--golf-manual .pk-stage {
+    display: none;
+  }
+}
+
+/* Portrait phone: sphere, clubs, grid and score as one screen. The hero is
+   flush with the edges, so the bar takes a slim inset; the sphere gives up a
+   little height for the grid. */
 @media (max-width: 699px) {
   .pk-side-hero > .pk-gatebar {
     margin-top: 0.3rem;
@@ -3982,45 +4135,71 @@ body,
   .pk-side-hero.has-gatebar .pk-qs-svg,
   .pk-side-hero.has-gatebar .pk-qsphere-svg,
   .pk-side-hero.has-gatebar .pk-bl-svg {
-    max-width: min(52vw, 22vh);
+    max-width: min(52vw, 20vh);
   }
 }
 
-/* Landscape phones (short viewport): 390 px of height cannot stack the sphere
-   over the bar, so on-screen golf (`pk-main--golf-manual`, exactly where the
-   bar is shown) widens the state column and seats sphere and bar side by side
-   in it; the circuit keeps the rest of the width as the picture. */
+/* Landscape phone (short viewport): the stage is hidden, so the state column
+   takes the full width and seats the sphere and tap-to-play side by side. */
 @media (max-height: 450px) {
-  .pk-main.pk-main--golf-manual {
-    grid-template-columns: 1fr 56%;
+  .pk-main.pk-main--golf-manual,
+  .pk-main.pk-main--golf-manual.pk-side-left {
+    grid-template-columns: 1fr;
   }
 
-  .pk-main.pk-main--golf-manual.pk-side-left {
-    grid-template-columns: 56% 1fr;
+  .pk-main--golf-manual .pk-side {
+    border-left: none;
+    border-right: none;
   }
 
   .pk-main--golf-manual .pk-side-hero.has-gatebar {
     display: grid;
-    /* The bar column holds a 5-qubit picker row: 5 × 44 px + its mark. */
-    grid-template-columns: minmax(0, 1fr) minmax(16.5rem, 1.2fr);
-    column-gap: 0.6rem;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    column-gap: 0.8rem;
     align-items: start;
   }
 
+  /* 390 px of height: the clubs on top, the grid with Delete / Undo / Clear
+     and the score stacked BESIDE it, so a 5-qubit grid still fits. */
   .pk-side-hero.has-gatebar > .pk-gatebar {
     margin-top: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'clubs clubs'
+      'grid foot';
+    align-items: start;
+    column-gap: 0.5rem;
+  }
+
+  .pk-side-hero.has-gatebar .pk-gatebar-clubs {
+    grid-area: clubs;
+  }
+
+  .pk-side-hero.has-gatebar .pk-tapgrid-scroll {
+    grid-area: grid;
+  }
+
+  .pk-side-hero.has-gatebar .pk-gatebar-foot {
+    grid-area: foot;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pk-side-hero.has-gatebar .pk-gatebar-score {
+    flex-direction: column;
+    margin: 0;
   }
 
   .pk-side-hero.has-gatebar .pk-qs-svg,
   .pk-side-hero.has-gatebar .pk-qsphere-svg,
   .pk-side-hero.has-gatebar .pk-bl-svg {
-    max-width: min(100%, 34vh);
+    max-width: min(100%, 28vh);
   }
 }
 
-/* Tablet portrait, on-screen golf: the state panels (sphere + bar, course,
-   scorecard) come FIRST and the circuit below — the same sphere-forward order
-   as the phone, so a 5-wire editor never pushes the bar off the screen. */
+/* Tablet portrait, on-screen golf: the state panels (sphere + tap-to-play,
+   course, scorecard) come FIRST and the drag editor below. */
 @media (orientation: portrait) and (min-width: 700px) {
   .pk-main.pk-main--golf-manual {
     grid-template-rows: auto 1fr;
@@ -4032,26 +4211,18 @@ body,
     border-bottom: 1px solid var(--border);
   }
 
-  /* The scorecard makes the panels taller than the screen; the circuit keeps
+  /* The scorecard makes the panels taller than the screen; the editor keeps
      a real height below them (the column scrolls). */
   .pk-main--golf-manual .pk-stage {
     min-height: 22rem;
   }
 }
 
-/* Roomy landscape (iPad, desktop): leave the bar room under the sphere. */
+/* Roomy landscape (iPad, desktop): leave tap-to-play room under the sphere. */
 @media (min-width: 900px) and (min-height: 500px) and (orientation: landscape) {
   .pk-main--golf-manual .pk-side-hero.has-gatebar .pk-qsphere-svg,
   .pk-main--golf-manual .pk-side-hero.has-gatebar .pk-qs-svg,
   .pk-main--golf-manual .pk-side-hero.has-gatebar .pk-bl-svg {
-    max-width: min(100%, 34vh, 30rem);
+    max-width: min(100%, 30vh, 30rem);
   }
-}
-
-/* No layout shift under the finger: the step scrubber appears with the first
-   gate, which would push the bar ~44 px down between two taps (a second tap
-   then lands on the goal line). With the bar present its row is reserved
-   from the start: label, sphere, state ket, target ket, scrubber. */
-.pk-side-hero.has-gatebar .pk-evo {
-  grid-template-rows: repeat(4, auto) minmax(2.75rem, auto);
 }

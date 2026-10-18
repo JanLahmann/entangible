@@ -618,31 +618,51 @@ export const de: Messages = {
 
   // ------------------------------------------------------------------ guide
   // ------------------------------------------------- golf-only bundle (iOS)
-  gateBar: {
-    aria: 'Gatter setzen',
-    clubsAria: 'Gatter',
-    qubit: 'Qubit',
-    control: 'Steuerung',
-    target: 'Ziel',
-    qubitAria: 'Qubit für das nächste Gatter',
-    controlAria: 'Steuer-Qubit für das nächste Gatter',
-    targetAria: 'Ziel-Qubit für Zwei-Qubit-Gatter',
-    qubitName: (q: number) => `Qubit ${q}`,
-    addOne: (gate: string, q: number) => `${gate} auf Qubit ${q} setzen`,
-    addTwo: (gate: string, control: number, target: number) =>
-      `${gate} setzen, Steuer-Qubit ${control}, Ziel-Qubit ${target}`,
+  tapPlay: {
+    aria: 'Per Tippen spielen',
+    clubsAria: 'Gatter: eins wählen, dann in die Schaltung tippen',
+    tool: (gate: string) => `${gate}-Gatter`,
+    replaceWith: (gate: string) => `Durch ${gate} ersetzen`,
+    cannotReplace: (gate: string) => `${gate}: kann das gewählte Gatter nicht ersetzen`,
     needsTwo: (gate: string) => `${gate} braucht zwei Qubits – nicht auf diesem Loch`,
+    gridAria: (qubits: number, steps: number) => `Schaltung, ${qubits} Qubits, ${steps} Schritte`,
+    empty: (q: number, step: number) => `Qubit ${q}, Schritt ${step}, leer`,
+    emptyPlace: (q: number, step: number, gate: string) =>
+      `Qubit ${q}, Schritt ${step}, leer: ${gate} setzen`,
+    emptyControl: (q: number, step: number, gate: string) =>
+      `Qubit ${q}, Schritt ${step}, leer: Steuerung von ${gate} setzen`,
+    placeTarget: (q: number, step: number, gate: string) =>
+      `Qubit ${q}, Schritt ${step}: Ziel von ${gate} setzen`,
+    single: (gate: string, q: number, step: number) => `${gate} auf Qubit ${q}, Schritt ${step}`,
+    control: (gate: string, q: number, step: number, target: number) =>
+      `Steuerung von ${gate} auf Qubit ${q}, Schritt ${step}, Ziel Qubit ${target}`,
+    target: (gate: string, q: number, step: number, control: number) =>
+      `Ziel von ${gate} auf Qubit ${q}, Schritt ${step}, Steuerung Qubit ${control}`,
+    crossed: (q: number, step: number, gate: string) =>
+      `Qubit ${q}, Schritt ${step}, von ${gate} gekreuzt`,
+    pending: (gate: string, q: number, step: number) =>
+      `Steuerung von ${gate} auf Qubit ${q}, Schritt ${step}: tippen zum Abbrechen`,
+    insert: (gate: string, q: number, step: number) =>
+      `${gate} auf Qubit ${q} vor Schritt ${step} einfügen`,
+    insertControl: (gate: string, q: number, step: number) =>
+      `Steuerung von ${gate} auf Qubit ${q} vor Schritt ${step} einfügen`,
+    selected: ', ausgewählt',
+    deleteLabel: 'Löschen',
+    deleteAria: 'Gewähltes Gatter löschen',
     undo: 'Zurück',
-    undoAria: 'Letztes Gatter zurücknehmen',
+    undoAria: 'Letzte Änderung zurücknehmen',
     clear: 'Leeren',
     clearAria: 'Schaltung leeren (+1 Schlag)',
-    addedOne: (gate: string, q: number) => `${gate} auf Qubit ${q}.`,
-    addedTwo: (gate: string, control: number, target: number) =>
-      `${gate}, Steuer-Qubit ${control}, Ziel-Qubit ${target}.`,
-    removedOne: (gate: string, q: number) => `${gate} von Qubit ${q} entfernt.`,
-    removedTwo: (gate: string, control: number, target: number) =>
-      `${gate} entfernt, Steuer-Qubit ${control}, Ziel-Qubit ${target}.`,
+    two: (gate: string, control: number, target: number, step: number) =>
+      `${gate} von Qubit ${control} nach Qubit ${target}, Schritt ${step}`,
+    placed: (what: string) => `${what} gesetzt.`,
+    removed: (what: string) => `${what} entfernt.`,
+    replaced: (what: string, gate: string) => `${what} durch ${gate} ersetzt.`,
+    undone: 'Letzte Änderung zurückgenommen.',
     cleared: 'Schaltung geleert.',
+    chooseTarget: (gate: string, q: number, step: number) =>
+      `Steuerung von ${gate} auf Qubit ${q}, Schritt ${step}. Jetzt das Ziel antippen.`,
+    cancelled: 'Abgebrochen.',
     status: (strokes: number, par: number, fidelity: string) =>
       `${strokes} ${strokes === 1 ? 'Schlag' : 'Schläge'}, Par ${par}, Übereinstimmung ${fidelity}.`,
     holed: (score: string) => `Der Ball ist drin – ${score}!`,
@@ -664,9 +684,9 @@ export const de: Messages = {
     rulesButton: 'So geht’s',
     rulesTitle: 'So geht’s',
     rules: [
-      'Jedes Loch gibt dir einen Ziel-Quantenzustand, als gestrichelte Ringe auf der Kugel eingezeichnet. Bau eine Schaltung, die ihn erzeugt: Wähl unter der Kugel ein Qubit und tipp auf ein Gatter – es landet am Ende dieser Leitung (CX und CH brauchen eine Steuerung ● und ein Ziel ⊕) – oder zieh Gatter aus der Leiste auf die Leitungen. ↶ nimmt das letzte Gatter zurück. Ab 99 % Übereinstimmung ist der Ball drin.',
+      'Jedes Loch gibt dir einen Ziel-Quantenzustand, als gestrichelte Ringe auf der Kugel eingezeichnet. Bau eine Schaltung, die ihn erzeugt: Tipp unter der Kugel auf ein Gatter, um es zu wählen, dann auf ein leeres Feld der Schaltung, um es dort zu setzen – oder auf die dünne Linie zwischen zwei Schritten, um es dort einzufügen. Bei CX und CH tippst du zuerst die Steuerung (●), dann eins der leuchtenden Zielfelder (⊕). Das Gatter bleibt für den nächsten Tipp gewählt; tipp es noch mal an, um es abzulegen. Ohne gewähltes Gatter wählst du mit einem Tipp ein gesetztes Gatter aus: Löschen entfernt es, ein anderes Gatter ersetzt es. ↶ nimmt die letzte Änderung zurück. Ab 99 % Übereinstimmung ist der Ball drin.',
       'Achtzehn Löcher in vier Runden, und jede Runde bringt neue Schläger und eine neue Idee: Leicht spielt mit X, H und CX (Überlagerung, Bell, GHZ); Mittel bringt Y und damit Minuszeichen; Schwer bringt Z und S für imaginäre Phasen; Bonus bringt T und gesteuertes H.',
-      'Jedes Gatter, das du hinzufügst oder entfernst, zählt als Schlag. Par hat zwei Schläge Puffer: Mit den wenigsten Gattern gibt es ein EAGLE, mit einem mehr ein BIRDIE. Brett leeren setzt ein Loch für einen einzigen Schlag zurück.',
+      'Jedes Gatter, das du hinzufügst oder entfernst, zählt als Schlag – ein Gatter ersetzen zählt zwei, wie ein Plättchen tauschen. Par hat zwei Schläge Puffer: Mit den wenigsten Gattern gibt es ein EAGLE, mit einem mehr ein BIRDIE. Leeren setzt ein Loch für einen einzigen Schlag zurück.',
       'Du hängst fest? Lösung zeigen zeichnet eine kurze Schaltung, die das Ziel baut – gratis, sobald der Ball drin ist, und mitten im Loch nach ein paar Schlägen über Par oder einer Minute, zum Preis von doppeltem Par.',
       'Tipp auf ein Feld der Scorekarte, um dieses Loch zu spielen. Zufalls-18 erstellt einen frischen Platz mit Code: Derselbe Code ergibt auf jedem Gerät dieselben achtzehn Löcher.',
     ],

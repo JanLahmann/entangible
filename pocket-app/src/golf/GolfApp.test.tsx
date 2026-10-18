@@ -51,18 +51,34 @@ describe('GolfApp — the golf-only shell', () => {
     expect(container.querySelector('.pk-golf-goal')?.textContent).toBeTruthy();
   });
 
-  it('plays a hole by taps: the gate bar under the sphere holes E1 with H on q0', async () => {
+  it('plays E1 by taps only: tap-to-play under the sphere, the editor in sync', async () => {
     const { container } = await mount();
     const bar = container.querySelector('.pk-side-hero > .pk-well + .pk-gatebar');
-    expect(bar, 'gate bar directly under the sphere well').not.toBeNull();
+    expect(bar, 'tap-to-play directly under the sphere well').not.toBeNull();
     const editorGates = () => container.querySelectorAll('.pk-stage-editor .circuit-editor__gate').length;
     expect(editorGates()).toBe(0);
-    fireEvent.click(screen.getByRole('button', { name: 'Add H to qubit 0' }));
-    // The editor draws the tapped gate (same circuit, same path as a drag) …
+    fireEvent.click(screen.getByRole('button', { name: 'H gate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Qubit 0, step 1, empty: place H' }));
+    // The (desktop) editor draws the tapped gate — one circuit state …
     expect(editorGates()).toBe(1);
     // … and the engine scored it: one stroke, ball in, Next hole offered.
     expect(bar!.querySelector('.pk-gatebar-score')!.textContent).toMatch(/strokes\s*1/);
     expect(screen.getAllByRole('button', { name: /Next hole/ }).length).toBeGreaterThan(0);
+  });
+
+  it('plays the Bell hole (E2) by taps only: H, then CX control → target', async () => {
+    const { container } = await mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Play hole 2, E2' }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: 'H gate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Qubit 0, step 1, empty: place H' }));
+    fireEvent.click(screen.getByRole('button', { name: 'CX gate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Qubit 0, step 2, empty: place CX control' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Qubit 1, step 2: place CX target' }));
+    const score = container.querySelector('.pk-gatebar-score')!.textContent;
+    expect(score).toMatch(/strokes\s*2/);
+    expect(score).toMatch(/100%/);
+    expect(container.querySelectorAll('.pk-stage-editor .circuit-editor__gate').length).toBeGreaterThan(0);
   });
 
   it('carries none of the site chrome: no header, footer, camera, settings or guide', async () => {

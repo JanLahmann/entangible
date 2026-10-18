@@ -48,7 +48,6 @@ const SAME_IN_BOTH = new Set<string>([
   'histogram.ideal', // "ideal"
   'kiosk.noisyIdeal', // "ideal"
   'runner.level', // "Level"
-  'gateBar.qubit', // "Qubit"
   'golf.score.eagle', // EAGLE / BIRDIE / PAR — the golf words German uses too
   'golf.score.birdie',
   'golf.score.par',

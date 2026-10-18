@@ -632,34 +632,53 @@ export const en = {
 
   // ------------------------------------------------------------------ guide
   /** The Guide's chrome; its prose is in pocket-app/src/app/guide/. */
-  // ------------------------------------------------------- golf gate bar
-  /** Tap-to-place gates under the sphere (pocket-app/src/app/GateBar.tsx). */
-  gateBar: {
-    aria: 'Place gates',
-    clubsAria: 'Gates',
-    qubit: 'Qubit',
-    control: 'Control',
-    target: 'Target',
-    qubitAria: 'Qubit for the next gate',
-    controlAria: 'Control qubit for the next gate',
-    targetAria: 'Target qubit for two-qubit gates',
-    qubitName: (q: number) => `qubit ${q}`,
-    addOne: (gate: string, q: number) => `Add ${gate} to qubit ${q}`,
-    addTwo: (gate: string, control: number, target: number) =>
-      `Add ${gate}, control qubit ${control}, target qubit ${target}`,
+  // ------------------------------------------------------ golf tap to play
+  /** Tap-to-play under the sphere (pocket-app/src/app/TapPlay.tsx). */
+  tapPlay: {
+    aria: 'Play by tapping',
+    clubsAria: 'Gates: pick one, then tap the circuit',
+    tool: (gate: string) => `${gate} gate`,
+    replaceWith: (gate: string) => `Replace with ${gate}`,
+    cannotReplace: (gate: string) => `${gate}: cannot replace the selected gate`,
     needsTwo: (gate: string) => `${gate} needs two qubits — not on this hole`,
+    gridAria: (qubits: number, steps: number) => `Circuit, ${qubits} qubits, ${steps} steps`,
+    empty: (q: number, step: number) => `Qubit ${q}, step ${step}, empty`,
+    emptyPlace: (q: number, step: number, gate: string) =>
+      `Qubit ${q}, step ${step}, empty: place ${gate}`,
+    emptyControl: (q: number, step: number, gate: string) =>
+      `Qubit ${q}, step ${step}, empty: place ${gate} control`,
+    placeTarget: (q: number, step: number, gate: string) =>
+      `Qubit ${q}, step ${step}: place ${gate} target`,
+    single: (gate: string, q: number, step: number) => `${gate} on qubit ${q}, step ${step}`,
+    control: (gate: string, q: number, step: number, target: number) =>
+      `${gate} control on qubit ${q}, step ${step}, target qubit ${target}`,
+    target: (gate: string, q: number, step: number, control: number) =>
+      `${gate} target on qubit ${q}, step ${step}, control qubit ${control}`,
+    crossed: (q: number, step: number, gate: string) => `Qubit ${q}, step ${step}, crossed by ${gate}`,
+    pending: (gate: string, q: number, step: number) =>
+      `${gate} control on qubit ${q}, step ${step}: tap to cancel`,
+    insert: (gate: string, q: number, step: number) =>
+      `Insert ${gate} on qubit ${q} before step ${step}`,
+    insertControl: (gate: string, q: number, step: number) =>
+      `Insert ${gate} control on qubit ${q} before step ${step}`,
+    selected: ', selected',
+    deleteLabel: 'Delete',
+    deleteAria: 'Delete the selected gate',
     undo: 'Undo',
-    undoAria: 'Undo last gate',
+    undoAria: 'Undo the last change',
     clear: 'Clear',
     clearAria: 'Clear the circuit (+1 stroke)',
-    /** Spoken after each tap (aria-live); the status line follows it. */
-    addedOne: (gate: string, q: number) => `${gate} on qubit ${q}.`,
-    addedTwo: (gate: string, control: number, target: number) =>
-      `${gate}, control qubit ${control}, target qubit ${target}.`,
-    removedOne: (gate: string, q: number) => `Removed ${gate} from qubit ${q}.`,
-    removedTwo: (gate: string, control: number, target: number) =>
-      `Removed ${gate}, control qubit ${control}, target qubit ${target}.`,
+    /** Spoken after a change (aria-live); the status line follows. */
+    two: (gate: string, control: number, target: number, step: number) =>
+      `${gate} from qubit ${control} to qubit ${target}, step ${step}`,
+    placed: (what: string) => `Placed ${what}.`,
+    removed: (what: string) => `Removed ${what}.`,
+    replaced: (what: string, gate: string) => `Replaced ${what} with ${gate}.`,
+    undone: 'Last change undone.',
     cleared: 'Circuit cleared.',
+    chooseTarget: (gate: string, q: number, step: number) =>
+      `${gate} control on qubit ${q}, step ${step}. Now tap the target.`,
+    cancelled: 'Cancelled.',
     status: (strokes: number, par: number, fidelity: string) =>
       `${strokes} ${strokes === 1 ? 'stroke' : 'strokes'}, par ${par}, fidelity ${fidelity}.`,
     holed: (score: string) => `The ball is in — ${score}!`,
@@ -683,9 +702,9 @@ export const en = {
     rulesButton: 'How to play',
     rulesTitle: 'How to play',
     rules: [
-      'Each hole hands you a target quantum state, drawn on the sphere as dashed rings. Build a circuit that makes it: pick a qubit under the sphere and tap a gate — it lands at the end of that wire (CX and CH take a control ● and a target ⊕) — or drag gates from the palette onto the wires. ↶ takes the last gate back. At 99 % fidelity the ball is in.',
+      'Each hole hands you a target quantum state, drawn on the sphere as dashed rings. Build a circuit that makes it: tap a gate under the sphere to pick it, then tap an empty cell of the circuit to place it — or the thin line between two steps to insert it there. For CX and CH tap the control (●), then one of the lit target cells (⊕). The gate stays picked for the next tap; tap it again to put it down. With no gate picked, tap a placed gate to select it: Delete removes it, another gate replaces it. ↶ undoes the last change. At 99 % fidelity the ball is in.',
       'Eighteen holes in four rounds, and every round unlocks new clubs and a new idea: Easy plays with X, H and CX (superposition, Bell, GHZ); Medium adds Y and, with it, minus signs; Difficult adds Z and S for imaginary phases; Extra adds T and controlled-H.',
-      'Every gate you add or remove counts a stroke. Par carries a two-stroke margin: build the hole in the fewest gates for an EAGLE, one more for a BIRDIE. Wipe board starts a hole over for a single stroke.',
+      'Every gate you add or remove counts a stroke — replacing one counts two, like swapping a tile. Par carries a two-stroke margin: build the hole in the fewest gates for an EAGLE, one more for a BIRDIE. Clear starts a hole over for a single stroke.',
       'Stuck? Show solution draws a short circuit that builds the target — free once the ball is in, and offered mid-hole after a few strokes over par or a minute, at the price of double par.',
       'Tap any chip on the scorecard to play that hole. Random 18 deals a fresh course with a code: the same code deals the same eighteen holes on any device.',
     ],

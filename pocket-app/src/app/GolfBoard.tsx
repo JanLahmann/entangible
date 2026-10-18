@@ -14,7 +14,7 @@
  * friend QR — the bundle has no QR code), `shareBase` (where a copied course
  * link points) and `courseExtra` (the bundle's code-entry / restart controls
  * under the pickers; the site passes nothing and renders exactly what it did)
- * and `underSphere` (the tap-to-play `GateBar`, seated inside the sphere panel
+ * and `underSphere` (`TapPlay`: clubs + tap grid, seated inside the sphere panel
  * so every layout keeps it directly under the target — build-on-screen only).
  */
 import { useMemo, type ReactNode } from 'react';
