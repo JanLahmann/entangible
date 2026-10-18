@@ -7,15 +7,16 @@
          the site card; this static page carries the game's own card and sends
          a visitor straight on to the app's runner deep link, keeping the query
          (lang, utm_* …) and hash. Not content of its own:
-         noindex, canonical = the deep link. Tests: src/app/sharePages.test.ts. -->
+         noindex. Canonical and og:url name this page, and there is no meta
+         refresh, so crawlers that follow either never reach the generic card;
+         no-JS visitors get the link below. Tests: src/app/sharePages.test.ts. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Quantum Runner · Entangible</title>
     <meta name="robots" content="noindex, follow" />
-    <link rel="canonical" href="https://entangible.org/?mode=runner" />
+    <link rel="canonical" href="https://entangible.org/runner/" />
     <script>
       location.replace('../?mode=runner' + location.search.replace(/^\?/, '&') + location.hash);
     </script>
-    <noscript><meta http-equiv="refresh" content="0; url=../?mode=runner" /></noscript>
     <meta
       name="description"
       content="You run in every lane at once. Tap X, H and CX to change your state while you run: coins pay out by probability, obstacles measure you. One or two qubits, in your browser."

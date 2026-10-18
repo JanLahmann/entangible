@@ -69,18 +69,19 @@ function checkPage(html: string, p: (typeof PAGES)[number], root: string) {
   expect(pngSize(img)).toEqual([1200, 630]);
   expect(statSync(img).size).toBeLessThan(300_000);
 
-  // Not content of its own: noindex, canonical = the app's deep link.
+  // Not content of its own: noindex. Canonical names this page (as og:url
+  // does), so a crawler that follows it never lands on the generic site card.
   expect(meta(html, 'name', 'robots')).toBe('noindex, follow');
-  expect(html).toContain(`<link rel="canonical" href="${SITE}${p.deepLink.replace(/&/g, '&amp;')}" />`);
+  expect(html).toContain(`<link rel="canonical" href="${SITE}${p.path}/" />`);
 
   // Immediate hand-off into the existing deep link, keeping ?lang= / utm_*
-  // (the whole query) and the hash; a no-JS meta refresh as the fallback.
+  // (the whole query) and the hash. No meta refresh: crawlers follow it to
+  // the generic card; no-JS visitors get the page's link instead.
   expect(html).toContain(
     `location.replace('../${p.deepLink}' + location.search.replace(/^\\?/, '&') + location.hash);`,
   );
-  expect(html).toContain(
-    `<noscript><meta http-equiv="refresh" content="0; url=../${p.deepLink.replace(/&/g, '&amp;')}" /></noscript>`,
-  );
+  expect(html).not.toContain('http-equiv="refresh"');
+  expect(html).toContain(`<a href="../${p.deepLink.replace(/&/g, '&amp;')}">`);
 }
 
 /** Run the page's redirect script against a given location; return the target. */

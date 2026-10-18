@@ -7,15 +7,16 @@
          the site card; this static page carries the game's own card and sends
          a visitor straight on to the app's golf deep link, keeping the query
          (lang, utm_*, course, scope …) and hash. Not content of its own:
-         noindex, canonical = the deep link. Tests: src/app/sharePages.test.ts. -->
+         noindex. Canonical and og:url name this page, and there is no meta
+         refresh, so crawlers that follow either never reach the generic card;
+         no-JS visitors get the link below. Tests: src/app/sharePages.test.ts. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Quantum Golf · Entangible</title>
     <meta name="robots" content="noindex, follow" />
-    <link rel="canonical" href="https://entangible.org/?mode=golf&amp;input=manual" />
+    <link rel="canonical" href="https://entangible.org/golf/" />
     <script>
       location.replace('../?mode=golf&input=manual' + location.search.replace(/^\?/, '&') + location.hash);
     </script>
-    <noscript><meta http-equiv="refresh" content="0; url=../?mode=golf&amp;input=manual" /></noscript>
     <meta
       name="description"
       content="Each hole hands you a target quantum state. Build a circuit that makes it — every gate counts a stroke. Eighteen holes in four rounds, on screen in your browser."
