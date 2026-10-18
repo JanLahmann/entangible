@@ -118,13 +118,115 @@ describe('pocket.css welcome card is phone-width first', () => {
   });
 });
 
-describe('pocket.css golf goal line', () => {
-  it('is one line that ellipsizes rather than wrapping or widening the column', () => {
+describe('golf goal line: wraps, never truncated', () => {
+  // Every rule, at any nesting depth, whose selector names the class.
+  function rulesFor(sheet: string, cls: string): string[] {
+    const out: string[] = [];
+    for (const m of sheet.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (m[1].includes(cls)) out.push(m[2]);
+    }
+    return out;
+  }
+  const kiosk = readFileSync(
+    fileURLToPath(new URL('../kiosk/kiosk.css', import.meta.url)),
+    'utf8',
+  ).replace(/\/\*[\s\S]*?\*\//g, '');
+
+  it.each([
+    ['pocket.css', css, 'pk-golf-goal'],
+    ['kiosk.css', kiosk, 'bo-golf-goal'],
+  ])('%s: no nowrap, ellipsis, line clamp, clipping or height cap on the line', (_, sheet, cls) => {
+    const rules = rulesFor(sheet, cls);
+    expect(rules.length).toBeGreaterThan(0);
+    for (const body of rules) {
+      expect(body).not.toMatch(/white-space:\s*(nowrap|pre)/);
+      expect(body).not.toMatch(/text-overflow/);
+      expect(body).not.toMatch(/line-clamp/);
+      expect(body).not.toMatch(/overflow(-y)?:\s*(hidden|clip)/);
+      expect(body).not.toMatch(/(^|[^-])height:|max-height:/);
+    }
+  });
+
+  it('breaks a long word rather than widening the column', () => {
     const goal = ruleBody('.pk-golf-goal');
-    expect(goal).toContain('white-space: nowrap');
-    expect(goal).toContain('text-overflow: ellipsis');
-    expect(goal).toContain('overflow: hidden');
+    expect(goal).toContain('overflow-wrap: break-word');
     expect(goal).toContain('min-width: 0');
+    expect(goal).toContain('max-width: 100%');
+  });
+});
+
+describe('pocket.css golf sphere on phones: the remaining space, overlays in the corners', () => {
+  // The phone block that seats tap to play (several blocks share the query).
+  const query = '@media (max-width: 699px), (max-height: 450px) {';
+  const phone = css.slice(css.lastIndexOf(query, css.indexOf('.pk-side-hero.has-gatebar .pk-qsphere,')));
+  const block = phone.slice(0, phone.indexOf('\n}\n'));
+  function phoneRule(selector: string): string {
+    const at = block.indexOf(`\n  ${selector} {`);
+    if (at < 0) return '';
+    const open = block.indexOf('{', at);
+    return block.slice(open + 1, block.indexOf('}', open));
+  }
+
+  it('the panel fills the screen as a flex column; only the sphere box grows', () => {
+    const hero = phoneRule('.pk-side-hero.has-gatebar');
+    expect(hero).toContain('display: flex');
+    expect(hero).toContain('flex-direction: column');
+    expect(hero).toContain('min-height: 100%');
+    expect(phoneRule('.pk-side-hero.has-gatebar .pk-well')).toContain('flex: 1 1 auto');
+    const evo = phoneRule('.pk-side-hero.has-gatebar .pk-evo');
+    expect(evo).toContain('display: flex');
+    expect(evo).toContain('min-height: 0');
+    // The goal line keeps its natural (wrapped) height; the sphere gives way.
+    expect(phoneRule('.pk-side-hero.has-gatebar .pk-golf-goal')).toContain('flex: none');
+    const box = phoneRule('.pk-side-hero.has-gatebar .pk-qsphere,\n  .pk-side-hero.has-gatebar .pk-bloch');
+    expect(box).toContain('flex: 1 1 0');
+    expect(box).toContain('min-height: 84px');
+    expect(box).toContain('container-type: size');
+    expect(box).toContain('padding: 0');
+  });
+
+  it('the sphere is the largest square in its box (Q-sphere and Bloch alike)', () => {
+    const svg = phoneRule('.pk-side-hero.has-gatebar .pk-qs-svg,\n  .pk-side-hero.has-gatebar .pk-bl-svg');
+    expect(svg).toContain('width: min(100cqw, 100cqh)');
+    expect(svg).toContain('max-width: none');
+    // The old viewport formula survives only as the no-container-units fallback.
+    expect(css).not.toContain('--tap-fixed');
+    expect(css).toContain('@supports not (width: 1cqw)');
+  });
+
+  it('the scrubber row stays reserved while the scrubber is absent', () => {
+    expect(phoneRule('.pk-side-hero.has-gatebar .pk-evo::after')).toContain('height: 2.75rem');
+    expect(phoneRule('.pk-side-hero.has-gatebar .pk-evo:has(> .pk-evo-scrubber)::after')).toContain(
+      'display: none',
+    );
+    expect(phoneRule('.pk-side-hero.has-gatebar .pk-evo-scrubber')).toContain('min-height: 2.75rem');
+  });
+
+  it('reset (≥ 44 px), phase wheel and view label are overlays in the box corners', () => {
+    const reset = phoneRule('.pk-side-hero.has-gatebar .pk-qs-reset');
+    expect(reset).toContain('width: 44px');
+    expect(reset).toContain('height: 44px');
+    expect(reset).toContain('top: 0');
+    expect(reset).toContain('right: 0');
+    expect(ruleBody('.pk-qs-reset')).toContain('position: absolute');
+    const legend = phoneRule('.pk-side-hero.has-gatebar .pk-qs-legend-wrap');
+    expect(legend).toContain('right: 0');
+    expect(legend).toContain('bottom: 0');
+    expect(ruleBody('.pk-qs-legend-wrap')).toContain('position: absolute');
+    expect(ruleBody('.pk-qs-legend-wrap')).toContain('pointer-events: none');
+    const label = phoneRule('.pk-side-hero.has-gatebar .pk-view-label');
+    expect(label).toContain('position: absolute');
+    expect(label).toContain('pointer-events: none');
+  });
+
+  it('landscape: the well stretches down the sphere column, no fixed vh cap', () => {
+    const rule = css.indexOf('\n  .pk-side-hero.has-gatebar > .pk-well {');
+    expect(rule).toBeGreaterThan(0);
+    const at = css.lastIndexOf('\n@media', rule);
+    expect(css.slice(at + 1, css.indexOf('{', at))).toBe('@media (max-height: 450px) ');
+    const body = css.slice(at, css.indexOf('\n}\n', at));
+    expect(body).toMatch(/\.pk-side-hero\.has-gatebar > \.pk-well \{\s*align-self: stretch;/);
+    expect(body).not.toMatch(/\.pk-(qs|bl)-svg/);
   });
 });
 

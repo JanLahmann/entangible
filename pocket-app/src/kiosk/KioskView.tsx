@@ -475,9 +475,7 @@ export function KioskView() {
             classPrefix="bo"
           />
           {!golfState.complete && (
-            <p className="bo-golf-goal" title={golfGoal}>
-              {golfGoal}
-            </p>
+            <p className="bo-golf-goal">{golfGoal}</p>
           )}
         </div>
       </div>

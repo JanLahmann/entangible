@@ -50,7 +50,7 @@ const HOLE_GOALS: Record<string, string> = {
   'Three-quarter GHZ': 'Ziel: verschränke alle 5 mit Dreiviertel-Drehung (−i).',
   'Lopsided coin': 'Ziel: eine unfaire Münze – etwa 85 % auf 1.',
   Cascade: 'Ziel: ungleiche Chancen – 50 % 000, 25 % 001, 25 % 111.',
-  Waterfall: 'Ziel: jede Stufe halb so wahrscheinlich – 50, 25, 12,5 … %.',
+  Waterfall: 'Ziel: jede Stufe nur halb so oft – 50 %, 25 %, 12,5 % usw.',
 };
 
 /** "beide Kugeln" / "alle 3 Kugeln" — how many balls a clause is about (k ≥ 2). */
@@ -413,7 +413,7 @@ export const de: Messages = {
     certain: (balls: number, bits: string) => `${kugeln(balls)} sicher auf ${bits} landen lassen`,
     fairCoin: 'eine faire 50/50-Münze',
     // "always agree" = they always land the same way; kept short, because the
-    // line is one ellipsized row under the sphere.
+    // goal line wraps under the sphere and every extra row costs sphere height.
     agree: (balls: number) => `${kugeln(balls)} verschränken – sie landen immer gleich`,
     disagree: 'beide Kugeln verschränken – sie landen nie gleich',
     complement: (balls: number, a: string, b: string) =>

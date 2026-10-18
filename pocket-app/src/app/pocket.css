@@ -1582,17 +1582,19 @@ body,
   font-size: 0.95rem;
 }
 
-/* The hole's goal in plain words, under the target ket. Always ONE line —
-   ellipsized, never wrapped and never widening the column (the full sentence
-   is the element's title). */
+/* The hole's goal in plain words, under the target ket. It WRAPS to as many
+   lines as it needs and is never cut off ("Ziel: eine Kugel als faire
+   50/50-Münze, die anderen sicher – 11011 oder 11111, dazu eine Viertel-
+   Phasendrehung." is three lines on a 375 px phone); it never widens the
+   column either. On phones the sphere above gives up the height it takes
+   ("tap to play" below). */
 .pk-golf-goal {
   margin: 0.4rem 0 0;
   max-width: 100%;
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  overflow-wrap: break-word;
   font-size: 0.85rem;
+  line-height: 1.3;
   color: var(--text);
 }
 
@@ -4182,6 +4184,129 @@ body,
     padding-inline: 0.5rem;
     font-size: clamp(1.25rem, calc(var(--banner-w) / 8), 3rem);
   }
+
+  /* The sphere takes the space that is LEFT. The panel fills the screen
+     (`min-height: 100%` of the scrolling column) and is a chain of flex
+     columns — panel → well → evolution view → sphere box — in which only the
+     sphere box grows (basis 0). Everything else keeps its natural height: the
+     view label, the two kets, the reserved scrubber row, the goal line however
+     many lines it wraps to, and the clubs / grid / buttons / score. The sphere
+     box is a size container, and the sphere is the largest square in it,
+     `min(100cqw, 100cqh)` — so a 1-qubit hole gets a sphere nearly as wide as
+     the panel, a 5-qubit hole a smaller one, and a goal that wraps to three
+     lines shrinks the sphere instead of pushing the score below the fold.
+     Floor 84 px: below that the panel grows and the column scrolls. The box
+     is capped at the screen's width, so on a tall phone the leftover height
+     stays under the score instead of opening gaps round the sphere. */
+  .pk-side-hero.has-gatebar {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+  }
+
+  .pk-side-hero.has-gatebar .pk-well {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .pk-side-hero.has-gatebar .pk-evo {
+    position: relative;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  /* "Q-KUGEL" / "BLOCH-KUGEL" moves into the sphere box's empty top-left
+     corner too — a row less above the sphere. */
+  .pk-side-hero.has-gatebar .pk-view-label {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .pk-side-hero.has-gatebar .pk-golf-goal {
+    flex: none;
+  }
+
+  /* The scrubber row stays reserved (see the grid rule above) — here as an
+     empty 2.75 rem strip until the scrubber itself is there. */
+  .pk-side-hero.has-gatebar .pk-evo::after {
+    content: '';
+    flex: none;
+    height: 2.75rem;
+  }
+
+  .pk-side-hero.has-gatebar .pk-evo:has(> .pk-evo-scrubber)::after {
+    display: none;
+  }
+
+  .pk-side-hero.has-gatebar .pk-evo-scrubber {
+    flex: none;
+    min-height: 2.75rem;
+  }
+
+  .pk-side-hero.has-gatebar .pk-qsphere,
+  .pk-side-hero.has-gatebar .pk-bloch {
+    flex: 1 1 0;
+    min-height: 84px;
+    max-height: 100vw;
+    padding: 0;
+    container-type: size;
+  }
+
+  .pk-side-hero.has-gatebar .pk-qs-svg,
+  .pk-side-hero.has-gatebar .pk-bl-svg {
+    width: min(100cqw, 100cqh);
+    height: auto;
+    max-width: none;
+  }
+
+  /* The phase wheel and the reset-orientation button are small overlays in
+     the sphere box's corners (the sphere's own square leaves them empty):
+     reset top right, ≥ 44 px to touch; the wheel bottom right. */
+  .pk-side-hero.has-gatebar .pk-qs-reset {
+    top: 0;
+    right: 0;
+    width: 44px;
+    height: 44px;
+  }
+
+  .pk-side-hero.has-gatebar .pk-qs-legend-wrap {
+    right: 0;
+    bottom: 0;
+  }
+
+  .pk-side-hero.has-gatebar .pk-qs-legend {
+    display: block;
+    width: 48px;
+    height: 48px;
+  }
+}
+
+/* Browsers without container units (before iOS 16) keep the measured clamp
+   the phone layout used before: the box still flexes, the sphere is sized by
+   the viewport. */
+@supports not (width: 1cqw) {
+  @media (max-width: 699px) {
+    .pk-side-hero.has-gatebar .pk-qs-svg,
+    .pk-side-hero.has-gatebar .pk-bl-svg {
+      width: 100%;
+      max-width: clamp(84px, calc(100vh - 330px - var(--rows, 1) * 46px), min(52vw, 22vh));
+    }
+  }
+
+  @media (max-height: 450px) {
+    .pk-side-hero.has-gatebar .pk-qs-svg,
+    .pk-side-hero.has-gatebar .pk-bl-svg {
+      width: 100%;
+      max-width: min(100%, 28vh);
+    }
+  }
 }
 
 /* Portrait phone: sphere, clubs, grid and score as one screen. The hero is
@@ -4226,24 +4351,6 @@ body,
 
   .pk-gatebar .pk-tapgrid {
     --rowgap: 2px;
-  }
-
-  /* The sphere takes what the screen has left: the viewport minus everything
-     else on it (toolbar or header, panel chrome, kets, scrubber, clubs,
-     buttons — measured, --tap-fixed) minus the grid (--rows × 46 px, set by
-     GolfBoard). So a 5-qubit hole fits a 390×680 web view (the iOS app) with
-     a smaller sphere, and a 1-qubit hole keeps a big one. Floor 84 px, cap
-     min(52vw, 22vh). Measured on the golf bundle (its slim toolbar); the
-     site's header is taller, so there a 5-qubit hole may scroll a little. */
-  .pk-side-hero.has-gatebar {
-    --tap-fixed: 330px;
-  }
-
-  .pk-side-hero.has-gatebar .pk-qs-svg,
-  .pk-side-hero.has-gatebar .pk-qsphere-svg,
-  .pk-side-hero.has-gatebar .pk-bl-svg {
-    max-width: clamp(84px, calc(100vh - var(--tap-fixed) - var(--rows, 1) * 46px), min(52vw, 22vh));
-    max-width: clamp(84px, calc(100dvh - var(--tap-fixed) - var(--rows, 1) * 46px), min(52vw, 22vh));
   }
 }
 
@@ -4314,10 +4421,11 @@ body,
     margin: 0;
   }
 
-  .pk-side-hero.has-gatebar .pk-qs-svg,
-  .pk-side-hero.has-gatebar .pk-qsphere-svg,
-  .pk-side-hero.has-gatebar .pk-bl-svg {
-    max-width: min(100%, 28vh);
+  /* The sphere column is as tall as the screen: the well stretches down it,
+     and the sphere takes what the kets, scrubber and goal leave (the flex
+     chain in the phone block above). */
+  .pk-side-hero.has-gatebar > .pk-well {
+    align-self: stretch;
   }
 }
 

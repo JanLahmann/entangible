@@ -40,7 +40,7 @@ const HOLE_NAMES: Record<string, string> = {
 
 /**
  * The goal line of each CLASSIC hole, by its English name: what the hole asks
- * for and what is NEW about it, on one phone line. Like the generated goal line
+ * for and what is NEW about it, short (it wraps, never cut). Like the generated goal line
  * (shared/display/goalLine.ts) it may be vague but never wrong: golf.test.ts
  * checks every bitstring, percentage, sign and phase a line names against the
  * hole's target, in both languages. Random holes keep the generated line.
@@ -63,7 +63,7 @@ const HOLE_GOALS: Record<string, string> = {
   'Three-quarter GHZ': 'Goal: entangle all 5 with a three-quarter turn (−i).',
   'Lopsided coin': 'Goal: an unfair coin — about 85 % on 1.',
   Cascade: 'Goal: uneven odds — 50 % 000, 25 % 001, 25 % 111.',
-  Waterfall: 'Goal: each step half as likely — 50, 25, 12.5 … %.',
+  Waterfall: 'Goal: each step half as likely — 50 %, 25 %, 12.5 % and on.',
 };
 
 export const en = {

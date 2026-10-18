@@ -182,12 +182,17 @@ landscape, and an iPad size; the layout is pocket.css's golf + build-on-screen
 grid (phone stack, short-landscape two columns, tablet split), with tap to
 play's adjustments: on a 390×844 portrait phone the sphere, the clubs, the
 tap grid and the score are one screen — also in the iOS app's ~390×680 web
-view (5-qubit hole: last row at 671 px) and on a 375×667 iPhone SE (658 px) —
-and the library editor is hidden; in 844×390 landscape the
-sphere and tap to play sit side by side in one full-width column. A hole can
+view (last row at 672 px) and on a 375×667 iPhone SE (659 px) — and the
+library editor is hidden; in 844×390 landscape the
+sphere and tap to play sit side by side in one full-width column. The sphere
+takes the space that is left and shrinks for a bigger grid or a goal that
+wraps (390×680, German: 338 px wide on a 1-qubit hole, 246 on a 3-qubit,
+154 on a 5-qubit, 137 with the longest random-course goal; the goal line is
+never cut off), with the view label, reset button and phase wheel as
+overlays in its corners. A hole can
 be played by taps alone. After holing in, "Next hole" stands where the clubs
-were (portrait 390×680, GHZ-4: at 371–415 px, under the scrubber 293–337 and
-the goal line 340–358; landscape: 67–111 px), the evolution replays once
+were (portrait 390×680, GHZ-4: at 388–432 px, under the scrubber 311–355 and
+the goal line 358–375; landscape: 67–111 px), the evolution replays once
 with its grid column marked, and the hole-in banner stays inside the sphere
 panel (#13).
 

@@ -408,7 +408,7 @@ describe('classic course v2 — the goal lines never contradict the target', () 
       for (const h of HOLES) {
         const line = t.golf.holeGoals[h.name];
         expect(line, `${lang} ${h.code}`).toMatch(lang === 'en' ? /^Goal: .+\.$/ : /^Ziel: .+\.$/);
-        expect(line.length, `${lang} ${h.code} is long for one phone line`).toBeLessThanOrEqual(64);
+        expect(line.length, `${lang} ${h.code} is not short`).toBeLessThanOrEqual(64); // wraps, but stays ~one line
       }
     }
   });
