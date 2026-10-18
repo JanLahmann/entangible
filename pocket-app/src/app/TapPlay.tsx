@@ -224,6 +224,23 @@ export function TapPlay({ game, circuit, onChange }: TapPlayProps) {
     onChange(top!.before);
   };
 
+  // Next hole / Play again: the button goes away with the hole, so focus moves
+  // to the new hole's first club (a keyboard or VoiceOver user is not dropped
+  // onto the page). Waits for the clubs: a random course may be dealt first.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const focusClubsRef = useRef(false);
+  const onNext = () => {
+    focusClubsRef.current = true;
+    advanceHole?.();
+  };
+  useEffect(() => {
+    if (!focusClubsRef.current || holed || busy) return;
+    const club = rootRef.current?.querySelector<HTMLButtonElement>('.pk-gatebar-club:not(:disabled)');
+    if (!club) return;
+    focusClubsRef.current = false;
+    club.focus({ preventScroll: true });
+  });
+
   const canClear = !!wipeBoard && !state.holedIn && !state.complete && circuit.gates.length > 0;
   const onClear = () => {
     if (!wipeBoard || !canClear) return;
@@ -237,9 +254,9 @@ export function TapPlay({ game, circuit, onChange }: TapPlayProps) {
   const fidelity = evaluate(circuit, hole).fidelity;
 
   return (
-    <div className="pk-gatebar" role="group" aria-label={m.aria}>
+    <div className="pk-gatebar" role="group" aria-label={m.aria} ref={rootRef}>
       {holed && advanceHole ? (
-        <button type="button" className="pk-golf-next pk-golf-next--bar" onClick={advanceHole}>
+        <button type="button" className="pk-golf-next pk-golf-next--bar" onClick={onNext}>
           {state.complete ? t.golf.playAgain : t.golf.nextHole}
         </button>
       ) : (

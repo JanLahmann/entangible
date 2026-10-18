@@ -288,7 +288,8 @@ them:
     wrapped it onto a line of its own at 390 px). **Holed in** (#13), "Next
     hole" (on the last hole "Play again") takes the clubs' place in the flow —
     same 44 px row, nothing moves, nothing covers the sphere panel's scrubber
-    and goal line — the board turns read-only, and the grid marks the column
+    and goal line; pressing it moves focus to the new hole's first club,
+    without scrolling — the board turns read-only, and the grid marks the column
     the evolution replay is at (`is-step`, `aria-current="step"`, via
     `GolfReplayContext`); a hole being played marks nothing. Landscape
     phone: one full-width column, sphere | (clubs or Next hole over the grid,

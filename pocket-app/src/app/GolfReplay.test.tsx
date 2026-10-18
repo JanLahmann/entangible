@@ -212,6 +212,25 @@ describe('holing in on tap to play (#13)', () => {
     expect(clock.requested).toBe(0);
   });
 
+  it('Next hole moves focus to the new hole’s first club, without scrolling', async () => {
+    mockReducedMotion(true);
+    await holeInBell();
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus');
+    const bar = screen.getByRole('group', { name: 'Play by tapping' });
+    const next = within(bar).getByRole('button', { name: 'Next hole ▸' });
+    next.focus();
+    fireEvent.click(next);
+    expect(live.game!.currentLevel.hole).toBe(3);
+    const first = bar.querySelector('.pk-gatebar-club') as HTMLButtonElement;
+    expect(document.activeElement).toBe(first);
+    expect(focus).toHaveBeenLastCalledWith({ preventScroll: true });
+    // Once only: later renders leave focus where the player puts it.
+    const grid = screen.getByRole('button', { name: 'Qubit 0, step 1, empty' });
+    grid.focus();
+    tap('H gate');
+    expect(document.activeElement).not.toBe(first);
+  });
+
   it('while a hole is being played, the grid marks no column', async () => {
     mockReducedMotion(true);
     render(
