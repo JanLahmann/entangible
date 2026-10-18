@@ -57,6 +57,64 @@ describe('RunnerGame', () => {
     expect(ghostProb(3)).toBeCloseTo(0.5, 3);
   });
 
+  it('lays the gates out per mode: X₀ H₀ (1 qubit); X₀ H₀ CX 0→1 / X₁ H₁ CX 1→0 (2 qubits)', () => {
+    const gates = () =>
+      Array.from(document.querySelectorAll('.pk-runner-gates .pk-runner-gate')).map((b) => [
+        b.textContent,
+        b.getAttribute('aria-label'),
+      ]);
+    const grid = () => document.querySelector('.pk-runner-gates') as HTMLElement;
+    render(<RunnerGame autoRun={false} rng={mulberry32(1)} storage={null} />);
+    expect(gates()).toEqual([
+      ['X₀', 'Apply X to qubit 0'],
+      ['H₀', 'Apply H to qubit 0'],
+    ]);
+    expect(grid().dataset.cols).toBe('2');
+    expect(grid().style.getPropertyValue('--gate-cols')).toBe('2');
+    fireEvent.click(screen.getByRole('button', { name: '2 qubits' }));
+    expect(gates()).toEqual([
+      ['X₀', 'Apply X to qubit 0'],
+      ['H₀', 'Apply H to qubit 0'],
+      ['CX 0→1', 'Apply CX, control qubit 0, target qubit 1'],
+      ['X₁', 'Apply X to qubit 1'],
+      ['H₁', 'Apply H to qubit 1'],
+      ['CX 1→0', 'Apply CX, control qubit 1, target qubit 0'],
+    ]);
+    expect(grid().dataset.cols).toBe('3');
+    expect(document.querySelector('.pk-runner')!.getAttribute('data-level')).toBe('2');
+  });
+
+  it('Reset puts a superposition / Bell state back to |0⟩ / |00⟩ and keeps score and lives', () => {
+    render(<RunnerGame autoRun={false} rng={mulberry32(1)} storage={null} />);
+    const reset1 = screen.getByRole('button', { name: 'Reset the qubit to 0' });
+    expect(reset1.textContent).toBe('Reset |0⟩');
+    fireEvent.click(screen.getByText('H₀'));
+    expect(ghostProb(1)).toBeCloseTo(0.5, 3);
+    fireEvent.click(reset1);
+    expect(ghostProb(0)).toBeCloseTo(1, 3);
+    expect(ghostProb(1)).toBeCloseTo(0, 3);
+
+    fireEvent.click(screen.getByRole('button', { name: '2 qubits' }));
+    fireEvent.click(screen.getByText('H₀'));
+    fireEvent.click(screen.getByText('CX 0→1'));
+    expect(ghostProb(3)).toBeCloseTo(0.5, 3);
+    const reset2 = screen.getByRole('button', { name: 'Reset all qubits to 0' });
+    expect(reset2.textContent).toBe('Reset |00⟩');
+    fireEvent.click(reset2);
+    expect([0, 1, 2, 3].map(ghostProb)).toEqual([1, 0, 0, 0]);
+    expect(screen.getByText('0.0')).toBeTruthy();
+    expect(screen.getByRole('img', { name: '3 lives' })).toBeTruthy();
+  });
+
+  it('Reset sits in the HUD, not among the gates', () => {
+    render(<RunnerGame autoRun={false} rng={mulberry32(1)} storage={null} />);
+    const reset = screen.getByRole('button', { name: 'Reset the qubit to 0' });
+    expect(reset.closest('.pk-runner-hud')).not.toBeNull();
+    expect(reset.closest('.pk-runner-gates')).toBeNull();
+    // Directly before pause.
+    expect(reset.nextElementSibling?.classList.contains('pk-runner-pause')).toBe(true);
+  });
+
   it('shows the game-over overlay with score + distance and restarts', () => {
     const over = { ...initRunner(1), status: 'over' as const, lives: 0, score: 4.2, distance: 5 };
     render(<RunnerGame autoRun={false} rng={mulberry32(1)} initialState={over} />);
@@ -261,6 +319,40 @@ describe('RunnerGame — VoiceOver', () => {
     expect(screen.getByRole('button', { name: 'H auf Qubit 0 anwenden' })).toBeTruthy();
   });
 
+  it('announces a reset with the new lane probabilities (EN and DE)', () => {
+    fakeClock();
+    const { unmount } = render(<RunnerGame rng={mulberry32(1)} storage={null} initialLevel={2} />);
+    fireEvent.click(screen.getByText('H₀'));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset all qubits to 0' }));
+    expect(spoken()).toBe('Reset. |00⟩ 100%.');
+    unmount();
+    render(
+      <LangProvider lang="de">
+        <RunnerGame rng={mulberry32(1)} storage={null} />
+      </LangProvider>,
+    );
+    const btn = screen.getByRole('button', { name: 'Qubit auf 0 zurücksetzen' });
+    expect(btn.textContent).toBe('Zurück auf |0⟩');
+    fireEvent.click(btn);
+    expect(spoken()).toBe('Zurückgesetzt. |0⟩ 100%.');
+  });
+
+  it('names the 2-qubit reset in German too', () => {
+    render(
+      <LangProvider lang="de">
+        <RunnerGame autoRun={false} rng={mulberry32(1)} storage={null} initialLevel={2} />
+      </LangProvider>,
+    );
+    expect(screen.getByRole('button', { name: 'Alle Qubits auf 0 zurücksetzen' }).textContent).toBe(
+      'Zurück auf |00⟩',
+    );
+  });
+
+  it('Reset is disabled while the run is held', () => {
+    render(<RunnerGame autoRun={false} rng={mulberry32(1)} storage={null} startPaused />);
+    expect((screen.getByRole('button', { name: 'Reset the qubit to 0' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('summarises lanes without the empty ones', () => {
     expect(laneSummary(2, [0.5, 0, 0, 0.5])).toBe('|00⟩ 50%, |11⟩ 50%');
     expect(laneSummary(1, [1, 0])).toBe('|0⟩ 100%');
@@ -298,6 +390,27 @@ describe('RunnerGame — game events and best score', () => {
     expect(screen.getByText('New best!')).toBeTruthy();
     expect(JSON.parse(storage.getItem(RUNNER_BEST_KEY)!)).toEqual({ 1: 1 });
     expect(spoken()).toMatch(/^Game over\. Score 1\.0, .* New best!$/);
+  });
+
+  it('keeps the gate grid and reset rules in the shared stylesheet', () => {
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const css = readFileSync(join(dir, 'runnerGame.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    const body = (sel: string) => {
+      const at = css.indexOf(`\n${sel} {`);
+      expect(at, sel).toBeGreaterThan(-1);
+      return css.slice(css.indexOf('{', at) + 1, css.indexOf('}', at));
+    };
+    expect(body('.pk-runner-gates')).toContain('display: grid');
+    expect(body('.pk-runner-gates')).toContain('grid-template-columns: repeat(var(--gate-cols, 2), minmax(0, 1fr))');
+    const gate = body('.pk-runner-gate');
+    expect(gate).toContain('min-height: 44px');
+    expect(gate).toContain('white-space: nowrap');
+    const reset = body('.pk-runner-reset');
+    expect(reset).toContain('min-height: 44px');
+    expect(reset).toContain('min-width: 44px');
+    expect(reset).toContain('margin-left: auto');
+    // Short landscape: the gates move beside the field.
+    expect(css).toMatch(/@media \(orientation: landscape\) and \(max-height: 450px\) and \(min-width: 600px\) \{[\s\S]*?\.pk-runner-gates \{[^}]*grid-column: 2;/);
   });
 
   it('imports no analytics module (the bundle must not carry one)', () => {

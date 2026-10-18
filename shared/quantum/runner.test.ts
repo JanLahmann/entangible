@@ -12,7 +12,14 @@ import { mulberry32 } from '@shared/menu/sample';
 import type { Complex } from './statevector';
 import {
   GATE_BUTTONS,
+  GATE_COLUMNS,
   DEFAULT_RUNNER_CONFIG,
+  LEVEL2_RUNNER_CONFIG,
+  LEVEL_RUNNER_CONFIG,
+  resetAmplitudes,
+  secondsToMaxSpeed,
+  secondsToMinSpawn,
+  speedAt,
   applyGate,
   coinScore,
   initRunner,
@@ -52,7 +59,11 @@ describe('lanes + labels', () => {
 
   it('offers the fixed button rows per level', () => {
     expect(GATE_BUTTONS[1]).toEqual(['X0', 'H0']);
-    expect(GATE_BUTTONS[2]).toEqual(['X0', 'X1', 'H0', 'H1', 'CX01', 'CX10']);
+    // Two rows of three, one per qubit: X₀ H₀ CX 0→1 / X₁ H₁ CX 1→0.
+    expect(GATE_BUTTONS[2]).toEqual(['X0', 'H0', 'CX01', 'X1', 'H1', 'CX10']);
+    expect(GATE_COLUMNS).toEqual({ 1: 2, 2: 3 });
+    // Totality: every level's buttons fill whole rows.
+    for (const lv of [1, 2] as Level[]) expect(GATE_BUTTONS[lv].length % GATE_COLUMNS[lv]).toBe(0);
   });
 });
 
@@ -215,5 +226,115 @@ describe('reducer + seeded playthrough determinism', () => {
     const next = runnerReducer(s, { type: 'setLevel', level: 2 }, mulberry32(1));
     expect(next.level).toBe(2);
     expect(next.amps).toHaveLength(4);
+  });
+});
+
+describe('reset — every qubit back to |0⟩ (non-unitary, free)', () => {
+  const rng = () => mulberry32(3);
+
+  it('resets a level-1 superposition to |0⟩, renormalised', () => {
+    const a = resetAmplitudes(applyGate(initialAmplitudes(1), 1, 'H0'));
+    expect(probabilities(a)).toEqual([1, 0]);
+    expect(mass(a)).toBeCloseTo(1, 12);
+    expect(resetAmplitudes(applyGate(initialAmplitudes(1), 1, 'X0'))).toEqual(initialAmplitudes(1));
+  });
+
+  it('resets a level-2 Bell state and a uniform superposition to |00⟩', () => {
+    expect(probabilities(resetAmplitudes(bellAmps()))).toEqual([1, 0, 0, 0]);
+    let u = applyGate(initialAmplitudes(2), 2, 'H0');
+    u = applyGate(u, 2, 'H1');
+    u = applyGate(u, 2, 'X1');
+    expect(probabilities(resetAmplitudes(u))).toEqual([1, 0, 0, 0]);
+  });
+
+  it('is not a gate: two different states reset to the same one (it forgets)', () => {
+    const one = applyGate(initialAmplitudes(1), 1, 'X0');
+    const plus = applyGate(initialAmplitudes(1), 1, 'H0');
+    expect(resetAmplitudes(one)).toEqual(resetAmplitudes(plus));
+  });
+
+  it('renormalises an unnormalised input and keeps lane 0 real-positive', () => {
+    const a = resetAmplitudes([{ re: 0, im: 0.3 }, { re: -0.4, im: 0 }, { re: 0, im: 0 }, { re: 0.1, im: 0.1 }]);
+    expect(a[0]).toEqual({ re: 1, im: 0 });
+    expect(mass(a)).toBeCloseTo(1, 12);
+  });
+
+  it('the reducer resets only the state: score, lives, columns and timing untouched', () => {
+    let s = initRunner(2);
+    s = runnerReducer(s, { type: 'gate', gate: 'H0' }, rng());
+    s = runnerReducer(s, { type: 'gate', gate: 'CX01' }, rng());
+    s = {
+      ...s,
+      score: 2.5,
+      lives: 2,
+      elapsed: 12,
+      spawnCooldown: 0.4,
+      columns: [{ id: 0, kind: 'obstacle', lanes: [0], x: 0.3, resolved: false }],
+      nextColumnId: 1,
+    };
+    const r = runnerReducer(s, { type: 'reset' }, rng());
+    expect(probabilities(r.amps)).toEqual([1, 0, 0, 0]);
+    expect({ ...r, amps: s.amps }).toEqual(s);
+  });
+
+  it('does not skip or soften the next obstacle: reset into |0…0⟩ then an obstacle on lane 0 is a certain hit', () => {
+    for (const level of [1, 2] as Level[]) {
+      let s = initRunner(level);
+      s = runnerReducer(s, { type: 'gate', gate: 'H0' }, rng());
+      s = { ...s, spawnCooldown: 1000, columns: [{ id: 0, kind: 'obstacle', lanes: [0], x: 0.001, resolved: false }] };
+      s = runnerReducer(s, { type: 'reset' }, rng());
+      s = runnerReducer(s, { type: 'tick', dt: 0.05 }, constRng(0.999999));
+      expect(s.lives).toBe(2);
+      expect(s.flash).toMatchObject({ kind: 'measure', hit: true, p: 1 });
+    }
+  });
+
+  it('is a no-op once the run is over', () => {
+    const over = { ...initRunner(1), status: 'over' as const, amps: applyGate(initialAmplitudes(1), 1, 'X0') };
+    expect(runnerReducer(over, { type: 'reset' }, rng())).toBe(over);
+  });
+});
+
+describe('pacing per level', () => {
+  it('level 1 is exactly the historical pacing', () => {
+    expect(LEVEL_RUNNER_CONFIG[1]).toBe(DEFAULT_RUNNER_CONFIG);
+    expect(DEFAULT_RUNNER_CONFIG).toEqual({
+      baseSpeed: 0.2,
+      speedRamp: 0.006,
+      maxSpeed: 0.62,
+      spawnBase: 1.9,
+      spawnRamp: 0.013,
+      minSpawn: 0.7,
+      startLives: 3,
+    });
+    expect(initRunner(1).config).toBe(DEFAULT_RUNNER_CONFIG);
+  });
+
+  it('level 2 starts at 70 % speed and takes about twice as long to reach top speed', () => {
+    expect(LEVEL_RUNNER_CONFIG[2]).toBe(LEVEL2_RUNNER_CONFIG);
+    expect(initRunner(2).config).toBe(LEVEL2_RUNNER_CONFIG);
+    expect(LEVEL2_RUNNER_CONFIG.baseSpeed).toBeCloseTo(0.7 * DEFAULT_RUNNER_CONFIG.baseSpeed, 12);
+    expect(LEVEL2_RUNNER_CONFIG.maxSpeed).toBe(DEFAULT_RUNNER_CONFIG.maxSpeed);
+    expect(LEVEL2_RUNNER_CONFIG.minSpawn).toBe(DEFAULT_RUNNER_CONFIG.minSpawn);
+    expect(LEVEL2_RUNNER_CONFIG.startLives).toBe(DEFAULT_RUNNER_CONFIG.startLives);
+    expect(secondsToMaxSpeed(DEFAULT_RUNNER_CONFIG)).toBeCloseTo(70, 6);
+    expect(secondsToMaxSpeed(LEVEL2_RUNNER_CONFIG)).toBeCloseTo(141.2, 1);
+    expect(secondsToMinSpawn(DEFAULT_RUNNER_CONFIG)).toBeCloseTo(92.3, 1);
+    expect(secondsToMinSpawn(LEVEL2_RUNNER_CONFIG)).toBeCloseTo(184.2, 1);
+    // Never faster than level 1 at the same moment of the run.
+    for (let t = 0; t <= 300; t += 5) {
+      expect(speedAt(LEVEL2_RUNNER_CONFIG, t)).toBeLessThanOrEqual(speedAt(DEFAULT_RUNNER_CONFIG, t));
+    }
+  });
+
+  it('a level switch picks up the new level\'s pacing; a custom config is kept', () => {
+    const toTwo = runnerReducer(initRunner(1), { type: 'setLevel', level: 2 }, mulberry32(1));
+    expect(toTwo.config).toBe(LEVEL2_RUNNER_CONFIG);
+    const back = runnerReducer(toTwo, { type: 'setLevel', level: 1 }, mulberry32(1));
+    expect(back.config).toBe(DEFAULT_RUNNER_CONFIG);
+    expect(runnerReducer(toTwo, { type: 'restart' }, mulberry32(1)).config).toBe(LEVEL2_RUNNER_CONFIG);
+    const custom = { ...DEFAULT_RUNNER_CONFIG, baseSpeed: 0.5 };
+    const c2 = runnerReducer(initRunner(1, custom), { type: 'setLevel', level: 2 }, mulberry32(1));
+    expect(c2.config).toBe(custom);
   });
 });

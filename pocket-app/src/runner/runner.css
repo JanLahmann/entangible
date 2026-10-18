@@ -162,32 +162,18 @@ body,
   flex-wrap: nowrap;
 }
 
+/* The field takes what is left after the HUD and the gate grid (two rows of
+ * gates at 2 qubits); 6rem keeps four lanes readable on the smallest phone. */
 .pk-runnerapp .pk-runner-field {
-  min-height: 7rem;
-}
-
-.pk-runnerapp .pk-runner-gates {
-  flex-wrap: nowrap;
+  min-height: 6rem;
 }
 
 .pk-runnerapp .pk-runner-gate {
-  min-height: 52px;
-  min-width: 0;
-  flex: 1 1 0;
-  padding: 0.5rem 0.25rem;
-  white-space: nowrap;
+  min-height: 50px;
 }
 
-/* Two qubits on a narrow phone: six gates in one row still fit (≥ 44 px each). */
-@media (max-width: 420px) {
-  .pk-runnerapp .pk-runner-gates {
-    gap: 0.3rem;
-  }
-
-  .pk-runnerapp .pk-runner-field[data-lanes='4'] ~ .pk-runner-gates .pk-runner-gate {
-    font-size: 0.78rem;
-    padding-inline: 0.1rem;
-  }
+.pk-runnerapp .pk-runner[data-level='2'] .pk-runner-gate {
+  min-height: 48px;
 }
 
 /* Short landscape phones (844×390): every pixel of height counts. */
@@ -210,7 +196,8 @@ body,
     font-size: 1.2rem;
   }
 
-  .pk-runnerapp .pk-runner-gate {
+  .pk-runnerapp .pk-runner-gate,
+  .pk-runnerapp .pk-runner[data-level='2'] .pk-runner-gate {
     min-height: 44px;
     padding-block: 0.3rem;
   }
@@ -248,7 +235,8 @@ body,
     margin: 0 auto;
   }
 
-  .pk-runnerapp .pk-runner-gate {
+  .pk-runnerapp .pk-runner-gate,
+  .pk-runnerapp .pk-runner[data-level='2'] .pk-runner-gate {
     min-height: 60px;
     font-size: 1.15rem;
   }

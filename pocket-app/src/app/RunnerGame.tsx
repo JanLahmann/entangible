@@ -24,6 +24,9 @@
  * never resumes by itself: Resume starts a 3-2-1 countdown (one number a
  * second), then the run goes on.
  *
+ * Reset (HUD, beside pause): every qubit back to |0⟩ — the engine's
+ * non-unitary `reset` event, free of charge; obstacles still measure as usual.
+ *
  * VoiceOver: every gate button is named ("Apply H to qubit 0"); one polite live
  * region speaks each coin / obstacle (lane probabilities, lives, score) —
  * throttled to one line per `announceGapMs`, the latest pending line spoken at
@@ -34,9 +37,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cryptoRng, type Rng } from '@shared/menu/sample';
 import {
   GATE_BUTTONS,
+  GATE_COLUMNS,
   initRunner,
   laneLabels,
   probabilities,
+  resetAmplitudes,
   runnerReducer,
   type GateButton,
   type Level,
@@ -425,6 +430,7 @@ export function RunnerGame({
     <div
       className={`pk-runner ${flashActive ? 'is-flash' : ''}`}
       data-status={state.status}
+      data-level={state.level}
       data-hold={suspended && playing ? 'paused' : hold}
       data-elapsed={state.elapsed.toFixed(3)}
     >
@@ -455,6 +461,18 @@ export function RunnerGame({
             ))}
           </div>
         )}
+        <button
+          type="button"
+          className="pk-runner-reset"
+          aria-label={t.resetAria(level)}
+          disabled={!running}
+          onClick={() => {
+            dispatch({ type: 'reset' });
+            announce(t.announceReset(laneSummary(level, probabilities(resetAmplitudes(state.amps)))));
+          }}
+        >
+          {t.reset(level)}
+        </button>
         <button
           type="button"
           className="pk-runner-pause"
@@ -526,8 +544,15 @@ export function RunnerGame({
         )}
       </div>
 
-      {/* Gate thumb-row (bottom): the whole control surface for the game. */}
-      <div className="pk-runner-gates" role="group" aria-label={t.gates}>
+      {/* Gate grid (bottom): one row of two at level 1; two rows of three at
+          level 2, X₀ H₀ CX 0→1 over X₁ H₁ CX 1→0 (the GATE_BUTTONS order). */}
+      <div
+        className="pk-runner-gates"
+        role="group"
+        aria-label={t.gates}
+        data-cols={GATE_COLUMNS[level]}
+        style={{ ['--gate-cols' as string]: GATE_COLUMNS[level] }}
+      >
         {GATE_BUTTONS[level].map((g) => (
           <button
             key={g}

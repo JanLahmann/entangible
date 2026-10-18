@@ -416,7 +416,10 @@ JSON (`qubits: 5`), QASM (`qreg q[5]`), moments, and golf are untouched.
   ("Quantum Runner") for the same app: the same `RunnerGame` as the site's
   runner mode under a slim toolbar, no editor library, no camera / booth /
   other modes, relative paths, no network — see
-  [`runner-bundle.md`](runner-bundle.md).
+  [`runner-bundle.md`](runner-bundle.md). Game changes land in both (one
+  `RunnerGame`): e.g. the HUD's Reset |0⟩ / |00⟩ (free, non-unitary), the
+  two-row 2-qubit gate grid and the slower 2-qubit pacing
+  ([`runner.md`](runner.md)).
 
 ## Verification
 

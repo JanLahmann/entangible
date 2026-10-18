@@ -5,6 +5,9 @@
  * choice and How to play (with the QAMPoser credit) in its toolbar, switches
  * to German, and remembers the qubit choice under its own key.
  */
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, screen, fireEvent, act } from '@testing-library/react';
 import { LangProvider } from '@shared/i18n';
@@ -75,6 +78,7 @@ describe('RunnerApp — the runner-only shell', () => {
     const dialog = screen.getByRole('dialog', { name: 'How to play' });
     expect(dialog.querySelectorAll('.pk-runnersheet-p').length).toBeGreaterThan(3);
     expect(dialog.textContent).toContain('Based on Quantum Runner by the QAMPoser project.');
+    expect(dialog.textContent).toContain('It is a real operation, but not a gate');
     expect(dialog.querySelector('a')!.getAttribute('href')).toBe(SITE_URL);
     // The run is held under the sheet …
     expect(container.querySelector('.pk-runner')!.getAttribute('data-hold')).toBe('paused');
@@ -93,6 +97,7 @@ describe('RunnerApp — the runner-only shell', () => {
     const dialog = screen.getByRole('dialog', { name: 'So geht’s' });
     expect(dialog.textContent).toContain('Nach Quantum Runner vom QAMPoser-Projekt.');
     expect(dialog.textContent).toMatch(/Tippe auf die Gatter/);
+    expect(dialog.textContent).toContain('Das ist eine echte Operation, aber kein Gatter');
     expect(screen.getByRole('button', { name: 'Switch to English' })).toBeTruthy();
   });
 
@@ -100,5 +105,26 @@ describe('RunnerApp — the runner-only shell', () => {
     mount('de');
     expect(screen.getByRole('button', { name: '2 Qubits' })).toBeTruthy();
     expect(screen.getByRole('dialog', { name: 'Bereit?' })).toBeTruthy();
+  });
+
+  it('has the reset next to pause in its HUD (not in the toolbar or among the gates)', () => {
+    const { container } = mount();
+    const reset = screen.getByRole('button', { name: 'Reset the qubit to 0' });
+    expect(reset.closest('.pk-runner-hud')).not.toBeNull();
+    expect(reset.closest('.pk-runnerbar')).toBeNull();
+    expect(container.querySelectorAll('.pk-runner-gates button')).toHaveLength(2);
+  });
+
+  it('keeps every bundle gate rule at 44 px or more and no six-in-a-row squeeze', () => {
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'runner.css'), 'utf8').replace(
+      /\/\*[\s\S]*?\*\//g,
+      '',
+    );
+    for (const m of css.matchAll(/pk-runner-gate[^{]*\{([^}]*)\}/g)) {
+      const h = /min-height:\s*(\d+)px/.exec(m[1]);
+      if (h) expect(Number(h[1])).toBeGreaterThanOrEqual(44);
+    }
+    expect(css).not.toContain("data-lanes='4'] ~ .pk-runner-gates");
+    expect(css).toMatch(/\.pk-runnerapp \.pk-runner-field \{\s*min-height: 6rem;/);
   });
 });

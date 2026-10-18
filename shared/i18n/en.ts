@@ -612,6 +612,10 @@ export const en = {
     announceNewRun: (level: string) => `New run, ${level}.`,
     announcePaused: 'Paused.',
     announceGo: 'Go!',
+    /** The reset button: every qubit back to |0⟩ (not a gate; free, see docs/runner.md). */
+    reset: (level: 1 | 2): string => (level === 1 ? 'Reset |0⟩' : 'Reset |00⟩'),
+    resetAria: (level: 1 | 2): string => (level === 1 ? 'Reset the qubit to 0' : 'Reset all qubits to 0'),
+    announceReset: (lanes: string) => `Reset. ${lanes}.`,
   },
 
   // ------------------------------------------- Quantum Runner bundle (iOS app)
@@ -627,6 +631,7 @@ export const en = {
       'Coins (◉) are never measured: you bank the probability of being in the coin lanes, so a superposition earns part of a coin.',
       'Obstacles (red) measure you. With the probability of being in their lanes you are hit and lose a life; otherwise you slip past. Either way your state collapses. You have three lives per run.',
       'Two qubits? Try H₀ and then CX 0→1: that Bell state lives only in |00⟩ and |11⟩, so an obstacle on |01⟩ and |10⟩ can never touch you.',
+      'Reset puts every qubit back to |0⟩. It is a real operation, but not a gate: it is not reversible and forgets your state. It is free, and it does not stop the next obstacle from measuring you.',
       'Leave the app and the run pauses. Tap Resume and it goes on after a short countdown.',
     ],
     credit: 'Based on Quantum Runner by the QAMPoser project.',
