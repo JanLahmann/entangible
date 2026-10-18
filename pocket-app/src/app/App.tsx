@@ -9,7 +9,7 @@
  *   changes; golf drives its own celebrations (hole-in banner). Settings live in
  *   localStorage with URL overrides; a debug panel appends the pipeline stats.
  */
-import { lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ThemeProvider,
   QamposerProvider,
@@ -43,15 +43,12 @@ import { useCamera, type CameraError } from './useCamera';
 import { pinchZoom, pointerDistance, cropRect, type Point as PinchPoint } from './zoom';
 import type { Rect } from '@shared/capture/matRoi';
 import { MessageStrip, type StripMessage } from './MessageStrip';
-import { courseElapsed, tickCourseTimer } from '@shared/display/courseTimer';
 import { Celebrations, LOW_POWER_PARTICLES, type CelebrationRequest } from './Celebrations';
 import { trackGame } from './analytics';
 import { ResultsHistogram, noiseSeries } from './ResultsHistogram';
 import { QasmPanel } from './QasmPanel';
 import { StatePanel } from '@shared/display/StatePanel';
 import { ComposerHandoff } from './ComposerHandoff';
-import { EvolvingState } from '@shared/display/EvolvingState';
-import { Scorecard } from './Scorecard';
 import { SettingsControl } from './SettingsDrawer';
 import { TouchInspector } from './TouchInspector';
 import { toggleFrozen } from './freeze';
@@ -65,44 +62,14 @@ import {
 } from './settings';
 import { useQuantinaPack } from './quantinaPack';
 import { LazyBoundary } from './LazyBoundary';
-import { displayCircuit, highestUsedRow } from '@shared/display/displayWires';
+import { displayCircuit } from '@shared/display/displayWires';
 import { HINT_ROTATE_MS } from '@shared/display/hints';
-import { editorFit, editorNaturalHeight, type EditorFit } from './editorFit';
-import {
-  golfStep,
-  completionCelebration,
-  courseTotals,
-  initialGolfState,
-  scoreName,
-  loadBest,
-  saveBest,
-  loadRevealed,
-  saveRevealed,
-  golfReveal,
-  golfWipe,
-  golfJumpTo,
-  persistsBest,
-  parseScope,
-  scopeCode,
-  scopeHoles,
-  scopeLabel,
-  GOLF_SCOPES,
-  type GolfScope,
-  clubGateTypes,
-  holeHighlight,
-  holeTargetState,
-  type GolfCourse,
-  type GolfState,
-} from '@quantum/golf';
-import {
-  courseCode,
-  courseHoles,
-  isCourseReady,
-  parseCourseCode,
-  randomBaseSeed,
-} from '@quantum/golfRandom';
-import { CourseDealing, useCourseDealer } from './CourseDealing';
-import { holeGoal } from '@shared/display/goalLine';
+import { editorScaleStyle as fitStyle, useEditorFit } from './useEditorFit';
+import { clubGateTypes } from '@quantum/golf';
+import type { ChallengeRenderer } from '@shared/display/Scorecard';
+import { CourseChallenge } from './CourseChallenge';
+import { GolfBoard } from './GolfBoard';
+import { useGolfGame } from './useGolfGame';
 import { BUILD_ON_SCREEN, GOLF_ON_SCREEN, welcomeEligible } from './welcome';
 import {
   detectEnv,
@@ -222,42 +189,6 @@ export function showCameraUi(
   cameraActive: boolean,
 ): boolean {
   return !cameraHidden && (hasCameraPanel || cameraActive);
-}
-
-/**
- * Vertical auto-fit for the recognized-circuit editor. Measures the stage's
- * available height (ResizeObserver on the editor container) and derives a scale
- * from the editor's natural height (D wires x row height + chrome) so all
- * `displayQubits` wires always fit — no clipping. On roomy iPad/desktop stages
- * the available height already exceeds the natural height, so the scale stays 1
- * and nothing changes there.
- */
-function useEditorFit(displayQubits: number): {
-  containerRef: React.RefObject<HTMLDivElement>;
-  fit: EditorFit & { natural: number };
-} {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const natural = editorNaturalHeight(displayQubits);
-  const [fit, setFit] = useState<EditorFit>({ scale: 1, scroll: false });
-
-  useLayoutEffect(() => {
-    const measure = () => {
-      const container = containerRef.current;
-      if (!container) return;
-      const next = editorFit(container.clientHeight, natural);
-      setFit((prev) => (prev.scale === next.scale && prev.scroll === next.scroll ? prev : next));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (containerRef.current) ro.observe(containerRef.current);
-    window.addEventListener('resize', measure);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener('resize', measure);
-    };
-  }, [natural]);
-
-  return { containerRef, fit: { ...fit, natural } };
 }
 
 function FullscreenButton({ variant }: { variant: 'bar' | 'cam' }) {
@@ -494,31 +425,7 @@ export function App() {
   const [corners, setCorners] = useState(0);
   const [strip, setStrip] = useState<StripMessage | null>(null);
   const [celebration, setCelebration] = useState<CelebrationRequest | null>(null);
-  /** One course-end celebration per completion (#80); cleared on restart. */
-  const completedRef = useRef(false);
   const [hintIndex, setHintIndex] = useState(0);
-  // A shared course code (#78) — from `?course=`, the settings drawer, or a
-  // previous session — opens golf straight onto that generated course. The code
-  // IS the seed, so the eighteen holes are the ones the sender played.
-  //
-  // Every move onto a random course goes through the dealer: a course that is
-  // not dealt yet is generated off the critical path (behind the "Dealing
-  // course" indicator) and only then put in play, because render reads the
-  // course synchronously and a cold deal is seconds of work.
-  const { dealing, deal: dealCourse, cancel: cancelDeal, pendingSeed: pendingDeal } =
-    useCourseDealer();
-  const [golfState, setGolfState] = useState<GolfState>(() => {
-    const seed = settings.courseCode === null ? null : parseCourseCode(settings.courseCode);
-    // A shared link carries the competition scope beside the course (#102);
-    // one without a scope is a full round, as every pre-#102 link was.
-    const scope = parseScope(settings.courseScope);
-    // A code whose course is not dealt yet (on a fresh page load: always) opens
-    // on the classic card for the moment; the course-code effect below sees the
-    // code and deals it, then moves onto it.
-    return seed === null || !isCourseReady(seed)
-      ? initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage), scope)
-      : initialGolfState({}, 'random', seed, {}, scope);
-  });
   const [, setDebugTick] = useState(0);
   // Freeze: session-momentary; starts unfrozen and persists nothing.
   const [frozen, setFrozen] = useState(false);
@@ -535,7 +442,6 @@ export function App() {
   const momentStateRef = useRef<MomentState>(initialMomentState);
   const prevCircuitRef = useRef<Circuit>(createDefaultCircuit(BOARD_QUBITS));
   const tokenRef = useRef(0);
-  const golfStateRef = useRef<GolfState>(golfState);
   const lastFrameRef = useRef<FrameResult | null>(null);
   const debugTickAtRef = useRef(0);
   // State-source seam (Entangible One U1b): the local pipeline adapter is fed by
@@ -558,6 +464,23 @@ export function App() {
   modeRef.current = settings.mode;
   const debugRef = useRef(settings.debug);
   debugRef.current = settings.debug;
+
+  // Quantum Golf — the whole game driver (state, dealer, bests, course code,
+  // celebrations) lives in `useGolfGame`, shared with the golf-only bundle.
+  // Build-on-screen hands it the manual board's clear; the camera and booth
+  // paths keep the physical clear-the-table ritual (no `clearBoard`).
+  const golf = useGolfGame({
+    storage,
+    courseCode: settings.courseCode,
+    courseScope: settings.courseScope,
+    setCourseCode: (courseCode) => settingsStore.update({ courseCode }),
+    setCourseScope: (courseScope) => settingsStore.update({ courseScope }),
+    clearBoard: manual ? () => manualSourceRef.current.clear() : undefined,
+    circuit,
+    onCelebrate: (c) => setCelebration({ ...c, token: ++tokenRef.current }),
+    onEvent: trackGame,
+  });
+  const golfStep = golf.step;
 
   const pushStrip = useCallback((text: string) => {
     setStrip({ text, token: ++tokenRef.current });
@@ -597,70 +520,7 @@ export function App() {
       // quantina session falls through to the composer moment path below.
       const effectiveMode: Mode = update.boothMode ?? modeRef.current;
       if (effectiveMode === 'golf') {
-        // While a course is being dealt the board does not play: the state in
-        // hand belongs to the course being left, and the new one tees off from
-        // a fresh baseline once it is dealt.
-        if (pendingDeal() !== null) {
-          prevCircuitRef.current = next;
-          return;
-        }
-        const prevGolf = golfStateRef.current;
-        const step = golfStep(prevGolf, next, courseHoles(prevGolf));
-        const nextGolf = step.state;
-        golfStateRef.current = nextGolf;
-        setGolfState(nextGolf);
-        // Finishing a RANDOM course and clearing the board deals a NEW course:
-        // "play again" on a generated round means a fresh 18, not the same 18.
-        if (step.restarted && prevGolf.course === 'random') {
-          const seed = randomBaseSeed();
-          dealCourse(seed, () => {
-            const fresh = initialGolfState({}, 'random', seed, {}, golfStateRef.current.scope);
-            golfStateRef.current = fresh;
-            setGolfState(fresh);
-          });
-        }
-        // A board-clear restart tees off a new round, so the mid-hole reveals
-        // it may have paid for go with the old one (#99).
-        if (step.restarted && persistsBest(nextGolf)) saveRevealed(storage, nextGolf.revealed);
-        // Course finished (#80): one burst, scaled and worded by the round.
-        // Guarded by a ref like the moment engine's dedupe, so a replayed frame
-        // or a StrictMode double-invoke cannot fire it twice; the guard clears
-        // on restart, so playing again can earn it again.
-        if (step.justCompleted && !completedRef.current) {
-          completedRef.current = true;
-          trackGame('golf round finished', { course: step.state.course, scope: String(step.state.scope) });
-          const timing = tickCourseTimer(step.state, Date.now());
-          // Scored against the SCOPE's par (#102): finishing the easy round is
-          // measured against 25, not against the full course's 101.
-          const done = completionCelebration(
-            courseTotals(
-              step.state.best,
-              scopeHoles(courseHoles(step.state), step.state.scope),
-            ).vsPar,
-            courseElapsed(timing, Date.now()),
-            tRef.current,
-          );
-          setCelebration({
-            kind: 'ghz',
-            k: 5,
-            banner: done.copy,
-            intensity: done.intensity,
-            token: ++tokenRef.current,
-          });
-        }
-        if (!step.state.complete) completedRef.current = false;
-        if (step.justHoledIn && step.scoreName) {
-          trackGame('golf hole finished', { qubits: step.hole.qubits, score: step.scoreName, course: step.state.course });
-          // Random bests are session-only — a generated hole 7 is a different
-          // hole on every seed, so writing it would corrupt the device's card.
-          if (persistsBest(step.state)) saveBest(storage, step.state.best);
-          setCelebration({
-            kind: step.hole.qubits >= 3 ? 'ghz' : 'bell',
-            k: step.hole.qubits,
-            banner: `${scoreName(step.score, step.hole.par, tRef.current)}!`,
-            token: ++tokenRef.current,
-          });
-        }
+        golfStep(next);
         prevCircuitRef.current = next;
         return;
       }
@@ -680,7 +540,7 @@ export function App() {
         setCelebration({ ...outcome.celebration, token: ++tokenRef.current });
       }
     },
-    [pushStrip, dealCourse, pendingDeal],
+    [pushStrip, golfStep],
   );
 
   const onResult = useCallback((result: FrameResult, video: HTMLVideoElement) => {
@@ -1000,10 +860,9 @@ export function App() {
   // the local settings stand otherwise (see `boothOrLocalPanels`).
   const effectivePanels = boothOrLocalPanels(boothPanels, settings.panels);
 
-  // The golf course in play (#70): the fixed 18 holes, or this session's
-  // generated ones (memoized on the seed inside `courseHoles`).
-  const golfHoles = courseHoles(golfState);
-  const currentLevel = golfHoles[golfState.levelIndex];
+  // The golf hole in play (#70): on the fixed 18 holes, or this session's
+  // generated ones.
+  const currentLevel = golf.currentLevel;
 
   // Display-only wire count: the recognized `circuit` is always 5 qubits, but
   // the editor draws `effectiveWires` wires (compact auto-grows 3→5). Panels,
@@ -1022,21 +881,7 @@ export function App() {
   // Auto-fit the editor so every displayed wire is visible on short phone
   // stages; a no-op (scale 1) on roomy iPad/desktop stages.
   const { containerRef: editorContainerRef, fit: editorFitState } = useEditorFit(displayed.qubits);
-  const scaling = editorFitState.scale < 1;
-  const editorScaleStyle: React.CSSProperties | undefined = scaling
-    ? {
-        flex: 'none',
-        height: `${editorFitState.natural}px`,
-        width: `${100 / editorFitState.scale}%`,
-        transform: `scale(${editorFitState.scale})`,
-        transformOrigin: 'top left',
-        // Reclaim the layout space the shrunk editor no longer occupies (top-left
-        // origin leaves scaled-away space to its right and below) so the column
-        // doesn't gain phantom horizontal/vertical scroll.
-        marginBottom: `${-(editorFitState.natural * (1 - editorFitState.scale))}px`,
-        marginRight: `${-(100 / editorFitState.scale - 100)}%`,
-      }
-    : undefined;
+  const editorScaleStyle = fitStyle(editorFitState);
 
   const running = camera.status === 'running';
   const boardLocked = corners >= 3;
@@ -1083,16 +928,6 @@ export function App() {
   const hostKnown = servedByHost || settings.boothUrl != null;
   const cameraRoleAvailable = cameraRoleOffered({ hostKnown, hasKey: operatorKeyPresent });
   const streamPill = cameraStreamPill(streamStatus, t.app);
-  const golfTargets = useMemo(() => holeHighlight(currentLevel), [currentLevel]);
-  const golfTargetState = useMemo(() => holeTargetState(currentLevel), [currentLevel]);
-  // The hole's goal in plain words, under the target (derived from the target
-  // state alone, so a generated hole reads exactly like a classic one).
-  const golfGoal = useMemo(() => holeGoal(currentLevel, t), [currentLevel, t]);
-  // The Q-sphere and the bra-ket line show the HOLE's state space, not the full
-  // five qubits: a level-2 hole gets a 4-node sphere and 2-bit kets. Untouched
-  // qubits are exactly |0⟩, so restricting to the first 2^n amplitudes is
-  // lossless; if play strays onto higher wires the space auto-grows with them.
-  const golfStateQubits = Math.max(currentLevel.qubits, highestUsedRow(circuit) + 1);
   // Golf hands out clubs, not the whole bag (#55): while building a hole on
   // screen the library palette offers exactly this round's gate set. Everywhere
   // else it stays `undefined` — the full palette, unchanged.
@@ -1175,246 +1010,16 @@ export function App() {
       }
     });
 
-  // Switch courses (#70). Always a full re-tee on hole 1, and entering `random`
-  // always deals a FRESH base seed — re-tapping "Random" is how you ask for a
-  // new course. Classic reloads the device's persisted card; random starts with
-  // an empty, session-only one. In build-on-screen mode the board is emptied
-  // too, so the new hole 1 tees off from zero strokes instead of charging the
-  // previous hole's leftover tiles as adds.
-  //
-  // Pocket ONLY: the kiosk (KioskView) stays on the classic course by design —
-  // its surface is operator-layout-driven and unattended, while choosing a
-  // random round is a per-visitor decision with nobody there to make it.
-  //
-  // A fresh random seed is never dealt yet, so Random goes through the dealer
-  // and the switch (state, code setting, board) happens once the course is;
-  // Classic needs no dealing and also calls off any deal still pending.
-  const pickCourse = (course: GolfCourse) => {
-    const seed = course === 'random' ? randomBaseSeed() : null;
-    const enter = () => {
-      const scope = golfStateRef.current.scope;
-      const fresh =
-        seed === null
-          ? initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage), scope)
-          : initialGolfState({}, 'random', seed, {}, scope);
-      golfStateRef.current = fresh;
-      setGolfState(fresh);
-      // Keep the shareable code (#78) pointing at the course actually in play, so
-      // the card, the drawer field and a copied link can never disagree.
-      settingsStore.update({ courseCode: seed === null ? null : courseCode(seed) });
-      if (manual) manualSourceRef.current.clear();
-    };
-    if (seed === null) {
-      cancelDeal();
-      enter();
-    } else {
-      dealCourse(seed, enter);
-    }
-  };
-
-  // A code typed into the drawer (or arriving in the URL) switches courses. Only
-  // fires when the code names a course we are NOT already playing, so it cannot
-  // fight `pickCourse`, which writes the setting itself.
-  // It is also what deals a code the page was OPENED with: the initial state
-  // stays classic until that course is dealt (see `golfState` above).
-  const courseCodeSetting = settings.courseCode;
-  useEffect(() => {
-    const seed = courseCodeSetting === null ? null : parseCourseCode(courseCodeSetting);
-    const cur = golfStateRef.current;
-    if (seed === null) {
-      // Clearing the code also calls off a code-or-link deal still pending.
-      cancelDeal();
-      if (cur.course !== 'random') return;
-      const fresh = initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage), cur.scope);
-      golfStateRef.current = fresh;
-      setGolfState(fresh);
-      if (manual) manualSourceRef.current.clear();
-    } else {
-      if (cur.course === 'random' && cur.randomSeed === seed) return;
-      // Already on its way (a StrictMode re-run of this effect, say).
-      if (pendingDeal() === seed) return;
-      dealCourse(seed, () => {
-        const fresh = initialGolfState({}, 'random', seed, {}, golfStateRef.current.scope);
-        golfStateRef.current = fresh;
-        setGolfState(fresh);
-        if (manual) manualSourceRef.current.clear();
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [courseCodeSetting]);
-
-  // Advance/restart, shared by the scorecard button and the one floating by
-  // the sphere (a phone player should not have to scroll down after holing
-  // in). Build-on-screen only; camera keeps the physical clear-the-board
-  // ritual. Empties the manual board, which IS the golf advance trigger; a
-  // finished course restarts directly (finished RANDOM: brand-new seed, #70).
-  const advanceHole = manual
-    ? () => {
-        const cur = golfStateRef.current;
-        if (cur.complete && cur.course === 'random') {
-          // A brand-new seed: dealt first, then teed off (the board clears now
-          // either way, and does not play while the course is dealt).
-          const seed = randomBaseSeed();
-          dealCourse(seed, () => {
-            const fresh = initialGolfState({}, 'random', seed, {}, golfStateRef.current.scope);
-            golfStateRef.current = fresh;
-            setGolfState(fresh);
-          });
-        } else if (cur.complete) {
-          const fresh = initialGolfState(cur.best, 'classic', 0, {}, cur.scope);
-          // A new round deals every price afresh (#99): holes revealed last
-          // time round are not still floored on this one.
-          if (persistsBest(fresh)) saveRevealed(storage, fresh.revealed);
-          golfStateRef.current = fresh;
-          setGolfState(fresh);
-        }
-        manualSourceRef.current.clear();
-      }
-    : undefined;
-
-  // Taking the mid-hole reveal (#99). The ENGINE marks the hole — the card only
-  // asks — so the double-par floor lands in the recorded score through the same
-  // path every other stroke takes, and a classic round remembers it across a
-  // refresh exactly as it remembers a best.
-  const takeReveal = (holeNumber: number) => {
-    const cur = golfStateRef.current;
-    const next = golfReveal(cur, holeNumber);
-    if (next === cur) return;
-    golfStateRef.current = next;
-    setGolfState(next);
-    if (persistsBest(next)) saveRevealed(storage, next.revealed);
-  };
-
-  // Wipe the board for one flat stroke (#100), build-on-screen only. The ENGINE
-  // charges it and empties the diff baseline first, so the board-clear that
-  // follows is free — a per-gate teardown would have cost one stroke per tile
-  // (#73), which is exactly the price this action exists to replace.
-  const wipeBoard = manual
-    ? () => {
-        const cur = golfStateRef.current;
-        const next = golfWipe(cur, circuit);
-        if (next === cur) return;
-        golfStateRef.current = next;
-        setGolfState(next);
-        manualSourceRef.current.clear();
-      }
-    : undefined;
-
-  // Pick what the competition is over (#102). Always a full re-tee on the
-  // scope's first hole: a result only means something if both players played
-  // the same holes from the same start, so switching scope mid-round would be
-  // switching competition mid-competition. The setting is persisted and travels
-  // in the share link, so a challenged friend lands in the same one.
-  const pickScope = (scope: GolfScope) => {
-    const cur = golfStateRef.current;
-    const fresh =
-      cur.course === 'random'
-        ? initialGolfState({}, 'random', cur.randomSeed, {}, scope)
-        : initialGolfState(loadBest(storage), 'classic', 0, loadRevealed(storage), scope);
-    golfStateRef.current = fresh;
-    setGolfState(fresh);
-    settingsStore.update({ courseScope: scopeCode(scope) });
-    if (manual) manualSourceRef.current.clear();
-  };
-
-  // Tap a chip, play that hole (#101). The board is left exactly as it is and
-  // becomes the new hole's baseline, so arriving costs nothing (#68) — and the
-  // hole being left keeps its strokes, waiting for a player who comes back.
-  const jumpToHole = (holeNumber: number) => {
-    const cur = golfStateRef.current;
-    const next = golfJumpTo(cur, holeNumber, circuit, courseHoles(cur));
-    if (next === cur) return;
-    golfStateRef.current = next;
-    setGolfState(next);
-  };
+  // Challenge-a-friend (#84): the random course's share link as a QR — site
+  // only (the qrcode dependency stays out of the golf bundle).
+  const courseChallenge: ChallengeRenderer = ({ code, link, scope }) => (
+    <CourseChallenge code={code} link={link} scope={scope} />
+  );
 
   const sidebar = isGolf ? (
     <>
       {showCamera && cameraPanel}
-      {/* `pk-side-hero` marks the sphere as THE panel of the mode: in golf +
-          build-on-screen the wide-desktop CSS seats it in its own tall column
-          of the sidebar with the course/scorecard/results beside it (#92). */}
-      <div key="golfview" className="pk-side-hero">
-        {/* The view names itself now (EvolvingState's view-label) — no extra
-            panel label, it would double up. */}
-        <div className={`pk-well${dealing ? ' is-dealing' : ''}`}>
-          {/* A course being dealt covers the sphere: the target under it is
-              the course being left, not the one about to be played. */}
-          {dealing && <CourseDealing holesDone={dealing.holesDone} />}
-          <EvolvingState
-            circuit={circuit}
-            view={currentLevel.view}
-            targets={golfTargets}
-            targetState={golfTargetState}
-            n={golfStateQubits}
-            showKet
-            classPrefix="pk"
-          />
-          {/* The goal in plain words, right under the target ket. One line,
-              ellipsized; the full sentence is the tooltip. Hidden while a
-              course is dealt (the target is the course being left) and once
-              the course is complete (there is no hole to aim at). */}
-          {!dealing && !golfState.complete && (
-            <p className="pk-golf-goal" title={golfGoal}>
-              {golfGoal}
-            </p>
-          )}
-          {advanceHole && golfState.holedIn && (
-            <button
-              type="button"
-              className="pk-golf-next pk-golf-next--sphere"
-              onClick={advanceHole}
-            >
-              {golfState.complete ? t.golf.playAgain : t.golf.nextHole}
-            </button>
-          )}
-        </div>
-      </div>
-      <div key="golfcourse">
-        <div className="pk-label">{t.golf.course}</div>
-        <div className="pk-course-pick" role="group" aria-label={t.golf.courseAria}>
-          <button
-            type="button"
-            className={`pk-course-btn${golfState.course === 'classic' ? ' is-active' : ''}`}
-            aria-pressed={golfState.course === 'classic'}
-            onClick={() => pickCourse('classic')}
-          >
-            {t.golf.classic18}
-          </button>
-          <button
-            type="button"
-            className={`pk-course-btn${golfState.course === 'random' ? ' is-active' : ''}`}
-            aria-pressed={golfState.course === 'random'}
-            onClick={() => pickCourse('random')}
-          >
-            {golfState.course === 'random' ? t.golf.newRandom18 : t.golf.random18}
-          </button>
-        </div>
-        {/* What the round is a competition OVER (#102) — the full course, or
-            one of its four rounds played as a contest of its own. */}
-        <div className="pk-scope-pick" role="group" aria-label={t.golf.scopeAria}>
-          {GOLF_SCOPES.map((s) => (
-            <button
-              key={s}
-              type="button"
-              className={`pk-scope-btn${golfState.scope === s ? ' is-active' : ''}`}
-              aria-pressed={golfState.scope === s}
-              onClick={() => pickScope(s)}
-            >
-              {scopeLabel(s, t)}
-            </button>
-          ))}
-        </div>
-      </div>
-      <Scorecard
-        key="scorecard"
-        state={golfState}
-        circuit={circuit}
-        onNextLevel={advanceHole}
-        onReveal={takeReveal}
-        onWipe={wipeBoard}
-        onJump={jumpToHole}
-      />
+      <GolfBoard key="golf" game={golf} circuit={circuit} challenge={courseChallenge} />
       {hasPanel('results') && (
         <ResultsHistogram key="results" circuit={circuit} displayQubits={displayed.qubits} />
       )}

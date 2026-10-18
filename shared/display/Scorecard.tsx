@@ -194,10 +194,13 @@ function CourseChip({
   p,
   state,
   challenge,
+  shareBase,
 }: {
   p: string;
   state: GolfState;
   challenge?: ChallengeRenderer;
+  /** Where the copied link points (default: this page). */
+  shareBase?: string;
 }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
@@ -212,7 +215,8 @@ function CourseChip({
 
   const shareLink = () =>
     courseShareLink(
-      typeof location === 'undefined' ? '' : location.origin + location.pathname,
+      shareBase ??
+        (typeof location === 'undefined' ? '' : location.origin + location.pathname),
       code,
       state.scope,
     );
@@ -332,6 +336,7 @@ export function Scorecard({
   classPrefix,
   monoKet = false,
   challenge,
+  shareBase,
   onNextLevel,
   onReveal,
   onWipe,
@@ -341,6 +346,13 @@ export function Scorecard({
   circuit: Circuit;
   classPrefix: string;
   monoKet?: boolean;
+  /**
+   * Base URL of the course share link a tap on the course code copies (#78).
+   * Default: this page (`location.origin + pathname`). The offline golf bundle
+   * points it at the public site, since its own `fwq://` address means
+   * nothing to the friend the link is for.
+   */
+  shareBase?: string;
   /** Renders the challenge-a-friend control beside a random round's course
    *  code (#84). Pocket passes one; the kiosk does not. */
   challenge?: ChallengeRenderer;
@@ -418,7 +430,7 @@ export function Scorecard({
         <div className={`${p}-label`}>
           {sc.headerComplete(roundName)}
           <ScopeChip p={p} scope={state.scope} />
-          <CourseChip p={p} state={state} challenge={challenge} />
+          <CourseChip p={p} state={state} challenge={challenge} shareBase={shareBase} />
         </div>
         <div className={`${p}-well ${p}-golf`}>
           <div className={`${p}-golf-hole`}>
@@ -469,7 +481,7 @@ export function Scorecard({
           playing.length,
         )}
         <ScopeChip p={p} scope={state.scope} />
-        <CourseChip p={p} state={state} challenge={challenge} />
+        <CourseChip p={p} state={state} challenge={challenge} shareBase={shareBase} />
       </div>
       <div className={`${p}-well ${p}-golf`}>
         <div className={`${p}-golf-hole`}>
