@@ -185,7 +185,8 @@ body,
   }
 
   .pk-runnerapp .pk-runner-field[data-lanes='4'] ~ .pk-runner-gates .pk-runner-gate {
-    font-size: 0.85rem;
+    font-size: 0.78rem;
+    padding-inline: 0.1rem;
   }
 }
 

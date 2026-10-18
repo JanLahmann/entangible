@@ -298,10 +298,20 @@
   background: var(--bg-inset);
   color: var(--text);
   font: inherit;
-  font-size: 0.8rem;
-  letter-spacing: -0.1em;
   cursor: pointer;
   touch-action: manipulation;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Two bars, drawn — a font's ❚❚ glyph varies too much. */
+.pk-runner-pause-icon {
+  display: block;
+  width: 12px;
+  height: 14px;
+  border-left: 4px solid currentColor;
+  border-right: 4px solid currentColor;
 }
 
 .pk-runner-pause:disabled {

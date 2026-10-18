@@ -465,7 +465,7 @@ export function RunnerGame({
             announce(t.announcePaused, true);
           }}
         >
-          <span aria-hidden="true">❚❚</span>
+          <span className="pk-runner-pause-icon" aria-hidden="true" />
         </button>
       </div>
 
