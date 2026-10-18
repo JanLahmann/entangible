@@ -81,6 +81,23 @@ export function TapPlay({ game, circuit, onChange }: TapPlayProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [history, setHistory] = useState<readonly Change[]>([]);
 
+  // A new hole tees off empty-handed (#12): Next hole, a jump, a course or
+  // scope change and a restart put the tool down and drop a half-placed CX,
+  // the selection and the undo history. Within a hole the tool stays picked.
+  // A re-tee of the hole already in play (same index) shows as its strokes
+  // going back down — they never fall while a hole is being played.
+  const teeKey = `${state.course}:${state.randomSeed}:${String(state.scope)}:${state.levelIndex}:${state.complete}`;
+  const [tee, setTee] = useState({ key: teeKey, strokes: state.strokes });
+  if (tee.key !== teeKey || state.strokes < tee.strokes) {
+    setTee({ key: teeKey, strokes: state.strokes });
+    setTool(null);
+    setPending(null);
+    setSelectedId(null);
+    setHistory([]);
+  } else if (state.strokes !== tee.strokes) {
+    setTee({ key: teeKey, strokes: state.strokes });
+  }
+
   // A tool the new hole does not hand out is put down.
   const liveTool = tool !== null && clubs.some((c) => c.type === tool) ? tool : null;
   const selected = circuit.gates.find((g) => g.id === selectedId) ?? null;

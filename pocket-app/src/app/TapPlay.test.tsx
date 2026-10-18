@@ -287,6 +287,67 @@ describe('TapPlay — select, delete, replace, undo, clear', () => {
   });
 });
 
+describe('TapPlay — the empty board and a new hole (#12)', () => {
+  const scoreLine = () => document.querySelector('.pk-gatebar-score')!.textContent;
+  const pressed = (name: string) => screen.getByRole('button', { name }).getAttribute('aria-pressed');
+
+  it('E1 at tee-off reads |0⟩’s real fidelity, 50 %, not 0 %', async () => {
+    await mount(1);
+    expect(scoreLine()).toMatch(/fidelity 50\.0%/);
+    tap('X gate');
+    tap('Qubit 0, step 1, empty: place X');
+    expect(scoreLine()).toMatch(/fidelity 50\.0%/); // |1⟩ is as close to |+⟩ as |0⟩
+    expect(spoken()).toBe('Placed X on qubit 0, step 1. 1 stroke, par 3, fidelity 50.0%.');
+    tap('Clear the circuit (+1 stroke)');
+    expect(scoreLine()).toMatch(/fidelity 50\.0%/);
+    expect(spoken()).toBe('Circuit cleared. 2 strokes, par 3, fidelity 50.0%.');
+  });
+
+  it('Bell at tee-off reads 50 %, a gate away from it drops below, a Clear reads 50 % again', async () => {
+    await mount(2);
+    expect(scoreLine()).toMatch(/fidelity 50\.0%/);
+    tap('X gate');
+    tap('Qubit 0, step 1, empty: place X');
+    expect(scoreLine()).toMatch(/fidelity 0\.0%/); // |10⟩ is orthogonal to the Bell state
+    tap('Clear the circuit (+1 stroke)');
+    expect(spoken()).toBe('Circuit cleared. 2 strokes, par 4, fidelity 50.0%.');
+  });
+
+  it('Next hole puts the tool down; within a hole it stays picked', async () => {
+    await mount(1);
+    tap('H gate');
+    tap('Qubit 0, step 1, empty: place H');
+    expect(live.game!.state.holedIn).toBe(true);
+    expect(pressed('H gate')).toBe('true'); // still picked on the hole it played
+    act(() => live.game!.advanceHole!());
+    expect(live.game!.currentLevel.hole).toBe(2);
+    expect(pressed('H gate')).toBe('false');
+    expect(screen.getByRole('button', { name: 'Qubit 0, step 1, empty' })).toBeTruthy();
+    expect(scoreLine()).toMatch(/fidelity 50\.0%/);
+  });
+
+  it('a jump to another hole drops the tool, a waiting CX control and the selection', async () => {
+    await mount(2);
+    tap('CX gate');
+    tap('Qubit 0, step 1, empty: place CX control');
+    expect(pressed('CX gate')).toBe('true');
+    act(() => live.game!.jumpToHole(3));
+    expect(live.game!.currentLevel.hole).toBe(3);
+    expect(pressed('CX gate')).toBe('false');
+    expect(screen.queryByRole('button', { name: /place CX target/ })).toBeNull();
+
+    // A selected gate does not follow the player onto the next hole either.
+    act(() => live.game!.jumpToHole(2));
+    tap('H gate');
+    tap('Qubit 0, step 1, empty: place H');
+    tap('H gate'); // put the tool down…
+    tap(/^H on qubit 0, step 1/); // …and select the gate
+    expect((screen.getByRole('button', { name: 'Delete the selected gate' }) as HTMLButtonElement).disabled).toBe(false);
+    act(() => live.game!.jumpToHole(4));
+    expect((screen.getByRole('button', { name: 'Delete the selected gate' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
 describe('TapPlay — accessibility', () => {
   /** Every control of the tap-to-play group has a computed accessible name. */
   function allNamed() {

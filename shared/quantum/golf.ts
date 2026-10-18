@@ -580,11 +580,19 @@ export interface Evaluation {
   readonly holedIn: boolean;
 }
 
-/** Evaluate a circuit against a hole: fidelity, gate count, hole-in flag. */
+/**
+ * Evaluate a circuit against a hole: fidelity, gate count, hole-in flag.
+ *
+ * An empty board is scored like any other circuit (#12): its state |0…0⟩ is
+ * well defined and is often far from orthogonal to the target (50 % on E1 and
+ * on every Bell / GHZ hole), so printing 0 % there read as a measurement and
+ * made the first gate look like progress when it moved away. The empty board
+ * still never holes in — no tee-off is a free hole-in, whatever a target is.
+ */
 export function evaluate(circuit: Circuit, hole: Hole): Evaluation {
   const gateCount = circuit.gates.length;
-  const f = gateCount === 0 ? 0 : bestFidelity(circuit, hole);
-  return { fidelity: f, gateCount, holedIn: f >= HOLE_IN_THRESHOLD };
+  const f = bestFidelity(circuit, hole);
+  return { fidelity: f, gateCount, holedIn: gateCount > 0 && f >= HOLE_IN_THRESHOLD };
 }
 
 // ---------------------------------------------------------------------------
@@ -1097,6 +1105,7 @@ export function persistsBest(state: Pick<GolfState, 'course'>): boolean {
 export interface GolfStep {
   readonly state: GolfState;
   readonly hole: Hole;
+  /** `evaluate(circuit, hole).fidelity` — real on an empty board too (#12). */
   readonly fidelity: number;
   readonly strokes: number;
   /**
@@ -1188,7 +1197,7 @@ export function golfStep(
       return {
         state,
         hole: holes[state.levelIndex],
-        fidelity: 0,
+        fidelity: evaluate(circuit, holes[state.levelIndex]).fidelity,
         strokes: 0,
         score: 0,
         holedIn: false,
@@ -1205,7 +1214,7 @@ export function golfStep(
     return {
       state: { ...prev, gateKeys: keys },
       hole: holes[prev.levelIndex],
-      fidelity: 0,
+      fidelity: evaluate(circuit, holes[prev.levelIndex]).fidelity,
       strokes: 0,
       score: 0,
       holedIn: false,
@@ -1240,7 +1249,7 @@ export function golfStep(
             parked: withoutHole(prev.parked, hole.hole),
           },
           hole,
-          fidelity: 0,
+          fidelity: ev.fidelity,
           strokes: 0,
           score: 0,
           holedIn: false,
@@ -1285,7 +1294,7 @@ export function golfStep(
     return {
       state: { ...prev, holedIn: false, strokes, gateKeys: NO_GATES },
       hole,
-      fidelity: 0,
+      fidelity: ev.fidelity,
       strokes,
       score: holeScore(strokes, hole.par, prev.revealed[hole.hole] === true),
       holedIn: false,

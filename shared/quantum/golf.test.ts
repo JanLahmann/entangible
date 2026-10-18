@@ -39,6 +39,7 @@ import {
   coursePar,
   loadRevealed,
   saveRevealed,
+  type Hole,
 } from './golf';
 
 // The test board can emit gate types beyond the qamposer union (CH/S/T tiles).
@@ -757,6 +758,63 @@ describe('the price of the mid-hole reveal (#99)', () => {
     expect(loadRevealed(null)).toEqual({});
   });
 
+});
+
+describe('the empty board is scored like any circuit (#12)', () => {
+  const holeState = (n: number) => ({ ...initialGolfState(), levelIndex: n - 1 });
+
+  it('|0…0⟩ reports its real fidelity: 50 % on E1, Bell (E2) and the GHZ holes', () => {
+    for (const n of [1, 2, 3, 4, 5]) {
+      const ev = evaluate(empty, hole(n));
+      expect(ev.fidelity, hole(n).code).toBeCloseTo(0.5, 12);
+      expect(ev.holedIn).toBe(false);
+      expect(ev.gateCount).toBe(0);
+      // Tee-off through the engine: the step reports the same number.
+      expect(golfStep(holeState(n), empty).fidelity, hole(n).code).toBeCloseTo(0.5, 12);
+    }
+    expect(evaluate(empty, hole(6)).fidelity).toBeCloseTo(0, 12); // M1 |1⟩: orthogonal
+  });
+
+  it('after a mid-hole sweep and after a wipe the board reads |0…0⟩ again', () => {
+    const one = circuit([g('X', 0, { qubit: 0 })]);
+    let step = golfStep(holeState(2), one);
+    expect(step.fidelity).toBeCloseTo(0, 12); // |10⟩ against Bell
+    step = golfStep(step.state, empty); // swept
+    expect(step.fidelity).toBeCloseTo(0.5, 12);
+    expect(step.holedIn).toBe(false);
+    const again = golfStep(step.state, one);
+    const wiped = golfWipe(again.state, one);
+    const cleared = golfStep(wiped, empty);
+    expect(cleared.fidelity).toBeCloseTo(0.5, 12);
+    expect(cleared.holedIn).toBe(false);
+  });
+
+  it('the advance and restart clears report the hole they show', () => {
+    const holed = golfStep(holeState(1), refCircuit(1)).state;
+    const advanced = golfStep(holed, empty);
+    expect(advanced.advanced).toBe(true);
+    expect(advanced.fidelity).toBeCloseTo(evaluate(empty, advanced.hole).fidelity, 12);
+    expect(advanced.fidelity).toBeCloseTo(0.5, 12); // E2 Bell
+    const done = golfStep({ ...initialGolfState(), complete: true }, empty);
+    expect(done.restarted).toBe(true);
+    expect(done.fidelity).toBeCloseTo(0.5, 12); // back on E1
+  });
+
+  it('no classic target is |0…0⟩-close, and an empty board never holes in', () => {
+    HOLES.forEach((h, i) => {
+      expect(bestFidelity(empty, h), h.code).toBeLessThan(HOLE_IN_THRESHOLD);
+      expect(evaluate(empty, h).holedIn).toBe(false);
+      const step = golfStep({ ...initialGolfState(), levelIndex: i }, empty);
+      expect(step.holedIn || step.justHoledIn, h.code).toBe(false);
+    });
+  });
+
+  it('even a target equal to |0…0⟩ would not hole in on the empty board (guard)', () => {
+    const zero: Hole = { ...hole(1), hole: 99, targets: [statevector(empty)] };
+    const ev = evaluate(empty, zero);
+    expect(ev.fidelity).toBeCloseTo(1, 12);
+    expect(ev.holedIn).toBe(false);
+  });
 });
 
 describe('wipe the board for one stroke (#100)', () => {

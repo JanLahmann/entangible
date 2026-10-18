@@ -131,6 +131,20 @@ function remap(c: Circuit, wires: readonly number[]): Circuit {
 }
 
 describe('random course generation (#70)', () => {
+  it('no generated target is |0…0⟩-close: the empty board never holes in (#12)', () => {
+    const empty: Circuit = { qubits: 5, gates: [] };
+    const rounds = new Set<GolfRound>();
+    for (const { hole } of corpusHoles()) {
+      rounds.add(hole.round);
+      expect(bestFidelity(empty, hole), hole.code).toBeLessThan(HOLE_IN_THRESHOLD);
+      const ev = evaluate(empty, hole);
+      expect(ev.holedIn, hole.code).toBe(false);
+      // The empty board is scored, not zeroed: the step reports the same number.
+      expect(ev.fidelity).toBeCloseTo(bestFidelity(empty, hole), 12);
+    }
+    expect([...rounds].sort()).toEqual(['difficult', 'easy', 'extra', 'medium']);
+  });
+
   it('is deterministic per seed — same holes AND same generators', () => {
     const a = generateCourse(4242);
     const b = generateCourse(4242);
