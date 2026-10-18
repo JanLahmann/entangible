@@ -19,6 +19,7 @@ import type { Circuit } from '@qamposer/react';
 import { LangProvider } from '@shared/i18n';
 import { ManualEditSource } from '../sources/ManualEditSource';
 import { GolfBoard } from './GolfBoard';
+import { POCKET_EVOLUTION_TIMING } from '@shared/display/evolutionAnimation';
 import { TapPlay } from './TapPlay';
 import { useGolfGame, type GolfGame } from './useGolfGame';
 
@@ -176,10 +177,18 @@ describe('holing in on tap to play (#13)', () => {
     // The replay starts at the start state: nothing marked yet.
     expect(scrubLabel()).toBe('start');
     expect(markedColumns()).toEqual([]);
-    run(500);
+    // The calm pocket pace: travel 1 s to layer 1, dwell 1 s there, travel 1 s
+    // to layer 2 — 3 s in all for this 2-column circuit.
+    const { travelMs, dwellMs } = POCKET_EVOLUTION_TIMING.replay;
+    run(travelMs / 2 - 50);
+    expect(scrubLabel()).toBe('start');
+    run(travelMs / 2 + 50);
     expect(scrubLabel()).toBe('after layer 1');
     expect(markedColumns()).toEqual([0]);
-    run(600);
+    run(dwellMs); // still dwelling on layer 1 (the next travel just began)
+    expect(scrubLabel()).toBe('after layer 1');
+    expect(clock.frames.size).toBe(1);
+    run(travelMs);
     expect(scrubLabel()).toBe('after layer 2');
     expect(markedColumns()).toEqual([1]);
     // Once: at rest, nothing more is scheduled.
@@ -195,7 +204,7 @@ describe('holing in on tap to play (#13)', () => {
     run(600);
     expect(markedColumns()).toEqual([]);
     tap('Replay animation');
-    run(1100);
+    run(2 * travelMs + dwellMs);
     expect(markedColumns()).toEqual([1]);
   });
 

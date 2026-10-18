@@ -8,9 +8,11 @@
  * this component interpolates between consecutive snapshots (see
  * `evolutionAnimation`) to feed a smoothly-transitioning state into the view.
  *
- *   - Auto-play: every circuit change replays from the start column through to
- *     the final state, so at rest the view always shows the CURRENT state (the
- *     old default behaviour is preserved — the animation just lands there).
+ *   - Auto-play: every circuit change animates through to the final state, so
+ *     at rest the view always shows the CURRENT state. How (whole replay from
+ *     the start, or only the changed steps) and how fast (travel + dwell per
+ *     step) is the `timing` prop: the booth keeps the original 500 ms/step
+ *     full replay, the pocket app a calmer pace (`evolutionAnimation`).
  *   - Scrubber: replay + prev/next + step dots to replay / inspect any column,
  *     with a "start" / "after layer N" label. Unobtrusive; hidden when the
  *     board is empty (a single snapshot has nothing to step through).
@@ -51,10 +53,20 @@ import {
   interpolateStatevector,
   slerpBloch,
   blochToStatevector,
+  BOOTH_EVOLUTION_TIMING,
+  firstChangedStep,
+  paceProgress,
+  type EvolutionPace,
+  type EvolutionTiming,
 } from './evolutionAnimation';
 
-/** Per-column transition duration (ms) — within the 400–600 ms spec window. */
-const PER_STEP_MS = 500;
+export {
+  BOOTH_EVOLUTION_TIMING,
+  POCKET_EVOLUTION_TIMING,
+  type EvolutionPace,
+  type EvolutionTiming,
+} from './evolutionAnimation';
+
 /** The step the view rests on (or passes) — reported through `onStep`. */
 export interface EvolutionStep {
   /** 0 = the start state, i = after the i-th occupied column. */
@@ -91,6 +103,11 @@ export interface EvolvingStateProps {
   replayKey?: string;
   /** Called with the visible (rounded) step whenever it changes. */
   onStep?: (step: EvolutionStep) => void;
+  /**
+   * Step timing (travel / dwell per step, per kind of animation). Defaults to
+   * the booth's original timing; the pocket app passes its calmer one.
+   */
+  timing?: EvolutionTiming;
 }
 
 /** Live `(prefers-reduced-motion: reduce)` match. */
@@ -124,6 +141,7 @@ export function EvolvingState({
   classPrefix,
   replayKey,
   onStep,
+  timing = BOOTH_EVOLUTION_TIMING,
 }: EvolvingStateProps) {
   const p = classPrefix;
   const t = useT().evolving;
@@ -158,7 +176,7 @@ export function EvolvingState({
   const [pos, setPos] = useState(lastIndex);
   const posRef = useRef(lastIndex);
   const rafRef = useRef<number | null>(null);
-  const animRef = useRef<{ from: number; to: number; start: number; dur: number } | null>(null);
+  const animRef = useRef<{ from: number; to: number; start: number; pace: EvolutionPace } | null>(null);
 
   const setPosBoth = useCallback((v: number) => {
     posRef.current = v;
@@ -174,22 +192,23 @@ export function EvolvingState({
   }, []);
 
   const animateTo = useCallback(
-    (goal: number, from: number = posRef.current) => {
+    (goal: number, from: number, pace: EvolutionPace) => {
       stop();
       const clamped = Math.max(0, Math.min(lastIndex, goal));
       if (reduced || from === clamped || typeof requestAnimationFrame === 'undefined') {
         setPosBoth(clamped);
         return;
       }
-      const dist = Math.abs(clamped - from);
-      animRef.current = { from, to: clamped, start: performance.now(), dur: PER_STEP_MS * dist };
+      animRef.current = { from, to: clamped, start: performance.now(), pace };
       setPosBoth(from);
       const tick = (now: number) => {
         const a = animRef.current;
         if (!a) return;
-        const raw = a.dur <= 0 ? 1 : Math.min(1, (now - a.start) / a.dur);
-        setPosBoth(a.from + (a.to - a.from) * raw);
-        if (raw < 1) {
+        // Travel, dwell on the step reached, travel on… (see `paceProgress`).
+        const dist = Math.abs(a.to - a.from);
+        const done = paceProgress(now - a.start, dist, a.pace);
+        setPosBoth(a.from + Math.sign(a.to - a.from) * done);
+        if (done < dist) {
           rafRef.current = requestAnimationFrame(tick);
         } else {
           setPosBoth(a.to);
@@ -202,10 +221,32 @@ export function EvolvingState({
     [lastIndex, reduced, setPosBoth, stop],
   );
 
-  // Auto-play on every circuit change: replay from the start through the final
-  // state (or jump straight there under reduced-motion).
+  // The explicit replays (↻, holing in) — the calm `replay` pace from the start.
+  const replay = useCallback(() => animateTo(lastIndex, 0, timing.replay), [animateTo, lastIndex, timing]);
+  // Manual stepping (‹ ›, dots): a short glide, no dwell.
+  const stepTo = useCallback(
+    (goal: number) => animateTo(goal, posRef.current, { travelMs: timing.stepMs, dwellMs: 0 }),
+    [animateTo, timing],
+  );
+
+  // Auto-play on every circuit change, at the `live` pace (or jump straight to
+  // the final state under reduced-motion). `liveFrom: 'start'` replays from the
+  // start state; `'change'` starts just before the first step the change
+  // altered (appending a gate animates only the new step) and simply lands on
+  // the final state when nothing before it changed (a trailing column removed).
+  // `before` = the evolution before the current circuit (kept per key, so a
+  // StrictMode re-run of this effect compares against the same predecessor).
+  const seenRef = useRef<{ key: string; steps: StateVector[]; before: StateVector[] | null } | null>(null);
   useEffect(() => {
-    animateTo(lastIndex, 0);
+    const seen = seenRef.current;
+    const prev = seen?.key === circuitKey ? seen.before : (seen?.steps ?? null);
+    seenRef.current = { key: circuitKey, steps, before: prev };
+    let from = 0;
+    if (timing.liveFrom === 'change' && prev) {
+      const changed = firstChangedStep(prev, steps);
+      from = changed === null ? lastIndex : changed - 1;
+    }
+    animateTo(lastIndex, from, timing.live);
     return stop;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [circuitKey]);
@@ -213,7 +254,7 @@ export function EvolvingState({
   // An explicit replay (golf: the hole just holed in) — once per new key.
   useEffect(() => {
     if (replayKey === undefined) return;
-    animateTo(lastIndex, 0);
+    replay();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [replayKey]);
 
@@ -358,7 +399,7 @@ export function EvolvingState({
             type="button"
             className={`${p}-evo-replay`}
             aria-label={t.replay}
-            onClick={() => animateTo(lastIndex, 0)}
+            onClick={replay}
           >
             ↻
           </button>
@@ -367,7 +408,7 @@ export function EvolvingState({
             className={`${p}-evo-nav`}
             aria-label={t.prev}
             disabled={visibleStep <= 0}
-            onClick={() => animateTo(Math.round(posRef.current) - 1)}
+            onClick={() => stepTo(Math.round(posRef.current) - 1)}
           >
             ‹
           </button>
@@ -379,7 +420,7 @@ export function EvolvingState({
                 className={`${p}-evo-dot${i === visibleStep ? ` ${p}-evo-dot--active` : ''}`}
                 aria-label={t.goTo(stepLabel(i, t))}
                 aria-current={i === visibleStep ? 'step' : undefined}
-                onClick={() => animateTo(i)}
+                onClick={() => stepTo(i)}
               />
             ))}
           </div>
@@ -388,7 +429,7 @@ export function EvolvingState({
             className={`${p}-evo-nav`}
             aria-label={t.next}
             disabled={visibleStep >= lastIndex}
-            onClick={() => animateTo(Math.round(posRef.current) + 1)}
+            onClick={() => stepTo(Math.round(posRef.current) + 1)}
           >
             ›
           </button>

@@ -75,7 +75,7 @@ import { Scorecard } from './Scorecard';
 import { isTouchEnabled } from './touch';
 import { displayCircuit, highestUsedRow } from '@shared/display/displayWires';
 import { HINT_ROTATE_MS } from '@shared/display/hints';
-import { EvolvingState } from '@shared/display/EvolvingState';
+import { EvolvingState, BOOTH_EVOLUTION_TIMING } from '@shared/display/EvolvingState';
 import {
   golfStep,
   completionCelebration,
@@ -473,6 +473,7 @@ export function KioskView() {
             n={Math.max(currentLevel.qubits, highestUsedRow(liveCircuit) + 1)}
             showKet
             classPrefix="bo"
+            timing={BOOTH_EVOLUTION_TIMING}
           />
           {!golfState.complete && (
             <p className="bo-golf-goal">{golfGoal}</p>

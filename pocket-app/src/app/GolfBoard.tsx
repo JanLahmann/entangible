@@ -17,7 +17,8 @@
  * and `underSphere` (`TapPlay`: clubs + tap grid, seated inside the sphere panel
  * so every layout keeps it directly under the target — build-on-screen only).
  *
- * Holing in (#13): the evolution replays once from the start (`replayKey`;
+ * Holing in (#13): the evolution replays once from the start at the calm
+ * pocket pace (`replayKey`, `POCKET_EVOLUTION_TIMING`;
  * reduced motion shows the final step), and the step the scrubber is at goes
  * to tap-to-play through `GolfReplayContext`, which marks that grid column.
  * With tap-to-play present, "Next hole" is ITS business — it takes the clubs'
@@ -26,7 +27,7 @@
  */
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Circuit } from '@qamposer/react';
-import { EvolvingState, type EvolutionStep } from '@shared/display/EvolvingState';
+import { EvolvingState, POCKET_EVOLUTION_TIMING, type EvolutionStep } from '@shared/display/EvolvingState';
 import { Scorecard, type ChallengeRenderer } from '@shared/display/Scorecard';
 import { holeGoal } from '@shared/display/goalLine';
 import { highestUsedRow } from '@shared/display/displayWires';
@@ -98,6 +99,7 @@ export function GolfBoard({
             showKet
             classPrefix="pk"
             replayKey={replayKey}
+            timing={POCKET_EVOLUTION_TIMING}
             onStep={underSphere ? setStep : undefined}
           />
           {/* The goal in plain words, right under the target ket. Wraps to as

@@ -5,7 +5,13 @@ import {
   interpolateStatevector,
   slerpBloch,
   blochToStatevector,
+  paceDuration,
+  paceProgress,
+  firstChangedStep,
+  BOOTH_EVOLUTION_TIMING,
+  POCKET_EVOLUTION_TIMING,
 } from './evolutionAnimation';
+import { evolutionSteps } from '@quantum/evolution';
 import { blochVector, type BlochVector } from '@quantum/bloch';
 import type { StateVector } from '@quantum/statevector';
 
@@ -120,5 +126,62 @@ describe('blochToStatevector', () => {
     roundtrips({ x: 0.3, y: -0.4, z: 0.5 }, 0);
     roundtrips({ x: 0, y: 0, z: 0.5 }, 3);
     roundtrips({ x: 0, y: 0, z: 0 }, 2); // maximally mixed → zero vector
+  });
+});
+
+describe('evolution step timing', () => {
+  it('the booth keeps the original #53 timing: 500 ms per step, no dwell, full replays', () => {
+    expect(BOOTH_EVOLUTION_TIMING).toEqual({
+      replay: { travelMs: 500, dwellMs: 0 },
+      live: { travelMs: 500, dwellMs: 0 },
+      liveFrom: 'start',
+      stepMs: 500,
+    });
+    expect(paceDuration(4, BOOTH_EVOLUTION_TIMING.replay)).toBe(2000);
+    expect(paceDuration(5, BOOTH_EVOLUTION_TIMING.replay)).toBe(2500);
+  });
+
+  it('the pocket replay is calm: ≥ 2× the travel, a ~1 s dwell per step', () => {
+    const r = POCKET_EVOLUTION_TIMING.replay;
+    expect(r.travelMs).toBeGreaterThanOrEqual(2 * BOOTH_EVOLUTION_TIMING.replay.travelMs);
+    expect(r.dwellMs).toBeGreaterThanOrEqual(800);
+    expect(r.dwellMs).toBeLessThanOrEqual(1200);
+    expect(paceDuration(4, r)).toBe(7000);
+    expect(paceDuration(5, r)).toBe(9000);
+    // Per tap: brisker than the replay, never faster per step than before.
+    const l = POCKET_EVOLUTION_TIMING.live;
+    expect(l.travelMs).toBeGreaterThanOrEqual(BOOTH_EVOLUTION_TIMING.live.travelMs);
+    expect(l.travelMs).toBeLessThanOrEqual(r.travelMs);
+    expect(POCKET_EVOLUTION_TIMING.liveFrom).toBe('change');
+  });
+
+  it('travels, dwells on the step reached, travels on — no dwell at the goal', () => {
+    const pace = { travelMs: 1000, dwellMs: 1000 };
+    expect(paceDuration(3, pace)).toBe(5000);
+    expect(paceDuration(0, pace)).toBe(0);
+    expect(paceProgress(0, 3, pace)).toBe(0);
+    expect(paceProgress(500, 3, pace)).toBeCloseTo(0.5);
+    expect(paceProgress(1000, 3, pace)).toBe(1);
+    expect(paceProgress(1500, 3, pace)).toBe(1); // dwelling on step 1
+    expect(paceProgress(2500, 3, pace)).toBeCloseTo(1.5);
+    expect(paceProgress(4999, 3, pace)).toBeLessThan(3);
+    expect(paceProgress(5000, 3, pace)).toBe(3);
+    expect(paceProgress(9000, 3, pace)).toBe(3);
+    // No dwell = one even sweep (the booth).
+    expect(paceProgress(750, 2, { travelMs: 500, dwellMs: 0 })).toBeCloseTo(1.5);
+  });
+
+  it('finds the first step a circuit change altered', () => {
+    const H = { id: 'a', type: 'H' as const, qubit: 0, position: 0 };
+    const X1 = { id: 'b', type: 'X' as const, qubit: 1, position: 1 };
+    const Z2 = { id: 'c', type: 'Z' as const, qubit: 0, position: 1 };
+    const one = evolutionSteps({ qubits: 5, gates: [H] });
+    const two = evolutionSteps({ qubits: 5, gates: [H, X1] });
+    const other = evolutionSteps({ qubits: 5, gates: [H, Z2] });
+    expect(firstChangedStep(one, two)).toBe(2); // appended: only the new step
+    expect(firstChangedStep(two, other)).toBe(2);
+    expect(firstChangedStep(two, one)).toBeNull(); // trailing column removed
+    expect(firstChangedStep(two, two)).toBeNull();
+    expect(firstChangedStep(one, evolutionSteps({ qubits: 5, gates: [{ ...H, type: 'X' }] }))).toBe(1);
   });
 });

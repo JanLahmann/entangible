@@ -10,6 +10,7 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, act } from '@testing-library/react';
 import type { Circuit, Gate } from '@qamposer/react';
 import { EvolvingState } from './EvolvingState';
+import { BOOTH_EVOLUTION_TIMING, POCKET_EVOLUTION_TIMING } from './evolutionAnimation';
 
 function mockReducedMotion(reduce: boolean) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -363,5 +364,173 @@ describe('EvolvingState bra-ket line (#59)', () => {
       vi.unstubAllGlobals();
       vi.restoreAllMocks();
     }
+  });
+});
+
+/**
+ * Step timing (Jan: the golf replay was too fast on a phone). A hand-cranked
+ * rAF clock: `at(ms)` runs the pending frame at that time, so the visible step
+ * and whether an animation is still scheduled are exact.
+ */
+describe('EvolvingState step timing', () => {
+  let frame: FrameRequestCallback | null = null;
+  let now = 0;
+  let requested = 0;
+
+  beforeEach(() => {
+    mockReducedMotion(false);
+    frame = null;
+    now = 0;
+    requested = 0;
+    vi.stubGlobal('requestAnimationFrame', (f: FrameRequestCallback) => {
+      frame = f;
+      requested++;
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => {
+      frame = null;
+    });
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  /** Run the pending frame at `ms`; true while the animation goes on. */
+  const at = (ms: number): boolean => {
+    const f = frame;
+    frame = null;
+    act(() => {
+      now = ms;
+      f?.(now);
+    });
+    return frame !== null;
+  };
+  const label = (root: HTMLElement) => root.querySelector('.pk-evo-label')?.textContent;
+
+  // Three columns → three steps after the start state.
+  const three = circuit([
+    g({ type: 'H', qubit: 0, position: 0 }),
+    g({ type: 'CNOT', control: 0, target: 1, position: 1 }),
+    g({ type: 'X', qubit: 2, position: 2 }),
+  ]);
+
+  it('the hole-in replay of a 3-step circuit takes 3 travels + 2 dwells at the pocket pace', () => {
+    const { container, rerender } = render(
+      <EvolvingState circuit={three} view="qsphere" classPrefix="pk" timing={POCKET_EVOLUTION_TIMING} />,
+    );
+    // Let the mount animation finish, then hole in.
+    for (let t = 0; t <= 20000 && at(t); t += 100);
+    expect(label(container)).toBe('after layer 3');
+    now = 0;
+    rerender(
+      <EvolvingState
+        circuit={three}
+        view="qsphere"
+        classPrefix="pk"
+        timing={POCKET_EVOLUTION_TIMING}
+        replayKey="holed"
+      />,
+    );
+    const { travelMs, dwellMs } = POCKET_EVOLUTION_TIMING.replay;
+    const total = 3 * travelMs + 2 * dwellMs;
+    expect(total).toBe(5000);
+    expect(label(container)).toBe('start');
+    expect(at(travelMs)).toBe(true);
+    expect(label(container)).toBe('after layer 1');
+    expect(at(travelMs + dwellMs - 1)).toBe(true); // dwelling on layer 1
+    expect(label(container)).toBe('after layer 1');
+    expect(at(2 * travelMs + dwellMs)).toBe(true);
+    expect(label(container)).toBe('after layer 2');
+    expect(at(total - 1)).toBe(true); // not done a millisecond early
+    expect(at(total)).toBe(false);
+    expect(label(container)).toBe('after layer 3');
+  });
+
+  it('the ↻ button replays at the same calm pace', () => {
+    const { container, getByLabelText } = render(
+      <EvolvingState circuit={three} view="qsphere" classPrefix="pk" timing={POCKET_EVOLUTION_TIMING} />,
+    );
+    for (let t = 0; t <= 20000 && at(t); t += 100);
+    now = 0;
+    fireEvent.click(getByLabelText('Replay animation'));
+    expect(at(4999)).toBe(true);
+    expect(at(5000)).toBe(false);
+    expect(label(container)).toBe('after layer 3');
+  });
+
+  it('while building, a tap animates only the new step (live pace), not a full replay', () => {
+    const two = circuit(three.gates.slice(0, 2));
+    const { container, rerender } = render(
+      <EvolvingState circuit={two} view="qsphere" classPrefix="pk" timing={POCKET_EVOLUTION_TIMING} />,
+    );
+    for (let t = 0; t <= 20000 && at(t); t += 100);
+    now = 0;
+    rerender(
+      <EvolvingState circuit={three} view="qsphere" classPrefix="pk" timing={POCKET_EVOLUTION_TIMING} />,
+    );
+    // Starts from layer 2 (= the state just shown), not from the start.
+    expect(label(container)).toBe('after layer 2');
+    const { travelMs } = POCKET_EVOLUTION_TIMING.live;
+    expect(at(travelMs - 1)).toBe(true);
+    expect(at(travelMs)).toBe(false);
+    expect(label(container)).toBe('after layer 3');
+    // Removing the last column just lands on the (unchanged) earlier state.
+    const before = requested;
+    rerender(
+      <EvolvingState circuit={two} view="qsphere" classPrefix="pk" timing={POCKET_EVOLUTION_TIMING} />,
+    );
+    expect(label(container)).toBe('after layer 2');
+    expect(requested).toBe(before);
+  });
+
+  it('‹ › stepping is a short glide, no dwell', () => {
+    const { container, getByLabelText } = render(
+      <EvolvingState circuit={three} view="qsphere" classPrefix="pk" timing={POCKET_EVOLUTION_TIMING} />,
+    );
+    for (let t = 0; t <= 20000 && at(t); t += 100);
+    now = 0;
+    fireEvent.click(getByLabelText('Previous step'));
+    expect(at(POCKET_EVOLUTION_TIMING.stepMs)).toBe(false);
+    expect(label(container)).toBe('after layer 2');
+    expect(POCKET_EVOLUTION_TIMING.stepMs).toBeLessThanOrEqual(400);
+  });
+
+  it('the booth (default timing) is unchanged: a full replay at 500 ms per step on every change', () => {
+    const { container, rerender } = render(
+      <EvolvingState circuit={bell} view="qsphere" classPrefix="pk" />,
+    );
+    expect(at(999)).toBe(true);
+    expect(at(1000)).toBe(false);
+    now = 0;
+    rerender(<EvolvingState circuit={three} view="qsphere" classPrefix="pk" timing={BOOTH_EVOLUTION_TIMING} />);
+    expect(label(container)).toBe('start'); // replays from the start
+    expect(at(750)).toBe(true);
+    expect(label(container)).toBe('after layer 2'); // pos 1.5 → no dwell
+    expect(at(1499)).toBe(true);
+    expect(at(1500)).toBe(false);
+    expect(label(container)).toBe('after layer 3');
+  });
+
+  it('reduced motion still jumps straight to the final step, replay included', () => {
+    mockReducedMotion(true);
+    const { container, rerender, getByLabelText } = render(
+      <EvolvingState circuit={three} view="qsphere" classPrefix="pk" timing={POCKET_EVOLUTION_TIMING} />,
+    );
+    expect(label(container)).toBe('after layer 3');
+    rerender(
+      <EvolvingState
+        circuit={three}
+        view="qsphere"
+        classPrefix="pk"
+        timing={POCKET_EVOLUTION_TIMING}
+        replayKey="holed"
+      />,
+    );
+    expect(label(container)).toBe('after layer 3');
+    fireEvent.click(getByLabelText('Previous step'));
+    expect(label(container)).toBe('after layer 2');
+    expect(requested).toBe(0);
   });
 });

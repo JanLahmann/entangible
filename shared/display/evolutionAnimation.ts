@@ -158,3 +158,103 @@ export function blochToStatevector(v: BlochVector, q: number): StateVector {
   }
   return s;
 }
+
+// ---- step timing ---------------------------------------------------------
+
+/**
+ * How fast the evolution moves from one step to the next: `travelMs` is the
+ * tween of one segment (the mass rolling on the sphere, the ket line morphing),
+ * `dwellMs` the pause on each step reached on the way, so its state line can
+ * be read. No dwell on the goal step — the view simply rests there.
+ */
+export interface EvolutionPace {
+  readonly travelMs: number;
+  readonly dwellMs: number;
+}
+
+/**
+ * The evolution's whole timing, per surface:
+ *   - `replay`: the explicit replays — holing in (`replayKey`, #13) and ↻.
+ *   - `live`: the animation on every circuit change while building.
+ *   - `liveFrom`: where that live animation starts — `'start'` replays the whole
+ *     circuit from the start state; `'change'` starts at the step just before
+ *     the first step the change altered, so appending a gate animates only the
+ *     new step (no full replay after every tap).
+ *   - `stepMs`: travel per step for the manual ‹ › / dot stepping (no dwell).
+ */
+export interface EvolutionTiming {
+  readonly replay: EvolutionPace;
+  readonly live: EvolutionPace;
+  readonly liveFrom: 'start' | 'change';
+  readonly stepMs: number;
+}
+
+/**
+ * Booth kiosk (big screen) — the original #53 timing, unchanged: 500 ms per
+ * step, no dwell, every change replays the whole circuit, stepping 500 ms.
+ */
+export const BOOTH_EVOLUTION_TIMING: EvolutionTiming = {
+  replay: { travelMs: 500, dwellMs: 0 },
+  live: { travelMs: 500, dwellMs: 0 },
+  liveFrom: 'start',
+  stepMs: 500,
+};
+
+/**
+ * Pocket app + golf bundle (phones). Jan: the replay was too fast to follow on
+ * a phone. The replay travels 2× slower (1 s per step) and pauses 1 s on each
+ * step so the bra-ket line can be read. While building, a tap animates only
+ * the step(s) it changed — brisker (0.8 s, 0.3 s dwell) but still slower per
+ * step than before; ‹ › stepping is a short 0.3 s glide.
+ */
+export const POCKET_EVOLUTION_TIMING: EvolutionTiming = {
+  replay: { travelMs: 1000, dwellMs: 1000 },
+  live: { travelMs: 800, dwellMs: 300 },
+  liveFrom: 'change',
+  stepMs: 300,
+};
+
+/** Total time (ms) to cover `segments` steps at `pace`: travel each, dwell between. */
+export function paceDuration(segments: number, pace: EvolutionPace): number {
+  if (segments <= 0) return 0;
+  return segments * pace.travelMs + (segments - 1) * pace.dwellMs;
+}
+
+/**
+ * Progress (in steps, 0…`segments`) after `elapsed` ms at `pace`: travel the
+ * first segment, dwell on the step reached, travel the next, … Linear within a
+ * travel (the per-segment easing is applied by the renderer); integral while
+ * dwelling; clamped to `segments` at the end.
+ */
+export function paceProgress(elapsed: number, segments: number, pace: EvolutionPace): number {
+  if (segments <= 0) return 0;
+  if (elapsed >= paceDuration(segments, pace)) return segments;
+  if (elapsed <= 0) return 0;
+  const travel = Math.max(0, pace.travelMs);
+  const period = travel + Math.max(0, pace.dwellMs);
+  if (period <= 0) return segments;
+  const k = Math.floor(elapsed / period);
+  const inPeriod = elapsed - k * period;
+  const frac = travel <= 0 ? 1 : Math.min(1, inPeriod / travel);
+  return Math.min(segments, k + frac);
+}
+
+/**
+ * The first step index (≥ 1) whose state differs between two evolutions, or
+ * null when `next` is just a prefix of `prev` (a column removed at the end — or
+ * no change). Used by `liveFrom: 'change'`.
+ */
+export function firstChangedStep(
+  prev: ReadonlyArray<StateVector>,
+  next: ReadonlyArray<StateVector>,
+): number | null {
+  for (let i = 1; i < next.length; i++) {
+    const a = prev[i];
+    const b = next[i];
+    if (!a || a.length !== b.length) return i;
+    for (let j = 0; j < b.length; j++) {
+      if (Math.abs(a[j].re - b[j].re) > EPS || Math.abs(a[j].im - b[j].im) > EPS) return i;
+    }
+  }
+  return null;
+}
