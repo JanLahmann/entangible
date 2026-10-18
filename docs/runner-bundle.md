@@ -177,7 +177,7 @@ does nothing. `RunnerApp` passes it to `RunnerGame` as `onEvent` — the prop th
 
 | Event | When | Data (all values strings) |
 |---|---|---|
-| `Entangible: runner start` | a run is dealt — on open and on Run again (same rule as the site; the bundle then holds it for Start) | `level` (`1` / `2`) |
+| `Entangible: runner start` | a run actually begins: after Start (or Run again) and the 3-2-1 countdown, when play first un-holds — once per run; opening the page alone sends nothing, and pause / resume within a run does not repeat it (on the site, which holds no run, that is at once) | `level` (`1` / `2`) |
 | `Entangible: runner finish` | the run ends (game over) | `level`, `score` (rounded) |
 
 Names follow the family taxonomy (`<Site>: <what>`, as the site's

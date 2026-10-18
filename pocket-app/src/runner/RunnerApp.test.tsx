@@ -54,7 +54,7 @@ describe('RunnerApp — the runner-only shell', () => {
     expect((screen.getByRole('button', { name: 'Apply H to qubit 0' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('reports start and finish to the host bridge (window.umami), as the site names them', () => {
+  it('reports a run to the host bridge (window.umami) only once it is played', () => {
     // The run's only clock is requestAnimationFrame: fake it with the timers.
     vi.useFakeTimers({
       toFake: [
@@ -70,23 +70,43 @@ describe('RunnerApp — the runner-only shell', () => {
     });
     const track = vi.fn();
     (window as unknown as { umami?: unknown }).umami = { track };
+    const names = () => track.mock.calls.map(([n]) => n as string);
+    const starts = () => names().filter((n) => n === 'Entangible: runner start').length;
+    const finished = () => names().includes('Entangible: runner finish');
     try {
       render(
         <LangProvider lang="en">
           <RunnerApp />
         </LangProvider>,
       );
-      // A run is dealt on open (as on the site); it then waits for Start.
-      expect(track.mock.calls).toEqual([['Entangible: runner start', { level: '1' }]]);
+      // Opening the page (a run dealt, waiting for Start) counts nothing …
+      act(() => vi.advanceTimersByTime(5000));
+      expect(track).not.toHaveBeenCalled();
+      // … nor does the countdown; the run starts when play first un-holds.
       fireEvent.click(screen.getByRole('button', { name: 'Start' }));
-      act(() => vi.advanceTimersByTime(3000));
+      act(() => vi.advanceTimersByTime(2000));
+      expect(track).not.toHaveBeenCalled();
+      act(() => vi.advanceTimersByTime(1000));
+      expect(track.mock.calls).toEqual([['Entangible: runner start', { level: '1' }]]);
+      // Pause and resume within the run: no second start.
+      fireEvent.click(screen.getByRole('button', { name: 'Pause the run' }));
+      act(() => vi.advanceTimersByTime(1000));
+      fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+      act(() => vi.advanceTimersByTime(3500));
+      expect(starts()).toBe(1);
       // No input: the runner hits a wall sooner or later and the run ends.
-      for (let i = 0; i < 600 && !track.mock.calls.some(([n]) => n === 'Entangible: runner finish'); i++) {
-        act(() => vi.advanceTimersByTime(500));
-      }
+      for (let i = 0; i < 600 && !finished(); i++) act(() => vi.advanceTimersByTime(500));
       const finish = track.mock.calls.find(([n]) => n === 'Entangible: runner finish');
       expect(finish, 'runner finish').toBeDefined();
       expect(finish![1]).toEqual({ level: '1', score: expect.stringMatching(/^\d+$/) });
+      expect(starts()).toBe(1);
+      // Run again: a new run, reported once it runs (after its countdown).
+      fireEvent.click(screen.getByRole('button', { name: 'Run again' }));
+      act(() => vi.advanceTimersByTime(1000));
+      expect(starts()).toBe(1);
+      act(() => vi.advanceTimersByTime(2500));
+      expect(starts()).toBe(2);
+      expect(track.mock.calls.at(-1)).toEqual(['Entangible: runner start', { level: '1' }]);
     } finally {
       delete (window as unknown as { umami?: unknown }).umami;
     }

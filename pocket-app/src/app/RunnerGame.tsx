@@ -16,7 +16,10 @@
  * Used by the site's runner mode (App) and by the runner-only bundle for the
  * iOS app (src/runner/RunnerApp.tsx, docs/runner-bundle.md), so it imports no
  * analytics: game events go to the optional `onEvent` (the site passes
- * `trackGame`, the bundle nothing).
+ * `trackGame`, the bundle its host bridge `hostTrack`). `runner start` fires
+ * when a run first actually moves — at once on the site, after Start / Run
+ * again and the countdown in the bundle — once per run (pause / resume does
+ * not repeat it); `runner finish` when the run ends.
  *
  * Pause: the run holds whenever the page is hidden (`visibilitychange`), the
  * window loses focus (`blur`) or the page is put away (`pagehide`), on the ⏸
@@ -260,13 +263,20 @@ export function RunnerGame({
     setHold('countdown');
   }, []);
 
+  // Has the current run been reported as started? Reset when a run is dealt
+  // (status enters 'playing', and every held fresh run in the bundle); set
+  // when the run first actually moves (see the `runner start` effect).
+  const startedRef = useRef(false);
+
   /** A fresh run (Run again, a level change): at once on the site, counted down in the bundle. */
   const newRun = useCallback(
     (ev: RunnerEvent) => {
       dispatch(ev);
       setNewBest(false);
-      if (startPaused) startCountdown();
-      else setHold('run');
+      if (startPaused) {
+        startedRef.current = false;
+        startCountdown();
+      } else setHold('run');
     },
     [dispatch, startPaused, startCountdown],
   );
@@ -332,8 +342,9 @@ export function RunnerGame({
   }, [hold, count, announce]);
 
   // Game events (`runner start` / `runner finish` for the site's analytics), the
-  // best score and the game-over / new-run announcements. A run starts when the
-  // status enters 'playing' (also on mount) and finishes when it leaves it.
+  // best score and the game-over / new-run announcements. A run is dealt when the
+  // status enters 'playing' (also on mount) and finishes when it leaves it; its
+  // `runner start` waits for the first moment it actually runs (effect below).
   // Level/score are read through a ref so the effect only reacts to status changes.
   const latestRef = useRef(state);
   latestRef.current = state;
@@ -345,7 +356,7 @@ export function RunnerGame({
     const { level, score, distance } = latestRef.current;
     const tt = tRef.current;
     if (state.status === 'playing') {
-      onEventRef.current?.('runner start', { level });
+      startedRef.current = false;
       if (prev !== null) announce(tt.announceNewRun(level === 1 ? tt.oneQubit : tt.twoQubits), true);
     } else if (prev === 'playing') {
       onEventRef.current?.('runner finish', { level, score: Math.round(score) });
@@ -360,6 +371,18 @@ export function RunnerGame({
       );
     }
   }, [state.status, storage, announce]);
+
+  // `runner start`: once per run, when it first actually runs (playing, not
+  // held, not suspended). The site's runs never hold, so that is at once (on
+  // mount, on Run again); the bundle's wait for Start / Run again and the
+  // countdown, so merely opening the page counts nothing. A pause / resume
+  // within the run does not repeat it. Declared after the status effect, which
+  // resets `startedRef` when a run is dealt, so a new run is seen in the same commit.
+  useEffect(() => {
+    if (!running || startedRef.current) return;
+    startedRef.current = true;
+    onEventRef.current?.('runner start', { level: latestRef.current.level });
+  }, [running, state.status]);
 
   // A level change on the site's own picker also announces itself (status stays
   // 'playing', so the effect above does not see it).

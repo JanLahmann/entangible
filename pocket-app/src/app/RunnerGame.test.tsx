@@ -392,6 +392,17 @@ describe('RunnerGame — game events and best score', () => {
     expect(onEvent).toHaveBeenLastCalledWith('runner finish', { level: 1, score: 1 });
   });
 
+  it('site (no hold): start at once on mount, once per run — a pause / resume does not repeat it', () => {
+    fakeClock();
+    const onEvent = vi.fn();
+    render(<RunnerGame rng={mulberry32(1)} storage={null} onEvent={onEvent} />);
+    expect(onEvent.mock.calls).toEqual([['runner start', { level: 1 }]]);
+    fireEvent.click(screen.getByRole('button', { name: 'Pause the run' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+    act(() => void vi.advanceTimersByTime(3500));
+    expect(onEvent.mock.calls.filter(([w]) => w === 'runner start')).toHaveLength(1);
+  });
+
   it('plays a whole run without onEvent (the bundle) and keeps the best score', () => {
     fakeClock();
     const storage = memStorage();
