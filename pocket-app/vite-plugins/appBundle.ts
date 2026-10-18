@@ -1,6 +1,9 @@
 /**
- * Build plugins of the golf-only bundle (vite.golf.config.ts,
- * docs/golf-bundle.md). Kept out of the site build entirely.
+ * Build plugins of the single-game app bundles the Fun with Quantum iOS app
+ * embeds offline — Quantum Golf (vite.golf.config.ts, docs/golf-bundle.md) and
+ * Quantum Runner (vite.runner.config.ts, docs/runner-bundle.md); both configs
+ * come from `defineAppBundle` (appBundleConfig.ts). Kept out of the site build
+ * entirely.
  *
  *   - `hoverOnlyWhereHover` (PostCSS): every `:hover` rule moves under
  *     `@media (hover: hover)`, so a tap on a phone never leaves a button stuck
@@ -8,7 +11,8 @@
  *   - `guardLibraryHover` (Vite): @qamposer/react injects its stylesheets at
  *     runtime from template strings (`const css = `…`; document.head…`); the
  *     same rewrite is applied to those strings at build time.
- *   - `golfBundleOutput` (Vite): golf.html is emitted as `index.html` with
+ *   - `appBundleOutput` (Vite): the entry html (golf.html, runner.html) is
+ *     emitted as `index.html` with
  *     classic `<script defer>` / plain `<link>` tags (no `type="module"` /
  *     `crossorigin`), so the page also runs from file:// and from the iOS app's
  *     custom scheme; and emits `LICENSE` (the repo's Apache-2.0) plus
@@ -78,7 +82,7 @@ const INJECTED_CSS = /((?:const|let|var) css\d* = `)([^`]*)(`;\s*document\.head\
 export function guardLibraryHover(): Plugin {
   let config: ResolvedConfig;
   return {
-    name: 'golf:guard-library-hover',
+    name: 'app-bundle:guard-library-hover',
     enforce: 'pre',
     configResolved(resolved) {
       config = resolved;
@@ -182,15 +186,15 @@ export function renderNotices(packages: readonly PackageInfo[], product: string)
   return `${head.join('\n')}\n${bodies.join('\n')}`;
 }
 
-export function golfBundleOutput(options: {
-  /** Entry html file name as Rollup emits it (golf.html). */
+export function appBundleOutput(options: {
+  /** Entry html file name as Rollup emits it (golf.html, runner.html). */
   readonly entryHtml: string;
   /** The repo LICENSE to copy verbatim into the bundle. */
   readonly licensePath: string;
   readonly product: string;
 }): Plugin {
   return {
-    name: 'golf:bundle-output',
+    name: 'app-bundle:output',
     apply: 'build',
     enforce: 'post',
     transformIndexHtml: {
@@ -205,7 +209,7 @@ export function golfBundleOutput(options: {
       },
     },
     generateBundle(_out, bundle) {
-      // golf.html → index.html (same directory level, so relative URLs hold).
+      // <entry>.html → index.html (same directory level, so relative URLs hold).
       const html = bundle[options.entryHtml];
       if (!html) this.error(`missing ${options.entryHtml} in the bundle`);
       delete bundle[options.entryHtml];

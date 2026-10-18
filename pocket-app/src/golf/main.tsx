@@ -16,32 +16,10 @@ import '@shared/tokens.css';
 import '../app/pocket.css';
 import './golf.css';
 import { LangProvider } from '@shared/i18n';
+import { ensureStorage } from '../bundle/ensureStorage';
 import { GolfApp } from './GolfApp';
 
-/**
- * A web view whose storage throws (an opaque origin, storage disabled) would
- * otherwise crash on the editor library's unguarded theme read. Fall back to a
- * page-lifetime memory store: the game plays, it just forgets on reload.
- */
-function ensureStorage(): void {
-  try {
-    window.localStorage.getItem('entangible.golf.probe');
-  } catch {
-    const mem = new Map<string, string>();
-    const shim: Storage = {
-      get length() {
-        return mem.size;
-      },
-      clear: () => mem.clear(),
-      getItem: (k) => mem.get(k) ?? null,
-      key: (i) => [...mem.keys()][i] ?? null,
-      removeItem: (k) => void mem.delete(k),
-      setItem: (k, v) => void mem.set(k, String(v)),
-    };
-    Object.defineProperty(window, 'localStorage', { value: shim, configurable: true });
-  }
-}
-
+// Storage that throws (opaque origin, disabled) → a page-lifetime memory store.
 ensureStorage();
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

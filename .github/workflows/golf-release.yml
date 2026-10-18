@@ -81,7 +81,7 @@ jobs:
         run: |
           npm ci
           npm run build:golf
-          node scripts/check-golf-bundle.mjs
+          node scripts/check-bundle.mjs --bundle golf
 
       - name: Package bundle
         id: pack

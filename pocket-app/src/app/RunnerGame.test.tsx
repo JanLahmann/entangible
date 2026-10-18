@@ -6,11 +6,16 @@
  * set, and the game-over overlay + restart wire through the pure reducer. A
  * seeded RNG keeps everything deterministic.
  */
-import { describe, it, expect, afterEach } from 'vitest';
-import { render, cleanup, screen, fireEvent } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { render, cleanup, screen, fireEvent, act } from '@testing-library/react';
 import { mulberry32 } from '@shared/menu/sample';
 import { initRunner } from '@quantum/runner';
-import { RunnerGame } from './RunnerGame';
+import { LangProvider } from '@shared/i18n';
+import { RunnerGame, laneSummary } from './RunnerGame';
+import { RUNNER_BEST_KEY } from './runnerBest';
 
 afterEach(cleanup);
 
@@ -65,5 +70,238 @@ describe('RunnerGame', () => {
     expect(screen.queryByText('Measurement got you')).toBeNull();
     // Gate buttons are enabled again in the fresh run.
     expect((screen.getByText('H₀') as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pause, announcements, injected game events, best score (runner bundle work,
+// docs/runner-bundle.md — all of it lives in RunnerGame, so the site has it too)
+// ---------------------------------------------------------------------------
+
+/** Fake clocks incl. rAF + performance, so the real tick loop runs under control. */
+function fakeClock() {
+  vi.useFakeTimers({
+    toFake: [
+      'setTimeout',
+      'clearTimeout',
+      'setInterval',
+      'clearInterval',
+      'Date',
+      'requestAnimationFrame',
+      'cancelAnimationFrame',
+      'performance',
+    ],
+  });
+}
+
+const elapsed = () => Number(document.querySelector('.pk-runner')!.getAttribute('data-elapsed'));
+const holdOf = () => document.querySelector('.pk-runner')!.getAttribute('data-hold');
+const spoken = () => (document.querySelector('.pk-runner-sr')!.textContent ?? '').trim();
+
+function setHidden(hidden: boolean) {
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
+const H = { re: Math.SQRT1_2, im: 0 };
+const Z = { re: 0, im: 0 };
+const ONE = { re: 1, im: 0 };
+
+/** A level-1 run with hand-placed columns and no spawns. */
+function staged(
+  columns: Array<{ kind: 'coin' | 'obstacle'; lanes: number[]; x: number }>,
+  amps = [H, H],
+  lives = 3,
+) {
+  const base = initRunner(1);
+  return {
+    ...base,
+    amps,
+    lives,
+    spawnCooldown: 1000,
+    columns: columns.map((c, i) => ({ ...c, id: i, resolved: false })),
+    nextColumnId: columns.length,
+  };
+}
+
+function memStorage() {
+  const m = new Map<string, string>();
+  return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) };
+}
+
+describe('RunnerGame — pause', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+  });
+
+  it('stops the loop when the page is hidden and resumes only via Resume + countdown', () => {
+    fakeClock();
+    render(<RunnerGame rng={mulberry32(1)} storage={null} />);
+    act(() => void vi.advanceTimersByTime(1000));
+    const e1 = elapsed();
+    expect(e1).toBeGreaterThan(0.5);
+
+    act(() => setHidden(true));
+    expect(holdOf()).toBe('paused');
+    const e2 = elapsed();
+    act(() => void vi.advanceTimersByTime(5000));
+    expect(elapsed()).toBe(e2);
+
+    // Coming back does not resume by itself.
+    act(() => setHidden(false));
+    act(() => void vi.advanceTimersByTime(2000));
+    expect(elapsed()).toBe(e2);
+    expect(holdOf()).toBe('paused');
+    expect((screen.getByText('H₀') as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+    expect(holdOf()).toBe('countdown');
+    expect(spoken()).toBe('3');
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(spoken()).toBe('2');
+    expect(elapsed()).toBe(e2); // still held while counting down
+    act(() => void vi.advanceTimersByTime(2000));
+    expect(holdOf()).toBe('run');
+    expect(spoken()).toBe('Go!');
+    act(() => void vi.advanceTimersByTime(500));
+    expect(elapsed()).toBeGreaterThan(e2);
+  });
+
+  it('also pauses on window blur, on pagehide and on the pause button', () => {
+    fakeClock();
+    render(<RunnerGame rng={mulberry32(1)} storage={null} />);
+    act(() => void window.dispatchEvent(new Event('blur')));
+    expect(holdOf()).toBe('paused');
+    expect(spoken()).toBe('Paused.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+    act(() => void vi.advanceTimersByTime(3000));
+    expect(holdOf()).toBe('run');
+    act(() => void window.dispatchEvent(new Event('pagehide')));
+    expect(holdOf()).toBe('paused');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+    act(() => void vi.advanceTimersByTime(3000));
+    fireEvent.click(screen.getByRole('button', { name: 'Pause the run' }));
+    expect(holdOf()).toBe('paused');
+  });
+
+  it('holds while suspended (a sheet over the game)', () => {
+    fakeClock();
+    const { rerender } = render(<RunnerGame rng={mulberry32(1)} storage={null} />);
+    rerender(<RunnerGame rng={mulberry32(1)} storage={null} suspended />);
+    const e = elapsed();
+    act(() => void vi.advanceTimersByTime(2000));
+    expect(elapsed()).toBe(e);
+    rerender(<RunnerGame rng={mulberry32(1)} storage={null} />);
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeTruthy();
+  });
+});
+
+describe('RunnerGame — VoiceOver', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('names every gate button', () => {
+    render(<RunnerGame autoRun={false} rng={mulberry32(1)} storage={null} initialLevel={2} />);
+    for (const name of [
+      'Apply X to qubit 0',
+      'Apply X to qubit 1',
+      'Apply H to qubit 0',
+      'Apply H to qubit 1',
+      'Apply CX, control qubit 0, target qubit 1',
+      'Apply CX, control qubit 1, target qubit 0',
+    ]) {
+      expect(screen.getByRole('button', { name })).toBeTruthy();
+    }
+  });
+
+  it('announces each event with lane probabilities, lives and score — throttled, latest wins', () => {
+    fakeClock();
+    // Three coins crossing ~0.2 s apart: only the first and the LAST are spoken.
+    const s = staged([
+      { kind: 'coin', lanes: [0, 1], x: 0.001 },
+      { kind: 'coin', lanes: [0], x: 0.04 },
+      { kind: 'coin', lanes: [1], x: 0.08 },
+    ]);
+    render(<RunnerGame rng={mulberry32(1)} storage={null} initialState={s} />);
+    const seen: string[] = [];
+    for (let i = 0; i < 60; i++) {
+      act(() => void vi.advanceTimersByTime(50));
+      if (spoken() && seen[seen.length - 1] !== spoken()) seen.push(spoken());
+    }
+    expect(seen).toEqual([
+      'Coin, plus 1.0. |0⟩ 50%, |1⟩ 50%. 3 lives, score 1.0.',
+      'Coin, plus 0.5. |0⟩ 50%, |1⟩ 50%. 3 lives, score 2.0.',
+    ]);
+  });
+
+  it('announces game over at once, then the new run', () => {
+    fakeClock();
+    // A certain hit (|0⟩ into an obstacle on lane 0) on the last life.
+    const s = staged([{ kind: 'obstacle', lanes: [0], x: 0.001 }], [ONE, Z], 1);
+    render(<RunnerGame rng={mulberry32(1)} storage={null} initialState={s} />);
+    act(() => void vi.advanceTimersByTime(100));
+    expect(screen.getByText('Measurement got you')).toBeTruthy();
+    expect(spoken()).toBe('Game over. Score 0.0, distance 0 m. Run again is ready.');
+    fireEvent.click(screen.getByRole('button', { name: 'Run again' }));
+    expect(spoken()).toBe('New run, 1 qubit.');
+  });
+
+  it('speaks German too', () => {
+    fakeClock();
+    const s = staged([{ kind: 'coin', lanes: [0, 1], x: 0.001 }]);
+    render(
+      <LangProvider lang="de">
+        <RunnerGame rng={mulberry32(1)} storage={null} initialState={s} />
+      </LangProvider>,
+    );
+    act(() => void vi.advanceTimersByTime(100));
+    expect(spoken()).toBe('Münze, plus 1.0. |0⟩ 50%, |1⟩ 50%. 3 Leben, 1.0 Punkte.');
+    expect(screen.getByRole('button', { name: 'H auf Qubit 0 anwenden' })).toBeTruthy();
+  });
+
+  it('summarises lanes without the empty ones', () => {
+    expect(laneSummary(2, [0.5, 0, 0, 0.5])).toBe('|00⟩ 50%, |11⟩ 50%');
+    expect(laneSummary(1, [1, 0])).toBe('|0⟩ 100%');
+  });
+});
+
+describe('RunnerGame — game events and best score', () => {
+  afterEach(() => vi.useRealTimers());
+
+  const coinThenHit = () =>
+    staged(
+      [
+        { kind: 'coin', lanes: [0], x: 0.001 },
+        { kind: 'obstacle', lanes: [0], x: 0.02 },
+      ],
+      [ONE, Z],
+      1,
+    );
+
+  it('reports start / finish to onEvent when given one (the site passes trackGame)', () => {
+    fakeClock();
+    const onEvent = vi.fn();
+    render(<RunnerGame rng={mulberry32(1)} storage={null} initialState={coinThenHit()} onEvent={onEvent} />);
+    expect(onEvent).toHaveBeenCalledWith('runner start', { level: 1 });
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(onEvent).toHaveBeenLastCalledWith('runner finish', { level: 1, score: 1 });
+  });
+
+  it('plays a whole run without onEvent (the bundle) and keeps the best score', () => {
+    fakeClock();
+    const storage = memStorage();
+    render(<RunnerGame rng={mulberry32(1)} storage={storage} initialState={coinThenHit()} />);
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(screen.getByText('Measurement got you')).toBeTruthy();
+    expect(screen.getByText('New best!')).toBeTruthy();
+    expect(JSON.parse(storage.getItem(RUNNER_BEST_KEY)!)).toEqual({ 1: 1 });
+    expect(spoken()).toMatch(/^Game over\. Score 1\.0, .* New best!$/);
+  });
+
+  it('imports no analytics module (the bundle must not carry one)', () => {
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'RunnerGame.tsx'), 'utf8');
+    expect(src).not.toMatch(/from\s+['"]\.\/analytics['"]/);
   });
 });

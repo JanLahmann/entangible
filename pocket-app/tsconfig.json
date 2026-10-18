@@ -39,5 +39,5 @@
 
     "types": ["vitest/globals", "node"]
   },
-  "include": ["src", "tests", "vite.config.ts", "vite.golf.config.ts", "vite-plugins"]
+  "include": ["src", "tests", "vite.config.ts", "vite.golf.config.ts", "vite.runner.config.ts", "vite-plugins"]
 }

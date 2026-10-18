@@ -279,12 +279,87 @@
 
 .pk-runner-restart {
   width: 100%;
+  min-height: 44px;
+}
+
+.pk-runner-newbest {
+  margin: -0.4rem 0 1rem;
+  color: var(--warn);
+  font-weight: 700;
+}
+
+/* --- Pause, resume countdown, live region -------------------------------- */
+.pk-runner-pause {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-inset);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+  letter-spacing: -0.1em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.pk-runner-pause:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pk-runner-countdown {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.pk-runner-countdown span {
+  font-size: 5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--entangle);
+  text-shadow: 0 0 18px color-mix(in srgb, var(--entangle) 55%, transparent);
+  animation: pk-runner-count 1s ease-out both;
+}
+
+@keyframes pk-runner-count {
+  from {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0.85;
+  }
+}
+
+/* Visually hidden, still read (the throttled VoiceOver announcements). */
+.pk-runner-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .pk-runner-ghost,
   .pk-runner.is-flash .pk-runner-field,
-  .pk-runner-coinflash {
+  .pk-runner-coinflash,
+  .pk-runner-countdown span {
     transition: none !important;
     animation: none !important;
   }

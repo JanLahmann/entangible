@@ -1202,7 +1202,7 @@ export function App() {
         <ThemeProvider defaultTheme="dark">
           <main className="pk-main pk-main--runner">
             <LazyBoundary>
-              <RunnerGame />
+              <RunnerGame onEvent={trackGame} />
             </LazyBoundary>
           </main>
         </ThemeProvider>

@@ -1,0 +1,354 @@
+/*
+ * Quantum Runner bundle — base + shell styles (docs/runner-bundle.md).
+ *
+ * The game's own look is runnerGame.css (shared with the site). The site's
+ * pocket.css is NOT in this bundle, so this file carries the little base the
+ * game needs from it (box sizing, page fill, `.pk-btn`), plus what an
+ * embedded, touch-only page needs:
+ *   - a slim toolbar instead of the site header (qubits, EN/DE, How to play);
+ *   - the whole game on one screen — phones first (390×680 web view, 375×667,
+ *     844×390 landscape), iPad — with no page scroll;
+ *   - safe-area insets on every edge (the page sets viewport-fit=cover);
+ *   - 44 px tap targets, no double-tap zoom on controls (touch-action);
+ *   - the rules sheet.
+ * Hover: no `:hover` rule here; the build moves every `:hover` under
+ * `@media (hover: hover)`.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  -webkit-text-size-adjust: 100%;
+}
+
+.pk-runnerapp {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  /* A long press on the field selects nothing and opens no callout. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Quick repeat taps never zoom the page; pinch-zoom stays available. */
+.pk-runnerapp button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The site's button look (pocket.css `.pk-btn`), for the gate row and cards. */
+.pk-btn {
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 0.45rem 1rem;
+  cursor: pointer;
+}
+
+.pk-btn:active {
+  filter: brightness(1.15);
+}
+
+.pk-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.pk-runnerapp :focus-visible {
+  outline: 2px solid var(--entangle);
+  outline-offset: 2px;
+}
+
+/* ---- toolbar ----------------------------------------------------------- */
+
+.pk-runnerbar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0.35rem max(0.6rem, env(safe-area-inset-right)) 0.35rem
+    max(0.6rem, env(safe-area-inset-left));
+  padding-top: max(0.35rem, env(safe-area-inset-top));
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.pk-runnerbar-qubits {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.pk-runnerbar-spacer {
+  flex: 1;
+}
+
+.pk-runnerbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-inset);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pk-runnerbar-btn:active {
+  filter: brightness(1.15);
+}
+
+.pk-runnerbar-btn[aria-expanded='true'] {
+  border-color: var(--entangle);
+}
+
+.pk-runnerbar-qubit {
+  color: var(--muted);
+}
+
+.pk-runnerbar-qubit[aria-pressed='true'] {
+  color: var(--text);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.pk-runnerbar-lang {
+  padding: 0 0.6rem;
+  font-family: var(--mono);
+  letter-spacing: 0.06em;
+}
+
+/* ---- the game ---------------------------------------------------------- */
+
+.pk-runnerapp-main {
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.6rem max(0.6rem, env(safe-area-inset-right)) max(0.6rem, env(safe-area-inset-bottom))
+    max(0.6rem, env(safe-area-inset-left));
+}
+
+.pk-runnerapp .pk-runner {
+  gap: 0.5rem;
+}
+
+/* Score, hearts, pause in one row (no level picker here — it is in the toolbar). */
+.pk-runnerapp .pk-runner-hud {
+  flex-wrap: nowrap;
+}
+
+.pk-runnerapp .pk-runner-field {
+  min-height: 7rem;
+}
+
+.pk-runnerapp .pk-runner-gates {
+  flex-wrap: nowrap;
+}
+
+.pk-runnerapp .pk-runner-gate {
+  min-height: 52px;
+  min-width: 0;
+  flex: 1 1 0;
+  padding: 0.5rem 0.25rem;
+  white-space: nowrap;
+}
+
+/* Two qubits on a narrow phone: six gates in one row still fit (≥ 44 px each). */
+@media (max-width: 420px) {
+  .pk-runnerapp .pk-runner-gates {
+    gap: 0.3rem;
+  }
+
+  .pk-runnerapp .pk-runner-field[data-lanes='4'] ~ .pk-runner-gates .pk-runner-gate {
+    font-size: 0.85rem;
+  }
+}
+
+/* Short landscape phones (844×390): every pixel of height counts. */
+@media (max-height: 450px) {
+  .pk-runnerbar {
+    padding-top: max(0.2rem, env(safe-area-inset-top));
+    padding-bottom: 0.2rem;
+  }
+
+  .pk-runnerapp-main {
+    padding-top: 0.35rem;
+    padding-bottom: max(0.35rem, env(safe-area-inset-bottom));
+  }
+
+  .pk-runnerapp .pk-runner {
+    gap: 0.35rem;
+  }
+
+  .pk-runnerapp .pk-runner-score {
+    font-size: 1.2rem;
+  }
+
+  .pk-runnerapp .pk-runner-gate {
+    min-height: 44px;
+    padding-block: 0.3rem;
+  }
+
+  .pk-runnerapp .pk-runner-over-card {
+    padding: 0.8rem 1.2rem;
+  }
+
+  .pk-runnerapp .pk-runner-over-card h2 {
+    font-size: 1.15rem;
+  }
+
+  .pk-runnerapp .pk-runner-over-flavour {
+    margin-bottom: 0.5rem;
+  }
+
+  .pk-runnerapp .pk-runner-over-stats {
+    margin-bottom: 0.5rem;
+  }
+
+  .pk-runnerapp .pk-runner-countdown span {
+    font-size: 3.5rem;
+  }
+}
+
+/* Tablets: a roomier game, centred, not stretched edge to edge. */
+@media (min-width: 700px) and (min-height: 600px) {
+  .pk-runnerapp-main {
+    padding: 1rem max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom))
+      max(1rem, env(safe-area-inset-left));
+  }
+
+  .pk-runnerapp .pk-runner {
+    max-width: 56rem;
+    margin: 0 auto;
+  }
+
+  .pk-runnerapp .pk-runner-gate {
+    min-height: 60px;
+    font-size: 1.15rem;
+  }
+}
+
+/* ---- rules sheet ------------------------------------------------------- */
+
+.pk-runnersheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(9, 11, 16, 0.6);
+}
+
+.pk-runnersheet {
+  width: 100%;
+  max-width: 34rem;
+  max-height: 88%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  color: var(--text);
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Roomy screens (iPad, landscape phone side): a centred card, not a sheet. */
+@media (min-width: 700px) and (min-height: 451px) {
+  .pk-runnersheet-scrim {
+    align-items: center;
+  }
+
+  .pk-runnersheet {
+    border-bottom: 1px solid var(--border);
+    border-radius: 16px;
+    padding-bottom: 0;
+  }
+}
+
+.pk-runnersheet-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem max(0.5rem, env(safe-area-inset-right)) 0.5rem
+    max(1rem, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--border);
+}
+
+.pk-runnersheet-title {
+  flex: 1;
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.pk-runnersheet-close {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.pk-runnersheet-body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 0.9rem max(1rem, env(safe-area-inset-right)) 1.1rem
+    max(1rem, env(safe-area-inset-left));
+}
+
+.pk-runnersheet-p {
+  margin: 0 0 0.8rem;
+  line-height: 1.5;
+  font-size: 0.92rem;
+}
+
+.pk-runnersheet-credit {
+  margin: 1rem 0 0;
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.pk-runnersheet-muted {
+  margin: 0.6rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.pk-runnersheet-muted a {
+  color: var(--entangle-text);
+}

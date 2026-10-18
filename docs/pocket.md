@@ -412,6 +412,11 @@ JSON (`qubits: 5`), QASM (`qreg q[5]`), moments, and golf are untouched.
   ("Quantum Golf") the Fun with Quantum iOS app embeds offline: same game
   (`useGolfGame` + `GolfBoard`, shared with `App`), no camera / booth / other
   modes, relative paths, no network — see [`golf-bundle.md`](golf-bundle.md).
+- `npm run build:runner` → `pocket-app/dist-runner`, the runner-only bundle
+  ("Quantum Runner") for the same app: the same `RunnerGame` as the site's
+  runner mode under a slim toolbar, no editor library, no camera / booth /
+  other modes, relative paths, no network — see
+  [`runner-bundle.md`](runner-bundle.md).
 
 ## Verification
 

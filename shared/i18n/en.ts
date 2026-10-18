@@ -576,7 +576,7 @@ export const en = {
   // ---------------------------------------------------------- Quantum Runner
   runner: {
     score: 'Score',
-    lives: (n: number) => `${n} lives`,
+    lives: (n: number) => (n === 1 ? '1 life' : `${n} lives`),
     level: 'Level',
     oneQubit: '1 qubit',
     twoQubits: '2 qubits',
@@ -587,6 +587,52 @@ export const en = {
     distance: 'Distance',
     meters: (m: number) => `${m} m`,
     runAgain: 'Run again',
+    /** VoiceOver names of the gate buttons. */
+    applyGate: (gate: string, qubit: number) => `Apply ${gate} to qubit ${qubit}`,
+    applyCx: (control: number, target: number) =>
+      `Apply CX, control qubit ${control}, target qubit ${target}`,
+    best: 'Best',
+    newBest: 'New best!',
+    /** Pause: the page went to the background, or the pause button. */
+    pause: 'Pause the run',
+    pausedTitle: 'Paused',
+    pausedHint: 'Tap Resume: the run goes on after a short countdown.',
+    resume: 'Resume',
+    readyTitle: 'Ready?',
+    readyHint: 'Tap Start: the run begins after a short countdown.',
+    start: 'Start',
+    /** The polite live region (throttled; one line per event). */
+    announceCoin: (amount: string) => `Coin, plus ${amount}.`,
+    announceHit: 'Obstacle: hit, one life lost.',
+    announceSafe: 'Obstacle: passed.',
+    announceStatus: (lanes: string, lives: string, score: string) => `${lanes}. ${lives}, score ${score}.`,
+    announceOver: (score: string, distance: string) =>
+      `Game over. Score ${score}, distance ${distance}. Run again is ready.`,
+    announceBest: (best: string) => `Best ${best}.`,
+    announceNewRun: (level: string) => `New run, ${level}.`,
+    announcePaused: 'Paused.',
+    announceGo: 'Go!',
+  },
+
+  // ------------------------------------------- Quantum Runner bundle (iOS app)
+  /** The runner-only bundle's shell (docs/runner-bundle.md). */
+  runnerApp: {
+    toolbarAria: 'Quantum Runner controls',
+    qubitsAria: 'Number of qubits',
+    rulesButton: 'How to play',
+    rulesTitle: 'How to play',
+    rules: [
+      'You run in every lane at once. Each lane is a basis state: |0⟩ and |1⟩ with one qubit, |00⟩ to |11⟩ with two. How bright your runner is in a lane is the probability of finding you there.',
+      'Tap the gates to change your state while you run: X flips a qubit, H puts it into superposition, and CX flips the target qubit wherever the control qubit is 1.',
+      'Coins (◉) are never measured: you bank the probability of being in the coin lanes, so a superposition earns part of a coin.',
+      'Obstacles (red) measure you. With the probability of being in their lanes you are hit and lose a life; otherwise you slip past. Either way your state collapses. You have three lives per run.',
+      'Two qubits? Try H₀ and then CX 0→1: that Bell state lives only in |00⟩ and |11⟩, so an obstacle on |01⟩ and |10⟩ can never touch you.',
+      'Leave the app and the run pauses. Tap Resume and it goes on after a short countdown.',
+    ],
+    credit: 'Based on Quantum Runner by the QAMPoser project.',
+    moreLead: 'More quantum games, and a printable kit:',
+    close: 'Close',
+    languageAria: 'Auf Deutsch umschalten',
   },
 
   // ------------------------------------------------------------------ kiosk

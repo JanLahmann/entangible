@@ -47,10 +47,39 @@ partial credit and a projector that snaps you into one branch and takes a life.
   (score + distance + "measurement got you" flavour + restart). Speed ramps so a
   typical run lasts ~45–90 s.
 
+- **Best score** per level is kept in `localStorage`
+  (`entangible.pocket.runner.best`, `{"1": 12.3, "2": 4.5}`) and shown on the
+  game-over card ("New best!" when beaten).
+
+## Pause
+
+The run holds whenever the page is hidden (`visibilitychange`), the window
+loses focus (`blur`) or the page is put away (`pagehide`), on the ❚❚ button in
+the HUD, and while the embedding shell says so (`suspended` — the runner
+bundle's rules sheet). It never resumes on its own: **Resume** starts a 3-2-1
+countdown (one number a second), then the run goes on. The gate buttons are
+disabled while held.
+
 ## Accessibility
 
 `prefers-reduced-motion` suppresses the slow-mo / flash effects — collapses snap
-instantly and the game stays fully playable.
+instantly and the game stays fully playable (the countdown numbers stay, without
+their zoom).
+
+VoiceOver: every gate button has a name ("Apply H to qubit 0", "Apply CX,
+control qubit 0, target qubit 1"; German "H auf Qubit 0 anwenden" …). One
+polite live region speaks each coin and obstacle — what happened, the lane
+probabilities ("|00⟩ 50%, |11⟩ 50%", lanes at 0 % left out), lives and score —
+at most one line every 2 s (the latest waiting line wins at the end of the
+gap). Game over (with the best score), a new run, pause and the countdown are
+spoken at once.
+
+## Runner-only bundle
+
+The same `RunnerGame` also ships alone, for the Fun with Quantum iOS app —
+see [`runner-bundle.md`](runner-bundle.md). It takes its analytics as an
+optional `onEvent` prop (the site passes `trackGame`, the bundle nothing), so
+the component itself imports no analytics.
 
 ## Architecture
 

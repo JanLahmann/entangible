@@ -45,16 +45,17 @@ shell (`pocket-app/src/golf/GolfApp.tsx`), so a golf fix lands in both.
 cd pocket-app
 npm ci
 npm run build:golf                       # tsc + vite build --config vite.golf.config.ts
-node scripts/check-golf-bundle.mjs       # the guard + size report (npm run check:golf)
+node scripts/check-bundle.mjs --bundle golf   # the guard + size report (npm run check:golf)
 ```
 
 Output: `pocket-app/dist-golf/` (git-ignored). The site build (`npm run build`
 → `dist/`) is untouched by it: the golf build has its own entry
 (`pocket-app/golf.html` → `src/golf/main.tsx`), its own config
-(`vite.golf.config.ts`) and its own plugins (`vite-plugins/golfBundle.ts`), and
+(`vite.golf.config.ts`) and its own plugins (`vite-plugins/appBundle.ts`), and
 needs no `prebuild` family fetch.
 
-Build choices (all in `vite.golf.config.ts`):
+Build choices (`defineAppBundle` in `vite-plugins/appBundleConfig.ts`, shared
+with the Runner bundle — [`runner-bundle.md`](runner-bundle.md)):
 
 - `base: './'` — every URL is relative; `golf.html` is emitted as `index.html`.
 - One classic script: IIFE output, no lazy chunks, no modulepreload polyfill
@@ -100,14 +101,14 @@ script, no event calls — `useGolfGame` takes an optional `onEvent` that the
 bundle simply does not pass), the service worker, and any `fetch` /
 WebSocket.
 
-`scripts/check-golf-bundle.mjs` fails the build in CI when any of that comes
+`scripts/check-bundle.mjs --bundle golf` fails the build in CI when any of that comes
 back: absolute `/assets` URLs, a non-relative or module script in
 `index.html`, an `http(s)://` string in the JS outside its explicit allowlist
 (the entangible.org link, React's error-text URL and XML namespace names),
 `fetch(`, `new WebSocket`, `getUserMedia`, `serviceWorker`, `umami`, XHR /
 beacon / EventSource / workers, a marker string of an excluded module, an
 unguarded `:hover`, or a missing LICENSE / notices file. The matchers have
-their own self-check (`src/golf/checkGolfBundle.test.ts`).
+their own self-check (`pocket-app/tests/checkBundle.test.ts`).
 
 Links are fine: the host opens a plain `<a href="https://…">` in Safari. The
 bundle has one (rules panel → entangible.org). A tap on a random course's code
@@ -160,7 +161,7 @@ unpacks it into its `golf/` resource folder and loads
 
 ```sh
 cd pocket-app
-npm run build:golf && node scripts/check-golf-bundle.mjs
+npm run build:golf && node scripts/check-bundle.mjs --bundle golf
 npx vite preview --config vite.golf.config.ts --port 4174   # → http://localhost:4174/
 ```
 

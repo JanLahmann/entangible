@@ -26,6 +26,8 @@ develop-eggs/
 dist/
 # pocket-app golf-only bundle (npm run build:golf)
 dist-golf/
+# pocket-app runner-only bundle (npm run build:runner)
+dist-runner/
 downloads/
 eggs/
 .eggs/
