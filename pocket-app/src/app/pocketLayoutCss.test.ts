@@ -119,3 +119,32 @@ describe('pocket.css golf goal line', () => {
     expect(goal).toContain('min-width: 0');
   });
 });
+
+describe('pocket.css phone topbar never clips the mode pill', () => {
+  // The 390 px regression: "QUANTUM RUNNE" cut off under the brand, and the
+  // build-on-screen pill drawn as an empty capsule (its label is hidden on
+  // phones). Every rule lives in the phone block, indented by two spaces.
+  const phone = css.slice(css.indexOf('@media (max-width: 699px), (max-height: 450px) {'));
+  function phoneRule(selector: string): string {
+    const at = phone.indexOf(`\n  ${selector} {`);
+    if (at < 0) return '';
+    const open = phone.indexOf('{', at);
+    return phone.slice(open + 1, phone.indexOf('}', open));
+  }
+
+  it('lets the mode pill wrap to its longest word instead of shrinking past it', () => {
+    const pill = phoneRule('.pk-topbar .pk-pill--mode');
+    expect(pill).toContain('min-width: min-content');
+    expect(pill).toContain('white-space: normal');
+    expect(pill).not.toMatch(/min-width:\s*0\b/);
+  });
+
+  it('collapses the brand to its glyph while a mode pill is shown', () => {
+    expect(phoneRule('.pk-topbar.has-mode .pk-brand-rest')).toContain('display: none');
+  });
+
+  it('hides the label-only build-on-screen pill rather than drawing it empty', () => {
+    expect(phoneRule('.pk-pill-label')).toContain('display: none');
+    expect(phoneRule('.pk-topbar .pk-pill--manual')).toContain('display: none');
+  });
+});

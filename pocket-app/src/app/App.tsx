@@ -1525,7 +1525,9 @@ export function App() {
 
   return (
     <div className="pk">
-      <header className="pk-topbar">
+      {/* `has-mode`: a mode pill sits beside the brand, so on a phone the brand
+          collapses to its "En" glyph to leave the pill room (pocket.css). */}
+      <header className={isGolf || isQuantina || isRunner ? 'pk-topbar has-mode' : 'pk-topbar'}>
         <div className="pk-brand">
           <span className="en">En</span>
           <span className="pk-brand-rest">tangible</span>
@@ -1553,7 +1555,7 @@ export function App() {
           // Manual build: no camera — the pill states the mode (switch back via
           // the "Use camera" action button).
           <span
-            className="pk-pill pk-pill--mode"
+            className="pk-pill pk-pill--mode pk-pill--manual"
             aria-label={t.app.manualBuild}
             title={t.app.manualBuild}
           >

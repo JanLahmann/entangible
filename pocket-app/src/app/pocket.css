@@ -3075,9 +3075,32 @@ body,
     padding: 0.35rem 0.7rem;
   }
 
+  /* The mode pill (GOLF / QUANTUM RUNNER / a Quantina menu) never clips its
+     words: it may shrink to its longest word and wrap onto a second line, and
+     the brand gives way instead — "En" alone while a mode pill is shown. */
   .pk-topbar .pk-pill--mode {
-    min-width: 0;
-    padding: 0.35rem 0.7rem;
+    flex: 0 1 auto;
+    min-width: min-content;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.05em;
+    line-height: 1.15;
+    text-align: center;
+    white-space: normal;
+  }
+
+  .pk-topbar.has-mode .pk-brand-rest {
+    display: none;
+  }
+
+  .pk-topbar.has-mode .pk-brand {
+    flex: none;
+  }
+
+  /* Build-on-screen pill: its label is all it has, and labels are hidden here
+     — it would be an empty capsule. The "Use camera" button names the mode. */
+  .pk-topbar .pk-pill--manual {
+    display: none;
   }
 
   .pk-help,
