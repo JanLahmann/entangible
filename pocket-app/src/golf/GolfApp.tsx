@@ -7,8 +7,9 @@
  * `App` — with the on-screen editor as the only input. Everything else the
  * site carries is absent from this module graph, not hidden: no camera,
  * vision, booth socket, composer hand-off, QR, Quantina, Runner, kiosk,
- * debug, guide, settings drawer, analytics or service worker
- * (scripts/check-golf-bundle.mjs guards it).
+ * debug, guide, settings drawer, analytics module or service worker
+ * (scripts/check-bundle.mjs --bundle golf guards it). Game events go to the
+ * host's injected bridge only (`hostTrack`, src/bundle/hostEvents.ts).
  *
  * Layout: the pocket stylesheet's own golf + build-on-screen grid (stage with
  * palette + editor, sidebar with sphere + tap-to-play / course / scorecard; on a
@@ -38,6 +39,7 @@ import { GolfBoard } from '../app/GolfBoard';
 import { useGolfGame } from '../app/useGolfGame';
 import { editorScaleStyle, useEditorFit } from '../app/useEditorFit';
 import { mainClassName, stageClassName } from '../app/layoutClasses';
+import { hostTrack } from '../bundle/hostEvents';
 import { cleanCode, loadCourse, saveCourse, type CourseChoice } from './courseStore';
 
 /** Where a copied course link (and the "more" link) points: the public site. */
@@ -86,6 +88,7 @@ export function GolfApp() {
     clearBoard: () => sourceRef.current.clear(),
     circuit,
     onCelebrate: (c) => setCelebration({ ...c, token: ++tokenRef.current }),
+    onEvent: hostTrack,
   });
   const golfStep = golf.step;
 

@@ -8,7 +8,9 @@
  * qubit choice, EN/DE and How to play. Everything else the site carries is
  * absent from this module graph, not hidden: no camera, vision, composer / QR,
  * Quantina, golf, editor library, kiosk, debug, guide, booth socket, analytics
- * or service worker (scripts/check-bundle.mjs --bundle runner guards it).
+ * module or service worker (scripts/check-bundle.mjs --bundle runner guards
+ * it). Game events go to the host's injected bridge only (`hostTrack`,
+ * src/bundle/hostEvents.ts).
  *
  * Every run waits for Start (+ a 3-2-1 countdown): the app may open the page
  * long before the player looks at it, and a VoiceOver user needs the moment to
@@ -19,6 +21,7 @@ import type { Level } from '@quantum/runner';
 import { useLang, useT } from '@shared/i18n';
 import { RunnerGame } from '../app/RunnerGame';
 import { defaultRunnerStorage, type KeyStorage } from '../app/runnerBest';
+import { hostTrack } from '../bundle/hostEvents';
 
 /** The "more" link in the rules: the public site (opened by the host in Safari). */
 export const SITE_URL = 'https://entangible.org/';
@@ -92,6 +95,7 @@ export function RunnerApp({ autoRun = true }: { autoRun?: boolean } = {}) {
           startPaused
           suspended={rules}
           storage={storage}
+          onEvent={hostTrack}
         />
       </main>
 

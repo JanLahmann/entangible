@@ -21,6 +21,7 @@ import {
   unguardedHoverInCss,
   unguardedHoverInJs,
   urlsIn,
+  withoutHostBridge,
 } from '../scripts/check-bundle.mjs';
 import { packageDirOf, renderNotices } from '../vite-plugins/appBundle';
 
@@ -53,17 +54,50 @@ describe('check-bundle matchers', () => {
       'new WebSocket': 'new WebSocket(u)',
       getUserMedia: 'navigator.mediaDevices.getUserMedia({})',
       serviceWorker: 'navigator.serviceWorker.register("sw.js")',
-      umami: 'window.Umami.track()',
+      'umami (other than the window.umami host bridge)': 'window.Umami.track()',
+      'data-website-id (tracker script tag)': 's.setAttribute("data-website-id",id)',
+      'script element (loads code)': 'document.createElement("script")',
+      'dynamic import': 'import("./chunk.js")',
+      importScripts: 'importScripts(u)',
       XMLHttpRequest: 'new XMLHttpRequest',
       sendBeacon: 'navigator.sendBeacon(u)',
       EventSource: 'new EventSource(u)',
       'new Worker': 'new Worker(u)',
     };
     for (const [label, re] of FORBIDDEN_JS) {
-      expect(re.test(samples[label]), label).toBe(true);
+      expect(samples[label], `sample for ${label}`).toBeDefined();
+      expect(re.test(withoutHostBridge(samples[label])), label).toBe(true);
     }
     // …and leaves look-alikes alone.
     expect(FORBIDDEN_JS.some(([, re]: [string, RegExp]) => re.test('prefetch=1;refetchX'))).toBe(false);
+  });
+
+  it('allows the host bridge (window.umami → track) and no other Umami form', () => {
+    const umamiRule = FORBIDDEN_JS.find(([label]: [string, RegExp]) => label.startsWith('umami'))![1];
+    const hits = (js: string) =>
+      FORBIDDEN_JS.filter(([, re]: [string, RegExp]) => re.test(withoutHostBridge(js))).map(([l]: [string, RegExp]) => l);
+    // The adapter as the minifier emits it (src/bundle/hostEvents.ts).
+    const bridge =
+      'function Lx(e,t={}){try{if(typeof window>"u")return;const n=window.umami;' +
+      'if(typeof(n==null?void 0:n.track)!="function")return;n.track.call(n,`Entangible: ${e}`,t)}catch{}}';
+    expect(hits(bridge)).toEqual([]);
+    expect(hits('window.umami?.track("Entangible: runner start",{level:"1"})')).toEqual([]);
+    // Everything else Umami still fails: the tracker script tag, its URLs, its
+    // website id, its auto-tracking attributes, other spellings / receivers.
+    for (const bad of [
+      '<script defer src="https://cloud.umami.is/script.js" data-website-id="abc"></script>',
+      'const s=document.createElement("script");s.src="https://cloud.umami.is/script.js"',
+      'u="https://analytics.umami.is/api/send"',
+      'a.setAttribute("data-umami-event","x")',
+      'window.Umami.track()',
+      'self.umami.track()',
+      'window.umamiQueue=[]',
+      'window["umami"].track()',
+    ]) {
+      expect(umamiRule.test(withoutHostBridge(bad)), bad).toBe(true);
+    }
+    expect(hits('s.setAttribute("data-website-id",id)')).toContain('data-website-id (tracker script tag)');
+    expect(hits('document.createElement("script")')).toContain('script element (loads code)');
   });
 
   it('has one distinct, non-empty marker per excluded module, in every bundle', () => {
@@ -144,16 +178,30 @@ describe('checkBundle — a whole (synthetic) runner bundle', () => {
     expect(checkBundle(dist, REPO_LICENSE, BUNDLES.golf).errors.join('\n')).toMatch(/Quantum Runner/);
   });
 
+  it('passes a bundle that reports through the host bridge only', () => {
+    const dist = makeDist(
+      'var a="pk-runner";function h(e,t){try{const n=window.umami;' +
+        'if(typeof(n==null?void 0:n.track)!="function")return;n.track(`Entangible: ${e}`,t)}catch{}}',
+    );
+    expect(checkBundle(dist, REPO_LICENSE, BUNDLES.runner).errors).toEqual([]);
+  });
+
   it('fails on golf, the editor library, analytics or the network', () => {
     const errors = checkBundle(
-      makeDist('a="pk-gatebar";b="circuit-editor";window.umami;fetch("x");c="https://cloud.umami.is/s.js"'),
+      makeDist(
+        'a="pk-gatebar";b="circuit-editor";window.umami;fetch("x");c="https://cloud.umami.is/s.js";' +
+          'd={sync_branches:[]};e.setAttribute("data-website-id","x");document.createElement("script")',
+      ),
       REPO_LICENSE,
       BUNDLES.runner,
     ).errors.join('\n');
     expect(errors).toMatch(/golf tap to play/);
     expect(errors).toMatch(/@qamposer\/react editor/);
     expect(errors).toMatch(/forbidden API umami/);
+    expect(errors).toMatch(/forbidden API data-website-id/);
+    expect(errors).toMatch(/forbidden API script element/);
     expect(errors).toMatch(/forbidden API fetch\(/);
+    expect(errors).toMatch(/analytics module \(family manifest\)/);
     expect(errors).toMatch(/URL not on the allowlist: https:\/\/cloud\.umami\.is/);
   });
 

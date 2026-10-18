@@ -96,17 +96,19 @@ font files ~165 kB. The guard prints the current numbers on every build.
 Not in the module graph at all: camera, vision pipeline, booth socket /
 connect / camera role, composer hand-off and every QR code (incl. the
 challenge-a-friend QR), Quantina, Quantum Runner, kiosk, debug, the guide, the
-settings drawer, the welcome card, fullscreen / wake lock, analytics (no Umami
-script, no event calls — `useGolfGame` takes an optional `onEvent` that the
-bundle simply does not pass), the service worker, and any `fetch` /
+settings drawer, the welcome card, fullscreen / wake lock, the site's
+analytics module (no Umami script, no family manifest — game events go to the
+host's bridge only, see Analytics below), the service worker, and any `fetch` /
 WebSocket.
 
 `scripts/check-bundle.mjs --bundle golf` fails the build in CI when any of that comes
 back: absolute `/assets` URLs, a non-relative or module script in
 `index.html`, an `http(s)://` string in the JS outside its explicit allowlist
 (the entangible.org link, React's error-text URL and XML namespace names),
-`fetch(`, `new WebSocket`, `getUserMedia`, `serviceWorker`, `umami`, XHR /
-beacon / EventSource / workers, a marker string of an excluded module, an
+`fetch(`, `new WebSocket`, `getUserMedia`, `serviceWorker`, XHR / beacon /
+EventSource / workers / `importScripts`, a created `<script>` element, a
+dynamic `import(`, `data-website-id`, any `umami` other than the
+`window.umami` host bridge, a marker string of an excluded module, an
 unguarded `:hover`, or a missing LICENSE / notices file. The matchers have
 their own self-check (`pocket-app/tests/checkBundle.test.ts`).
 
@@ -114,6 +116,36 @@ Links are fine: the host opens a plain `<a href="https://…">` in Safari. The
 bundle has one (rules panel → entangible.org). A tap on a random course's code
 copies `https://entangible.org/?course=<code>` (clipboard permitting), so the
 friend it is for lands on the site's golf mode on the same holes.
+
+## Analytics — through the host's bridge only
+
+The bundle reports the same game events as entangible.org, with the same
+names and data, but only to a tracker the **host** injects. The Fun with
+Quantum iOS app puts `window.umami` (the Umami tracker API,
+`window.umami.track(name, data)`) into every page it shows and forwards each
+call natively. The bundle's adapter, `hostTrack` (`pocket-app/src/bundle/hostEvents.ts`),
+looks the bridge up at call time (the host may inject it after load), calls
+`track` when it is a function, swallows anything it throws, and otherwise
+does nothing. `GolfApp` passes it to `useGolfGame` as `onEvent` — the hook the site feeds `trackGame`.
+
+| Event | When | Data (all values strings) |
+|---|---|---|
+| `Entangible: golf hole finished` | the ball drops on a hole | `qubits`, `score` (`birdie`, `par`, …), `course` (`classic` / `random`) |
+| `Entangible: golf round finished` | the last hole of the round (course + scope) is in | `course`, `scope` |
+
+Names follow the family taxonomy (`<Site>: <what>`, as the site's
+`pocket-app/src/app/analytics.ts`); undefined values are dropped and numbers
+sent as strings, exactly as the site's `trackGame` does. The site label
+`Entangible` is hard-coded in the adapter (the site's analytics module pulls
+in the family manifest) and a test pins it to the label the site derives.
+
+The bundle itself makes no request and loads no script: no Umami script tag,
+no tracker URL, no website id. On a plain page (a browser, `python3 -m
+http.server`) there is no `window.umami`, so nothing is sent at all. The guard
+allows exactly the `window.umami` bridge access and fails on any other
+`umami`, on `data-website-id`, a created `<script>` element, a dynamic
+`import(`, and any `http(s)://` URL off the allowlist (so an analytics host
+such as `cloud.umami.is` cannot come back).
 
 ## Storage
 

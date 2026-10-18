@@ -9,6 +9,8 @@ export interface BundleProfile {
 }
 export const BUNDLES: Record<'golf' | 'runner', BundleProfile>;
 export const FORBIDDEN_JS: Array<[string, RegExp]>;
+export const HOST_BRIDGE: RegExp;
+export function withoutHostBridge(js: string): string;
 export function urlsIn(text: string): string[];
 export function absoluteAssetRefs(text: string): string[];
 export function nonRelativeRefs(html: string): string[];

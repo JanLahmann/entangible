@@ -14,10 +14,12 @@
  *     some custom-scheme loaders refuse);
  *   - no absolute `/assets/` URL in any HTML / CSS / JS file;
  *   - JS: no `http(s)://` outside the bundle's allowlist, no `fetch(`,
- *     `new WebSocket`, `getUserMedia`, `serviceWorker`, `umami`, XHR, beacons,
- *     workers; and none of the markers of the modules the bundle must not
+ *     `new WebSocket`, `getUserMedia`, `serviceWorker`, XHR, beacons,
+ *     workers, script elements, dynamic import, `data-website-id`, and no
+ *     `umami` except the host-injected bridge `window.umami` (HOST_BRIDGE);
+ *     and none of the markers of the modules the bundle must not
  *     contain at all (camera / vision, composer hand-off + QR, Quantina,
- *     kiosk, debug, guide, booth socket, analytics — plus the Runner in the
+ *     kiosk, debug, guide, booth socket, analytics module — plus the Runner in the
  *     golf bundle, and golf / the editor library in the runner bundle);
  *   - every `:hover` rule (stylesheets and the editor library's runtime-
  *     injected CSS) sits inside `@media (hover: hover)`;
@@ -45,13 +47,35 @@ const REACT_URLS = [
   ['http://www.w3.org/XML/1998/namespace', 'XML namespace'],
 ];
 
-/** Network / platform APIs a bundle must not use at all. */
+/**
+ * The one Umami form a bundle may contain: reading the HOST's injected bridge
+ * (`window.umami`, then `.track(…)` on it — src/bundle/hostEvents.ts). The FwQ
+ * iOS app injects it and forwards natively; the bundle loads no tracker and
+ * sends nothing itself. Matched exactly (case-sensitive, `window.` before it,
+ * no identifier character after), and stripped before the `umami` rule runs.
+ */
+export const HOST_BRIDGE = /\bwindow\.umami(?![\w$])/g;
+
+/** `js` with the allowed host-bridge accesses removed. */
+export function withoutHostBridge(js) {
+  return js.replace(HOST_BRIDGE, 'window.HOST_BRIDGE');
+}
+
+/**
+ * Network / platform APIs a bundle must not use at all. Run over
+ * `withoutHostBridge(js)`: any other `umami` (the tracker script, its
+ * `umami.is` hosts, `data-umami-event`, `window.Umami`, …) still fails.
+ */
 export const FORBIDDEN_JS = [
   ['fetch(', /\bfetch\s*\(/],
   ['new WebSocket', /new\s+WebSocket\b/],
   ['getUserMedia', /getUserMedia/],
   ['serviceWorker', /serviceWorker/],
-  ['umami', /umami/i],
+  ['umami (other than the window.umami host bridge)', /umami/i],
+  ['data-website-id (tracker script tag)', /data-website-id/i],
+  ['script element (loads code)', /createElement\s*\(\s*["'`]script["'`]/i],
+  ['dynamic import', /\bimport\s*\(/],
+  ['importScripts', /\bimportScripts\b/],
   ['XMLHttpRequest', /XMLHttpRequest/],
   ['sendBeacon', /sendBeacon/],
   ['EventSource', /\bEventSource\b/],
@@ -85,7 +109,9 @@ const SITE_ONLY_MARKERS = [
   ['guide', 'pk-guide'],
   ['settings drawer', 'pk-drawer'],
   ['welcome card', 'pk-welcome'],
-  ['analytics event names', 'Entangible:'],
+  // The site's analytics module carries the family manifest (the bundles send
+  // the same event names, but only through the host bridge — see HOST_BRIDGE).
+  ['analytics module (family manifest)', 'sync_branches'],
   ['fullscreen / wake lock', 'wakeLock'],
 ];
 
@@ -259,7 +285,8 @@ export function checkBundle(dist, repoLicense, profile = BUNDLES.golf) {
       for (const u of new Set(urlsIn(js))) {
         if (!profile.urlAllowlist.has(u)) fail(`${name}: URL not on the allowlist: ${u}`);
       }
-      for (const [label, re] of FORBIDDEN_JS) if (re.test(js)) fail(`${name}: forbidden API ${label}`);
+      const scanned = withoutHostBridge(js);
+      for (const [label, re] of FORBIDDEN_JS) if (re.test(scanned)) fail(`${name}: forbidden API ${label}`);
       for (const [what, marker] of profile.excludedMarkers) {
         if (js.includes(marker)) fail(`${name}: excluded module present — ${what} ("${marker}")`);
       }

@@ -66,6 +66,32 @@ describe('GolfApp — the golf-only shell', () => {
     expect(screen.getAllByRole('button', { name: /Next hole/ }).length).toBeGreaterThan(0);
   });
 
+  it('reports a finished hole to the host bridge (window.umami), as the site names it', async () => {
+    const track = vi.fn();
+    (window as unknown as { umami?: unknown }).umami = { track };
+    try {
+      await mount();
+      fireEvent.click(screen.getByRole('button', { name: 'H gate' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Qubit 0, step 1, empty: place H' }));
+      expect(track).toHaveBeenCalledWith('Entangible: golf hole finished', {
+        qubits: '1',
+        score: expect.any(String),
+        course: 'classic',
+      });
+      expect(track.mock.calls.every(([name]) => String(name).startsWith('Entangible: golf '))).toBe(true);
+    } finally {
+      delete (window as unknown as { umami?: unknown }).umami;
+    }
+  });
+
+  it('plays without a bridge (a plain page): no window.umami, no error', async () => {
+    expect((window as unknown as { umami?: unknown }).umami).toBeUndefined();
+    await mount();
+    fireEvent.click(screen.getByRole('button', { name: 'H gate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Qubit 0, step 1, empty: place H' }));
+    expect(screen.getAllByRole('button', { name: /Next hole/ }).length).toBeGreaterThan(0);
+  });
+
   it('plays the Bell hole (E2) by taps only: H, then CX control → target', async () => {
     const { container } = await mount();
     fireEvent.click(screen.getByRole('button', { name: 'Play hole 2, E2' }));
