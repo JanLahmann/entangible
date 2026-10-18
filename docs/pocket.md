@@ -124,7 +124,14 @@ Serverless equivalents of the booth's /debug controls — all local
     Finishing hole 18 fires a celebration whose intensity and wording scale
     with the round's total vs par (#80: legendary at −18 or better, then under /
     even / over). In build-on-screen mode a **Next hole ▸** button by the sphere
-    and on the card does the clearing instead (camera keeps the physical ritual).
+    (with tap to play: in the clubs' place) and on the card does the clearing
+    instead (camera keeps the physical ritual). Holing in replays the state
+    evolution once from the start (`EvolvingState` `replayKey`; reduced motion
+    shows the final step); the scrubber (↻ ‹ dots › "after layer N") then
+    steps it. On phones the banner is centred on the sphere panel and never
+    wider than it (`Celebrations` `anchor`, font size from the panel width,
+    long lines wrap); larger screens keep the centred banner, now wrapped
+    within the viewport instead of running off it (#13).
   - **Solutions** (#71/#72/#79): "Show solution" draws the hole's worked answer
     as an inert mini circuit — offered on the hole-in, and mid-hole once the
     player is stuck (`par + 3` strokes, or 60 s after the hole's first stroke).
@@ -275,14 +282,21 @@ them:
     one screen. The sphere takes what is left — `100dvh − --tap-fixed (330 px,
     measured on the bundle) − rows × 46 px` (`--rows` set by `GolfBoard`),
     floor 84 px, cap `min(52vw, 22vh)` — so a 5-qubit hole fits the iOS app's
-    ~390×680 web view (last row at 671 px; 1-/2-qubit holes 500 / 562 px) and
-    the iPhone SE's 375×667 (658 px; there the score stacks into the button
-    row). "Next hole" floats over the bottom of the sphere panel instead of
-    growing it, so holing in never pushes anything below the fold. Landscape
-    phone: one full-width column, sphere | (clubs over grid, the buttons and
-    score beside the grid); a 5-qubit grid ends at 358 of 390 px and "Next
-    hole" at 347. The step scrubber's row is reserved so nothing jumps after
-    the first tap. Tablet portrait: the state panels
+    ~390×680 web view (last row at 671 px; 1-/2-qubit holes 500 / 562 px,
+    measured in German) and the iPhone SE's 375×667 (658 px). Up to 439 px
+    wide the score stacks into the button row (German "Übereinstimmung"
+    wrapped it onto a line of its own at 390 px). **Holed in** (#13), "Next
+    hole" (on the last hole "Play again") takes the clubs' place in the flow —
+    same 44 px row, nothing moves, nothing covers the sphere panel's scrubber
+    and goal line — the board turns read-only, and the grid marks the column
+    the evolution replay is at (`is-step`, `aria-current="step"`, via
+    `GolfReplayContext`); a hole being played marks nothing. Landscape
+    phone: one full-width column, sphere | (clubs or Next hole over the grid,
+    the buttons and score beside the grid); a 5-qubit grid ends at 358 of
+    390 px, "Next hole" at 67–111 px. The step scrubber's row is reserved so
+    nothing jumps after the first tap; its ↻ ‹ › are 44 px, its label a fixed
+    ellipsized width and its dots wrap, so the row fits the landscape sphere
+    column (it overran it by ~30 px with 4+ steps). Tablet portrait: the state panels
     first, the editor below. Roomy landscape: the sphere is capped at 30vh.
 - **booth-connected** (`BoothSocketSource`, read-only viewer — see below):
   follows a booth host over `/ws/state`.

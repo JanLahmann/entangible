@@ -43,7 +43,12 @@ import { useCamera, type CameraError } from './useCamera';
 import { pinchZoom, pointerDistance, cropRect, type Point as PinchPoint } from './zoom';
 import type { Rect } from '@shared/capture/matRoi';
 import { MessageStrip, type StripMessage } from './MessageStrip';
-import { Celebrations, LOW_POWER_PARTICLES, type CelebrationRequest } from './Celebrations';
+import {
+  Celebrations,
+  LOW_POWER_PARTICLES,
+  golfBannerAnchor,
+  type CelebrationRequest,
+} from './Celebrations';
 import { trackGame } from './analytics';
 import { ResultsHistogram, noiseSeries } from './ResultsHistogram';
 import { QasmPanel } from './QasmPanel';
@@ -1274,6 +1279,7 @@ export function App() {
       <Celebrations
         celebration={celebration}
         maxParticles={settings.lowpower ? LOW_POWER_PARTICLES : undefined}
+        anchor={isGolf ? golfBannerAnchor : undefined}
       />
 
       {/* Tap-to-inspect: always on (a phone is a touch device). Reads the live

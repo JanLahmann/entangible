@@ -274,8 +274,8 @@ describe('TapPlay — select, delete, replace, undo, clear', () => {
     expect((screen.getByRole('button', { name: 'Undo the last change' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('Undo, Delete, Clear are disabled with nothing to act on; Clear also once the ball is in', async () => {
-    await mount(1);
+  it('Undo, Delete, Clear are disabled with nothing to act on, and all of them once the ball is in', async () => {
+    await mount(2);
     const off = (name: string) => (screen.getByRole('button', { name }) as HTMLButtonElement).disabled;
     expect(off('Undo the last change')).toBe(true);
     expect(off('Delete the selected gate')).toBe(true);
@@ -283,7 +283,18 @@ describe('TapPlay — select, delete, replace, undo, clear', () => {
     tap('H gate');
     tap('Qubit 0, step 1, empty: place H');
     expect(off('Undo the last change')).toBe(false);
-    expect(off('Clear the circuit (+1 stroke)')).toBe(true); // holed in
+    expect(off('Clear the circuit (+1 stroke)')).toBe(false);
+    tap('CX gate');
+    tap('Qubit 0, step 2, empty: place CX control');
+    tap('Qubit 1, step 2: place CX target');
+    expect(live.game!.state.holedIn).toBe(true);
+    // Holed in (#13): the board is read-only — an undo could only un-score or,
+    // emptied, advance the hole.
+    expect(off('Undo the last change')).toBe(true);
+    expect(off('Delete the selected gate')).toBe(true);
+    expect(off('Clear the circuit (+1 stroke)')).toBe(true);
+    const grid = screen.getByRole('group', { name: /^Circuit, / });
+    for (const cell of within(grid).getAllByRole('button')) expect(cell.getAttribute('aria-disabled')).toBe('true');
   });
 });
 
@@ -314,11 +325,29 @@ describe('TapPlay — the empty board and a new hole (#12)', () => {
   });
 
   it('Next hole puts the tool down; within a hole it stays picked', async () => {
+    await mount(2);
+    tap('H gate');
+    tap('Qubit 0, step 1, empty: place H');
+    expect(pressed('H gate')).toBe('true'); // still picked on the hole it plays
+    tap('CX gate');
+    tap('Qubit 0, step 2, empty: place CX control');
+    tap('Qubit 1, step 2: place CX target');
+    expect(live.game!.state.holedIn).toBe(true);
+    // Holed in, Next hole takes the clubs' place (#13); the tool is off the grid.
+    expect(screen.queryByRole('button', { name: 'CX gate' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /place/ })).toBeNull();
+    tap('Next hole ▸');
+    expect(live.game!.currentLevel.hole).toBe(3);
+    expect(pressed('CX gate')).toBe('false');
+    expect(screen.getByRole('button', { name: 'Qubit 0, step 1, empty' })).toBeTruthy();
+    expect(scoreLine()).toMatch(/fidelity 50\.0%/);
+  });
+
+  it('(E1 too) Next hole by the game’s own advance', async () => {
     await mount(1);
     tap('H gate');
     tap('Qubit 0, step 1, empty: place H');
     expect(live.game!.state.holedIn).toBe(true);
-    expect(pressed('H gate')).toBe('true'); // still picked on the hole it played
     act(() => live.game!.advanceHole!());
     expect(live.game!.currentLevel.hole).toBe(2);
     expect(pressed('H gate')).toBe('false');

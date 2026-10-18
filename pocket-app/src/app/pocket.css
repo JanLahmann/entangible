@@ -1003,11 +1003,19 @@ body,
   top: 34%;
   left: 50%;
   transform: translate(-50%, -50%) scale(0.6);
+  /* One line while it fits, wrapped (never off-screen) when it does not: a
+     course-end line ("Legendäre Runde – 12 unter Par in 4:32!") is wider than
+     most screens at this size (#13). */
+  box-sizing: border-box;
+  width: max-content;
+  max-width: calc(100vw - 2rem);
   font-size: clamp(2rem, 7vw, 4.5rem);
   font-weight: 700;
+  line-height: 1.1;
   letter-spacing: 0.02em;
   text-align: center;
-  white-space: nowrap;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
   opacity: 0;
 }
 
@@ -4097,6 +4105,58 @@ body,
   grid-template-rows: repeat(4, auto) minmax(2.75rem, auto);
 }
 
+/* The scrubber's replay / step buttons are thumb-sized wherever tap-to-play is
+   (the golf bundle has them so already), filling the reserved 44 px row. */
+.pk-side-hero.has-gatebar .pk-evo-nav,
+.pk-side-hero.has-gatebar .pk-evo-replay {
+  width: 44px;
+  height: 44px;
+  font-size: 1rem;
+}
+
+/* …and the row fits its column: three 44 px buttons, the dots and the label
+   overran a landscape phone's sphere column by ~30 px with 4+ steps (#13).
+   A fixed, ellipsized label (no jitter between "start" and "after layer N");
+   the dots wrap into the 44 px row on a long circuit. */
+.pk-side-hero.has-gatebar .pk-evo-scrubber {
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.pk-side-hero.has-gatebar .pk-evo-dots {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pk-side-hero.has-gatebar .pk-evo-label {
+  flex: 0 1 auto;
+  width: 5.4rem;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Holed in (#13): "Next hole" takes the clubs' place — same 44 px row, in the
+   flow, so the sphere panel above keeps its scrubber and goal line. */
+.pk-golf-next--bar {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0.5rem;
+  font-size: 0.95rem;
+}
+
+/* …and the grid marks the column the evolution replay is at. */
+.pk-tapgrid-cell.is-step {
+  background: rgba(122, 92, 255, 0.16);
+  box-shadow: inset 0 0 0 2px var(--entangle);
+}
+
 /* ---- phones: the tap grid IS the circuit -------------------------------- */
 /* Breakpoint: the pocket phone layouts — portrait stack (≤ 699 px wide) and
    short landscape (≤ 450 px tall). There the library editor and its palette
@@ -4109,22 +4169,16 @@ body,
     display: none;
   }
 
-  /* "Next hole" floats over the bottom of the sphere panel (the goal line and
-     the scrubber row — the hole is done) instead of growing the panel, so
-     holing in never pushes it, or the grid, below the fold. */
-  .pk-side-hero.has-gatebar .pk-well {
-    position: relative;
-  }
-
-  .pk-side-hero.has-gatebar .pk-golf-next--sphere {
-    position: absolute;
-    left: 0.5rem;
-    right: 0.5rem;
-    bottom: 0.5rem;
-    z-index: 3;
-    width: auto;
-    margin: 0;
-    min-height: 44px;
+  /* The hole-in banner stays inside the sphere panel (#13): centred on it
+     (Celebrations measures the panel at each fire), never wider than it, and
+     its size follows the panel's width — EAGLE! and "EINGELOCHT MIT +3!" on a
+     375 px phone, the course-end line wrapped. */
+  .pk-banner--anchored {
+    left: var(--banner-x);
+    top: var(--banner-y);
+    max-width: var(--banner-w);
+    padding-inline: 0.5rem;
+    font-size: clamp(1.25rem, calc(var(--banner-w) / 8), 3rem);
   }
 }
 
@@ -4191,9 +4245,11 @@ body,
   }
 }
 
-/* Narrowest phones (iPhone SE, 375 px): the score stacks into the button
-   row's own 44 px height instead of wrapping onto a line of its own. */
-@media (max-width: 380px) {
+/* Phones up to 439 px (iPhone SE 375 … Pro Max 430): the score stacks into
+   the button row's own 44 px height instead of wrapping onto a line of its
+   own — in German ("Übereinstimmung") it did at 390 px, which put a 5-qubit
+   hole's score 12 px below the fold of a 390×680 web view (#13). */
+@media (max-width: 439px) {
   .pk-gatebar-score {
     flex-direction: column;
     align-items: flex-end;
@@ -4236,7 +4292,8 @@ body,
     column-gap: 0.5rem;
   }
 
-  .pk-side-hero.has-gatebar .pk-gatebar-clubs {
+  .pk-side-hero.has-gatebar .pk-gatebar-clubs,
+  .pk-side-hero.has-gatebar .pk-golf-next--bar {
     grid-area: clubs;
   }
 

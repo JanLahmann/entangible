@@ -32,7 +32,7 @@ import { clubGateTypes } from '@quantum/golf';
 import { courseCode as toCourseCode } from '@quantum/golfRandom';
 import { ManualEditSource, BOARD_QUBITS } from '../sources/ManualEditSource';
 import type { StateUpdate } from '../sources/StateSource';
-import { Celebrations, type CelebrationRequest } from '../app/Celebrations';
+import { Celebrations, golfBannerAnchor, type CelebrationRequest } from '../app/Celebrations';
 import { TapPlay } from '../app/TapPlay';
 import { GolfBoard } from '../app/GolfBoard';
 import { useGolfGame } from '../app/useGolfGame';
@@ -183,7 +183,7 @@ export function GolfApp() {
         </QamposerProvider>
       </ThemeProvider>
 
-      <Celebrations celebration={celebration} />
+      <Celebrations celebration={celebration} anchor={golfBannerAnchor} />
 
       {panel === 'course' && (
         <CoursePanel

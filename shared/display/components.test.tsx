@@ -1221,6 +1221,47 @@ describe('Celebrations (shared)', () => {
       expect(banner?.className).toContain('pk-banner--bell');
       expect(banner?.className).toContain('pk-banner--in');
       expect(banner?.textContent).toBe('ENTANGLEMENT!');
+      // No anchor (booth, kiosk, pocket outside golf): placed as before.
+      expect(banner?.className).not.toContain('pk-banner--anchored');
+      expect((banner as HTMLElement).getAttribute('style')).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('with an anchor, the banner carries that element’s centre and width (#13)', () => {
+    vi.stubGlobal('requestAnimationFrame', () => 0);
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    try {
+      const panel = document.createElement('div');
+      panel.getBoundingClientRect = () =>
+        ({ left: 0, top: 48, width: 375, height: 300, right: 375, bottom: 348, x: 0, y: 48 }) as DOMRect;
+      const { container } = render(
+        <Celebrations
+          celebration={{ kind: 'ghz', k: 4, token: 1, banner: 'EINGELOCHT MIT +3!' }}
+          classPrefix="pk"
+          particleBudget={() => 100}
+          maxParticles={100}
+          anchor={() => panel}
+        />,
+      );
+      const banner = container.querySelector('.pk-banner') as HTMLElement;
+      expect(banner.className).toContain('pk-banner--anchored');
+      expect(banner.style.getPropertyValue('--banner-x')).toBe('187.5px');
+      expect(banner.style.getPropertyValue('--banner-y')).toBe('198px');
+      expect(banner.style.getPropertyValue('--banner-w')).toBe('375px');
+      cleanup();
+      // An anchor that is not on the page (or has no box) falls back.
+      const { container: c2 } = render(
+        <Celebrations
+          celebration={{ kind: 'bell', k: 2, token: 2 }}
+          classPrefix="pk"
+          particleBudget={() => 100}
+          maxParticles={100}
+          anchor={() => null}
+        />,
+      );
+      expect(c2.querySelector('.pk-banner')!.className).not.toContain('pk-banner--anchored');
     } finally {
       vi.unstubAllGlobals();
     }

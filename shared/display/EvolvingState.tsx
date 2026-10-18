@@ -32,7 +32,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Circuit } from '@qamposer/react';
 import { QSphereView, nodeRadius, type QTraveler } from '@quantum/QSphereView';
 import { BlochView } from '@quantum/BlochView';
-import { evolutionSteps, lerpHue, surfacePath, transportEdges } from '@quantum/evolution';
+import {
+  evolutionSteps,
+  lerpHue,
+  occupiedColumns,
+  surfacePath,
+  transportEdges,
+} from '@quantum/evolution';
 import { layout, type Vec3 } from '@quantum/qsphere';
 import { bestBlochQubit, blochVector, type BlochVector } from '@quantum/bloch';
 import type { StateVector } from '@quantum/statevector';
@@ -49,6 +55,16 @@ import {
 
 /** Per-column transition duration (ms) — within the 400–600 ms spec window. */
 const PER_STEP_MS = 500;
+/** The step the view rests on (or passes) — reported through `onStep`. */
+export interface EvolutionStep {
+  /** 0 = the start state, i = after the i-th occupied column. */
+  readonly index: number;
+  /** The last step's index (= the number of occupied columns). */
+  readonly last: number;
+  /** The circuit column (gate `position`) step `index` is after; null at the start. */
+  readonly column: number | null;
+}
+
 /** Traveler opacity below which a ball is not worth drawing (#57). */
 const FADE_EPS = 1e-3;
 
@@ -67,6 +83,14 @@ export interface EvolvingStateProps {
   showKet?: boolean;
   /** CSS class prefix, e.g. 'pk' or 'bo'. */
   classPrefix: string;
+  /**
+   * Replay trigger: whenever this changes to a defined value the evolution
+   * plays once from the start (golf: holing in, #13). Under reduced motion it
+   * just shows the final step. Undefined = no extra replays.
+   */
+  replayKey?: string;
+  /** Called with the visible (rounded) step whenever it changes. */
+  onStep?: (step: EvolutionStep) => void;
 }
 
 /** Live `(prefers-reduced-motion: reduce)` match. */
@@ -98,6 +122,8 @@ export function EvolvingState({
   n = 5,
   showKet = false,
   classPrefix,
+  replayKey,
+  onStep,
 }: EvolvingStateProps) {
   const p = classPrefix;
   const t = useT().evolving;
@@ -184,6 +210,13 @@ export function EvolvingState({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [circuitKey]);
 
+  // An explicit replay (golf: the hole just holed in) — once per new key.
+  useEffect(() => {
+    if (replayKey === undefined) return;
+    animateTo(lastIndex, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replayKey]);
+
   useEffect(() => stop, [stop]);
 
   // Current segment + eased fraction. `pos` in [seg, seg+1] tweens step[seg] →
@@ -191,6 +224,18 @@ export function EvolvingState({
   const seg = Math.max(0, Math.min(lastIndex - 1, Math.floor(pos)));
   const eased = easeInOutCubic(pos - seg);
   const visibleStep = Math.max(0, Math.min(lastIndex, Math.round(pos)));
+
+  // Report the visible step (rounded, so once per step, not per frame).
+  const columns = useMemo(() => occupiedColumns(circuit), [circuitKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const onStepRef = useRef(onStep);
+  onStepRef.current = onStep;
+  useEffect(() => {
+    onStepRef.current?.({
+      index: visibleStep,
+      last: lastIndex,
+      column: visibleStep > 0 ? (columns[visibleStep - 1] ?? null) : null,
+    });
+  }, [visibleStep, lastIndex, columns]);
 
   const sv = useMemo<StateVector>(() => {
     if (lastIndex === 0) return steps[0];

@@ -14,10 +14,16 @@
  *     booth's was a constant 150; pocket's equals its cap). Both are read
  *     through refs so a parent can change them between bursts.
  *
+ * `anchor` (optional, pocket golf #13): the element the banner belongs to. At
+ * each fire its viewport box goes onto the banner as `--banner-x/-y/-w` (its
+ * centre and width, px) with a `${p}-banner--anchored` class; the skin decides
+ * where that applies (pocket: phones, so the banner stays inside the sphere
+ * panel). Without it — the booth, the kiosk — the banner is exactly as before.
+ *
  * Physics (docs/booth-ux.md → Principles): bursts from the bottom corners with
  * gravity, four gate colours, 1.8 s life.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { Celebration } from '@quantum/moments';
 import { useT } from '@shared/i18n';
 
@@ -58,11 +64,14 @@ export function Celebrations({
   classPrefix,
   particleBudget,
   maxParticles,
+  anchor,
 }: {
   celebration: CelebrationRequest | null;
   classPrefix: string;
   particleBudget: (kind: Celebration['kind']) => number;
   maxParticles: number;
+  /** The element the banner is placed in (measured at each fire). */
+  anchor?: () => Element | null;
 }) {
   const t = useT();
   const p = classPrefix;
@@ -75,10 +84,14 @@ export function Celebrations({
   const rafRef = useRef<number | null>(null);
   const lastTickRef = useRef<number>(0);
 
+  const anchorRef = useRef(anchor);
+  anchorRef.current = anchor;
+
   const [banner, setBanner] = useState<{
     text: string;
     kind: Celebration['kind'];
     token: number;
+    box: { x: number; y: number; w: number } | null;
   } | null>(null);
   const [bannerPhase, setBannerPhase] = useState<'in' | 'out'>('in');
 
@@ -94,7 +107,12 @@ export function Celebrations({
       (celebration.kind === 'ghz'
         ? t.celebrations.ghz(celebration.k)
         : t.celebrations.entanglement);
-    setBanner({ text, kind: celebration.kind, token: celebration.token });
+    const rect = anchorRef.current?.()?.getBoundingClientRect();
+    const box =
+      rect && rect.width > 0 && rect.height > 0
+        ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, w: rect.width }
+        : null;
+    setBanner({ text, kind: celebration.kind, token: celebration.token, box });
     setBannerPhase('in');
 
     const holdTimer = window.setTimeout(() => setBannerPhase('out'), BANNER_HOLD_MS);
@@ -198,7 +216,18 @@ export function Celebrations({
       {banner && (
         <div
           key={banner.token}
-          className={`${p}-banner ${p}-banner--${banner.kind} ${p}-banner--${bannerPhase}`}
+          className={`${p}-banner ${p}-banner--${banner.kind} ${p}-banner--${bannerPhase}${
+            banner.box ? ` ${p}-banner--anchored` : ''
+          }`}
+          style={
+            banner.box
+              ? ({
+                  '--banner-x': `${banner.box.x}px`,
+                  '--banner-y': `${banner.box.y}px`,
+                  '--banner-w': `${banner.box.w}px`,
+                } as CSSProperties)
+              : undefined
+          }
           role="status"
         >
           {banner.text}

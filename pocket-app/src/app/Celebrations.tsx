@@ -6,6 +6,10 @@
  * low-power 60 the parent passes), kind-independent, used as both the per-burst
  * budget and the ceiling (docs/pocket.md).
  */
+
+/** The golf sphere panel — where a hole-in banner sits on a phone (#13). */
+export const golfBannerAnchor = (): Element | null =>
+  typeof document === 'undefined' ? null : document.querySelector('.pk-side-hero .pk-well');
 import { Celebrations as SharedCelebrations } from '@shared/display/Celebrations';
 import type { CelebrationRequest } from '@shared/display/Celebrations';
 
@@ -17,9 +21,12 @@ export const LOW_POWER_PARTICLES = 60; // docs/pocket.md low-power confetti cap
 export function Celebrations({
   celebration,
   maxParticles = MAX_PARTICLES,
+  anchor,
 }: {
   celebration: CelebrationRequest | null;
   maxParticles?: number;
+  /** Golf: the sphere panel, so a phone keeps the banner inside it (#13). */
+  anchor?: () => Element | null;
 }) {
   return (
     <SharedCelebrations
@@ -27,6 +34,7 @@ export function Celebrations({
       classPrefix="pk"
       particleBudget={() => maxParticles}
       maxParticles={maxParticles}
+      anchor={anchor}
     />
   );
 }

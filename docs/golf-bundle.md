@@ -184,7 +184,11 @@ tap grid and the score are one screen — also in the iOS app's ~390×680 web
 view (5-qubit hole: last row at 671 px) and on a 375×667 iPhone SE (658 px) —
 and the library editor is hidden; in 844×390 landscape the
 sphere and tap to play sit side by side in one full-width column. A hole can
-be played by taps alone.
+be played by taps alone. After holing in, "Next hole" stands where the clubs
+were (portrait 390×680, GHZ-4: at 371–415 px, under the scrubber 293–337 and
+the goal line 340–358; landscape: 67–111 px), the evolution replays once
+with its grid column marked, and the hole-in banner stays inside the sphere
+panel (#13).
 
 During development `npm run dev` also serves the bundle's entry at
 `http://localhost:5173/golf.html` (site config, so without the hover rewrite).

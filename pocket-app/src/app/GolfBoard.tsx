@@ -1,9 +1,9 @@
 /**
  * Quantum Golf, the sidebar view — the sphere well (target ghost + live state,
- * goal line, the floating Next-hole button, the dealing indicator), the course
- * and scope pickers, and the scorecard. Driven by `useGolfGame`; rendered by
- * the site shell (`App`, golf mode) and by the golf-only bundle (`GolfApp`), so
- * a golf fix lands in both.
+ * goal line, the Next-hole button unless TapPlay carries it, the dealing
+ * indicator), the course and scope pickers, and the scorecard. Driven by
+ * `useGolfGame`; rendered by the site shell (`App`, golf mode) and by the
+ * golf-only bundle (`GolfApp`), so a golf fix lands in both.
  *
  * Renders a fragment of three sidebar panels (`.pk-side` children), in the
  * order and with the classes the pocket stylesheet lays out: on phones the
@@ -16,10 +16,17 @@
  * under the pickers; the site passes nothing and renders exactly what it did)
  * and `underSphere` (`TapPlay`: clubs + tap grid, seated inside the sphere panel
  * so every layout keeps it directly under the target — build-on-screen only).
+ *
+ * Holing in (#13): the evolution replays once from the start (`replayKey`;
+ * reduced motion shows the final step), and the step the scrubber is at goes
+ * to tap-to-play through `GolfReplayContext`, which marks that grid column.
+ * With tap-to-play present, "Next hole" is ITS business — it takes the clubs'
+ * place in the flow, so nothing covers the scrubber or the goal line; without
+ * it the button stays under the sphere as before.
  */
-import { useMemo, type CSSProperties, type ReactNode } from 'react';
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Circuit } from '@qamposer/react';
-import { EvolvingState } from '@shared/display/EvolvingState';
+import { EvolvingState, type EvolutionStep } from '@shared/display/EvolvingState';
 import { Scorecard, type ChallengeRenderer } from '@shared/display/Scorecard';
 import { holeGoal } from '@shared/display/goalLine';
 import { highestUsedRow } from '@shared/display/displayWires';
@@ -27,6 +34,7 @@ import { useT } from '@shared/i18n';
 import { GOLF_SCOPES, holeHighlight, holeTargetState, scopeLabel } from '@quantum/golf';
 import { CourseDealing } from './CourseDealing';
 import type { GolfGame } from './useGolfGame';
+import { GolfReplayContext } from './golfReplay';
 
 export function GolfBoard({
   game,
@@ -55,6 +63,12 @@ export function GolfBoard({
   // qubits are exactly |0⟩, so restricting to the first 2^n amplitudes is
   // lossless; if play strays onto higher wires the space auto-grows with them.
   const stateQubits = Math.max(currentLevel.qubits, highestUsedRow(circuit) + 1);
+  // The scrubber's step, for the tap grid's column mark — only once holed in
+  // (while building, every tap replays and a sweeping mark would distract).
+  const [step, setStep] = useState<EvolutionStep | null>(null);
+  const replayKey = state.holedIn
+    ? `${state.course}:${state.randomSeed}:${String(state.scope)}:${state.levelIndex}`
+    : undefined;
 
   return (
     <>
@@ -82,6 +96,8 @@ export function GolfBoard({
             n={stateQubits}
             showKet
             classPrefix="pk"
+            replayKey={replayKey}
+            onStep={underSphere ? setStep : undefined}
           />
           {/* The goal in plain words, right under the target ket. One line,
               ellipsized; the full sentence is the tooltip. Hidden while a
@@ -92,13 +108,15 @@ export function GolfBoard({
               {goal}
             </p>
           )}
-          {advanceHole && state.holedIn && (
+          {advanceHole && state.holedIn && !underSphere && (
             <button type="button" className="pk-golf-next pk-golf-next--sphere" onClick={advanceHole}>
               {state.complete ? t.golf.playAgain : t.golf.nextHole}
             </button>
           )}
         </div>
-        {underSphere}
+        <GolfReplayContext.Provider value={state.holedIn ? step : null}>
+          {underSphere}
+        </GolfReplayContext.Provider>
       </div>
       <div key="golfcourse">
         <div className="pk-label">{t.golf.course}</div>

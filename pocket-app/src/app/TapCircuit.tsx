@@ -13,6 +13,9 @@
  * cell (tap it again to cancel) and the other qubits of that column light up
  * as targets; a control placed at a gap opens a provisional column there.
  *
+ * `stepColumn` (holed in, #13): the column the evolution replay is at gets
+ * `is-step` and `aria-current="step"` on its cells.
+ *
  * Presentational: what a tap means is `TapPlay`'s business.
  */
 import { useEffect, useMemo, useRef } from 'react';
@@ -38,6 +41,8 @@ export interface TapCircuitProps {
   readonly pending: PendingControl | null;
   readonly selectedId: string | null;
   readonly disabled: boolean;
+  /** The circuit column the evolution replay is at (marked), or null. */
+  readonly stepColumn?: number | null;
   /** A cell was tapped (`column` is the circuit's column; -1 = provisional). */
   readonly onCell: (qubit: number, column: number, cell: Cell) => void;
   /** The gap before `column` on `qubit` was tapped. */
@@ -54,6 +59,7 @@ export function TapCircuit({
   pending,
   selectedId,
   disabled,
+  stepColumn = null,
   onCell,
   onGap,
   t,
@@ -84,6 +90,14 @@ export function TapCircuit({
     const cell = el.querySelector<HTMLElement>(`[data-col="${pendingDisplay}"]`);
     cell?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }, [pendingDisplay]);
+  // …and the column the replay is at.
+  const stepDisplay = stepColumn === null ? -1 : logical.indexOf(stepColumn);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || stepDisplay < 0) return;
+    const cell = el.querySelector<HTMLElement>(`[data-col="${stepDisplay}"]`);
+    cell?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [stepDisplay]);
 
   const cellName = (cell: Cell, q: number, d: number, col: number): string => {
     const step = d + 1;
@@ -127,6 +141,7 @@ export function TapCircuit({
               const isTargetOption = inPending && !isControl;
               const gate = cell.kind === 'empty' ? null : cell.gate;
               const selected = gate !== null && gate.id === selectedId;
+              const atStep = stepColumn !== null && col === stepColumn;
               const placeable = !inPending && cell.kind === 'empty' && tool !== null && pending === null;
               // With a tool (or a control waiting), only cells that do
               // something are live; without one, gates are (to select them).
@@ -153,6 +168,7 @@ export function TapCircuit({
                 isControl ? 'is-pending' : '',
                 isTargetOption ? 'is-target-option' : '',
                 selected ? 'is-selected' : '',
+                atStep ? 'is-step' : '',
               ]
                 .filter(Boolean)
                 .join(' ');
@@ -168,6 +184,7 @@ export function TapCircuit({
                   aria-label={name}
                   aria-pressed={!tool && gate !== null ? selected : undefined}
                   aria-disabled={live ? undefined : true}
+                  aria-current={atStep ? 'step' : undefined}
                   onClick={() => {
                     if (live) onCell(q, col, cell);
                   }}

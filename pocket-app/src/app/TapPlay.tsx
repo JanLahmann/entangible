@@ -16,6 +16,11 @@
  *   - Delete · ↶ Undo (the last grid change) · Clear +1 (the scorecard's
  *     wipe), and a one-line score.
  *   - A polite live region: what changed, then strokes / par / fidelity.
+ *   - Holed in (#13): "Next hole" (or the course end's "Play again") takes the
+ *     clubs' place in the flow — the sphere panel's scrubber and goal line stay
+ *     uncovered and nothing moves. The board is then read-only (a change could
+ *     only un-score or, emptied, advance the hole), and the grid marks the
+ *     column the evolution replay is at (`GolfReplayContext`, aria-current).
  *
  * It never counts a stroke. Every change is the next `Circuit`, handed to
  * `onChange` — the shells pass the editor's own `onCircuitChange` handler
@@ -24,13 +29,14 @@
  * and wiring), an undo whatever its board change is. The library editor shows
  * the same circuit state, so the two can never disagree.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { Circuit, Gate, GateType } from '@qamposer/react';
 import { useT, type Messages } from '@shared/i18n';
 import { evaluate, holeScore, scoreName } from '@quantum/golf';
 import type { GolfGame } from './useGolfGame';
 import { GateBar } from './GateBar';
 import { TapCircuit, type PendingControl } from './TapCircuit';
+import { GolfReplayContext } from './golfReplay';
 import {
   barClubs,
   canReplace,
@@ -73,7 +79,8 @@ interface Change {
 export function TapPlay({ game, circuit, onChange }: TapPlayProps) {
   const t = useT();
   const m = t.tapPlay;
-  const { state, currentLevel: hole, dealing, wipeBoard } = game;
+  const { state, currentLevel: hole, dealing, wipeBoard, advanceHole } = game;
+  const replay = useContext(GolfReplayContext);
   const clubs = useMemo(() => barClubs(hole), [hole]);
 
   const [tool, setTool] = useState<GateType | null>(null);
@@ -124,6 +131,9 @@ export function TapPlay({ game, circuit, onChange }: TapPlayProps) {
   }, [circuit, state, hole, m, t]);
 
   const busy = dealing !== null;
+  // Holed in: the board is done — read-only, and the clubs give way to Next hole.
+  const holed = state.holedIn;
+  const locked = busy || holed;
 
   /** Hand a change to the engine's path and remember it for Undo. */
   const commit = (next: Circuit, what: string, record = true) => {
@@ -228,22 +238,29 @@ export function TapPlay({ game, circuit, onChange }: TapPlayProps) {
 
   return (
     <div className="pk-gatebar" role="group" aria-label={m.aria}>
-      <GateBar
-        clubs={clubs}
-        qubits={hole.qubits}
-        tool={liveTool}
-        selected={selected}
-        disabled={busy}
-        onClub={onClub}
-        t={t}
-      />
+      {holed && advanceHole ? (
+        <button type="button" className="pk-golf-next pk-golf-next--bar" onClick={advanceHole}>
+          {state.complete ? t.golf.playAgain : t.golf.nextHole}
+        </button>
+      ) : (
+        <GateBar
+          clubs={clubs}
+          qubits={hole.qubits}
+          tool={liveTool}
+          selected={selected}
+          disabled={locked}
+          onClub={onClub}
+          t={t}
+        />
+      )}
       <TapCircuit
         circuit={circuit}
         qubits={hole.qubits}
-        tool={liveTool}
-        pending={pending}
-        selectedId={selected ? selected.id : null}
-        disabled={busy}
+        tool={holed ? null : liveTool}
+        pending={holed ? null : pending}
+        selectedId={selected && !holed ? selected.id : null}
+        disabled={locked}
+        stepColumn={holed && replay ? replay.column : null}
         onCell={onCell}
         onGap={onGap}
         t={t}
@@ -253,7 +270,7 @@ export function TapPlay({ game, circuit, onChange }: TapPlayProps) {
           type="button"
           className="pk-gatebar-act"
           aria-label={m.deleteAria}
-          disabled={busy || !selected}
+          disabled={locked || !selected}
           onClick={onDelete}
         >
           {m.deleteLabel}
@@ -263,7 +280,7 @@ export function TapPlay({ game, circuit, onChange }: TapPlayProps) {
           className="pk-gatebar-act pk-gatebar-act--icon"
           aria-label={m.undoAria}
           title={m.undo}
-          disabled={busy || !canUndo}
+          disabled={locked || !canUndo}
           onClick={onUndo}
         >
           <span aria-hidden="true">↶</span>

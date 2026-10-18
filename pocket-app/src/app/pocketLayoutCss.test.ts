@@ -156,3 +156,73 @@ describe('pocket.css phone topbar never clips the mode pill', () => {
     expect(phoneRule('.pk-topbar .pk-pill--manual')).toContain('display: none');
   });
 });
+
+describe('pocket.css golf holing in on tap to play (#13)', () => {
+  const phone = css.slice(css.indexOf('@media (max-width: 699px), (max-height: 450px) {'));
+  function phoneRule(selector: string): string {
+    const at = phone.indexOf(`\n  ${selector} {`);
+    if (at < 0) return '';
+    const open = phone.indexOf('{', at);
+    return phone.slice(open + 1, phone.indexOf('}', open));
+  }
+
+  it('Next hole sits in the flow, in the clubs’ 44 px row — no overlay over the sphere panel', () => {
+    const bar = ruleBody('.pk-golf-next--bar');
+    expect(bar).toContain('min-height: 44px');
+    expect(bar).toContain('width: 100%');
+    expect(bar).not.toMatch(/position:\s*(absolute|fixed)/);
+    // The #729cb0f overlay is gone from every layout.
+    expect(css).not.toMatch(/\.pk-golf-next--sphere\s*\{[^}]*position:\s*absolute/);
+    expect(css).not.toMatch(/has-gatebar \.pk-golf-next--sphere/);
+    // Landscape phone: it takes the clubs' grid area.
+    expect(css).toMatch(/\.pk-side-hero\.has-gatebar \.pk-golf-next--bar \{\s*grid-area: clubs;/);
+  });
+
+  it('keeps the scrubber row reserved, with 44 px step buttons', () => {
+    expect(ruleBody('.pk-side-hero.has-gatebar .pk-evo')).toContain(
+      'grid-template-rows: repeat(4, auto) minmax(2.75rem, auto)',
+    );
+    const nav = css.slice(css.indexOf('\n.pk-side-hero.has-gatebar .pk-evo-nav,'));
+    const body = nav.slice(nav.indexOf('{') + 1, nav.indexOf('}'));
+    expect(body).toContain('width: 44px');
+    expect(body).toContain('height: 44px');
+  });
+
+  it('the scrubber row fits a landscape sphere column: fixed ellipsized label, wrapping dots', () => {
+    const label = ruleBody('.pk-side-hero.has-gatebar .pk-evo-label');
+    expect(label).toContain('text-overflow: ellipsis');
+    expect(label).toContain('min-width: 0');
+    expect(ruleBody('.pk-side-hero.has-gatebar .pk-evo-dots')).toContain('flex-wrap: wrap');
+  });
+
+  it('the score stacks into the button row up to 439 px (German at 390 px)', () => {
+    const at = css.indexOf('@media (max-width: 439px) {');
+    expect(at).toBeGreaterThan(0);
+    expect(css.slice(at, css.indexOf('}', at))).toContain('.pk-gatebar-score');
+  });
+
+  it('marks the replay’s grid column', () => {
+    expect(ruleBody('.pk-tapgrid-cell.is-step')).toMatch(/box-shadow|background/);
+  });
+
+  it('the banner never runs off the screen: wraps within the viewport everywhere', () => {
+    const banner = ruleBody('.pk-banner');
+    expect(banner).toContain('width: max-content');
+    expect(banner).toContain('max-width: calc(100vw - 2rem)');
+    expect(banner).toContain('box-sizing: border-box');
+    expect(banner).toContain('overflow-wrap: anywhere');
+    expect(banner).not.toContain('white-space: nowrap');
+  });
+
+  it('on phones the anchored banner stays inside the sphere panel, sized by its width', () => {
+    const anchored = phoneRule('.pk-banner--anchored');
+    expect(anchored).toContain('left: var(--banner-x)');
+    expect(anchored).toContain('top: var(--banner-y)');
+    expect(anchored).toContain('max-width: var(--banner-w)');
+    expect(anchored).toMatch(/font-size: clamp\([^;]*var\(--banner-w\)[^;]*\)/);
+    // Only the phone layouts anchor: large screens keep the centred banner.
+    expect(css.slice(0, css.indexOf('@media (max-width: 699px), (max-height: 450px) {'))).not.toContain(
+      '.pk-banner--anchored',
+    );
+  });
+});
