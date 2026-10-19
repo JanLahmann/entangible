@@ -43,7 +43,8 @@ function surfaceElement(): ReactElement {
   }
 }
 
-// React replaces the static boot splash inside #root (index.html) on mount.
+// React replaces everything static inside #root (index.html) on mount — the boot
+// splash and the visually hidden, crawlable .boot-seo block — on every surface.
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <LangProvider>{surfaceElement()}</LangProvider>
