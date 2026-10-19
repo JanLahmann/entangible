@@ -44,8 +44,13 @@
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
 
     <!-- Umami analytics — shared Fun with Quantum family property (cookie-free).
-         data-domains keeps dev servers and offline/kiosk-LAN builds out of the numbers. -->
-    <script defer src="https://cloud.umami.is/script.js" data-website-id="97f347ac-e7ba-4be3-b26f-ab4b328bdbf2" data-domains="entangible.org"></script>
+         data-domains keeps dev servers and offline/kiosk-LAN builds out of the numbers.
+         Family-standard filter (inline, first): ?notrack opts this browser out
+         (localStorage umami.disabled), ?track opts it back in, and
+         fwqUmamiBeforeSend drops every send from automation (webdriver,
+         headless, bots, Lighthouse). -->
+    <script>(function(){try{var q=location.search;if(/[?&]notrack\b/.test(q))localStorage.setItem('umami.disabled','1');if(/[?&]track\b/.test(q))localStorage.removeItem('umami.disabled')}catch(e){}window.fwqUmamiBeforeSend=function(t,p){var n=navigator;return(n.webdriver||/HeadlessChrome|bot|crawl|spider|Lighthouse|PageSpeed/i.test(n.userAgent))?false:p}})();</script>
+    <script defer src="https://cloud.umami.is/script.js" data-website-id="97f347ac-e7ba-4be3-b26f-ab4b328bdbf2" data-domains="entangible.org" data-before-send="fwqUmamiBeforeSend"></script>
 
     <!-- Boot splash: painted from this file alone, before any script or
          stylesheet arrives (a phone on a weak fair WLAN would otherwise stare at

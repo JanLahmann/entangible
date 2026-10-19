@@ -8,6 +8,8 @@
  * the next-hole advance on the on-screen board, the paid mid-hole reveal and
  * its storage, a wipe, a jump, a course switch writing the code setting, a
  * random course dealt from a code (and its bests kept off the device card),
+ * the `golf round finished` event (once per completed round: Classic 18, a
+ * scoped round, a generated course, again after a restart),
  * and that without `clearBoard` (camera / booth) the on-screen actions do not
  * exist.
  */
@@ -160,6 +162,67 @@ describe('useGolfGame — playing the classic course', () => {
     const { hook } = setup({ clearBoard: undefined });
     expect(hook.result.current.advanceHole).toBeUndefined();
     expect(hook.result.current.wipeBoard).toBeUndefined();
+  });
+});
+
+describe('useGolfGame — the golf round finished event', () => {
+  /** Every board the player builds is a NEW circuit object, as the sources emit. */
+  const empty = (): Circuit => ({ qubits: 5, gates: [] }) as Circuit;
+  const answer = (h: { solution?: { gates: Circuit['gates'] } }): Circuit =>
+    ({ qubits: 5, gates: h.solution!.gates }) as Circuit;
+
+  /** Play every hole of the round in play: worked answer, then clear (Next hole). */
+  function playRound(s: ReturnType<typeof setup>) {
+    const { hook, play } = s;
+    play(empty());
+    for (let i = 0; i < 18 && !hook.result.current.state.complete; i++) {
+      play(answer(hook.result.current.currentLevel));
+      expect(hook.result.current.state.holedIn).toBe(true);
+      play(empty());
+    }
+    expect(hook.result.current.state.complete).toBe(true);
+  }
+
+  const rounds = (event: ReturnType<typeof vi.fn>) =>
+    event.mock.calls.filter(([what]) => what === 'golf round finished');
+
+  it('fires exactly once when the full Classic 18 is completed, with course and scope', () => {
+    const s = setup();
+    playRound(s);
+    expect(rounds(s.calls.event)).toEqual([['golf round finished', { course: 'classic', scope: 'full' }]]);
+    expect(s.calls.event.mock.calls.filter(([w]) => w === 'golf hole finished')).toHaveLength(18);
+    // Tiles laid on the summary screen (replayed or new frames) do not re-fire it.
+    s.play(holeOneAnswer());
+    s.play(holeOneAnswer());
+    expect(rounds(s.calls.event)).toHaveLength(1);
+  });
+
+  it('fires once per round: a board-clear restart and a second round fire it again', () => {
+    const s = setup();
+    playRound(s);
+    // The clear on the summary screen restarts; the round then plays to the end again.
+    s.play(empty());
+    expect(s.hook.result.current.state.complete).toBe(false);
+    expect(rounds(s.calls.event)).toHaveLength(1);
+    playRound(s);
+    expect(rounds(s.calls.event)).toHaveLength(2);
+  });
+
+  it('fires once for a scoped round (the easy round), named by its scope', () => {
+    const s = setup();
+    act(() => s.hook.result.current.pickScope('easy'));
+    playRound(s);
+    expect(rounds(s.calls.event)).toEqual([['golf round finished', { course: 'classic', scope: 'easy' }]]);
+  });
+
+  it('fires once for a generated course too (a coded random round)', async () => {
+    const s = setup({ courseCode: 'xyz98', courseScope: 'E' });
+    await waitFor(() => expect(s.hook.result.current.state.course).toBe('random'), {
+      timeout: 55_000,
+    });
+    expect(s.hook.result.current.state.scope).toBe('easy');
+    playRound(s);
+    expect(rounds(s.calls.event)).toEqual([['golf round finished', { course: 'random', scope: 'easy' }]]);
   });
 });
 
