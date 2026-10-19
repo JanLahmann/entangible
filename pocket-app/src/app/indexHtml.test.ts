@@ -1,9 +1,11 @@
 /**
  * index.html regressions: pinch-zoom stays enabled (accessibility), a shared
  * entangible.org link carries a real preview card, and the page paints a boot
- * splash before any script arrives.
+ * splash before any script arrives, and the Umami tag is the family standard
+ * (bot filter + ?notrack opt-out) for entangible.org only.
  */
 import { existsSync, readFileSync } from 'node:fs';
+import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 
@@ -55,5 +57,103 @@ describe('index.html boot splash (no blank first paint)', () => {
     expect(style).toContain('#0f1117'); // --bg (also theme-color)
     expect(style).toContain('#7a5cff'); // --entangle, the "En" of the brand
     expect(style).not.toMatch(/url\(|@import/);
+  });
+});
+
+describe('index.html Umami tag (Fun with Quantum family standard)', () => {
+  /** The family-standard inline filter, byte for byte. */
+  const FAMILY_FILTER =
+    "(function(){try{var q=location.search;if(/[?&]notrack\\b/.test(q))localStorage.setItem('umami.disabled','1');if(/[?&]track\\b/.test(q))localStorage.removeItem('umami.disabled')}catch(e){}window.fwqUmamiBeforeSend=function(t,p){var n=navigator;return(n.webdriver||/HeadlessChrome|bot|crawl|spider|Lighthouse|PageSpeed/i.test(n.userAgent))?false:p}})();";
+
+  const scripts = [...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/g)];
+  const inlineAt = scripts.findIndex((m) => m[2].includes('fwqUmamiBeforeSend'));
+  const trackerAt = scripts.findIndex((m) => m[1].includes('cloud.umami.is/script.js'));
+
+  it('ships the filter verbatim, as a classic inline script BEFORE the tracker', () => {
+    expect(inlineAt).toBeGreaterThanOrEqual(0);
+    expect(scripts[inlineAt][1].trim()).toBe('');
+    expect(scripts[inlineAt][2]).toBe(FAMILY_FILTER);
+    expect(trackerAt).toBeGreaterThan(inlineAt);
+    expect(scripts.filter((m) => m[1].includes('umami')).length).toBe(1);
+  });
+
+  it('loads the tracker deferred, for entangible.org only, through the filter', () => {
+    const attrs = scripts[trackerAt][1];
+    expect(attrs).toContain(' defer');
+    expect(attrs).toContain('data-website-id="97f347ac-e7ba-4be3-b26f-ab4b328bdbf2"');
+    expect(attrs).toContain('data-domains="entangible.org"');
+    expect(attrs).toContain('data-before-send="fwqUmamiBeforeSend"');
+  });
+
+  type BeforeSend = (type: string, payload: unknown) => unknown;
+  type Sandbox = Record<string, unknown> & { fwqUmamiBeforeSend?: BeforeSend };
+
+  const DESKTOP =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
+  const MOBILE =
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1';
+  const payload = { website: 'x', url: '/' };
+
+  /** Run the inline filter as the page does, in a fresh global (`window` = the global). */
+  function runFilter(opts: {
+    search?: string;
+    ua?: string;
+    webdriver?: boolean;
+    store?: Map<string, string>;
+    storage?: unknown;
+  }) {
+    const store = opts.store ?? new Map<string, string>();
+    const sandbox: Sandbox = {
+      location: { search: opts.search ?? '' },
+      navigator: { userAgent: opts.ua ?? DESKTOP, webdriver: opts.webdriver ?? false },
+      localStorage: opts.storage ?? {
+        setItem: (k: string, v: string) => void store.set(k, v),
+        removeItem: (k: string) => void store.delete(k),
+      },
+    };
+    sandbox.window = sandbox;
+    vm.runInNewContext(FAMILY_FILTER, sandbox);
+    return { beforeSend: sandbox.fwqUmamiBeforeSend!, store };
+  }
+
+  it('passes a person on a desktop or a phone through unchanged', () => {
+    for (const ua of [DESKTOP, MOBILE]) {
+      expect(runFilter({ ua }).beforeSend('event', payload)).toBe(payload);
+    }
+  });
+
+  it('drops every send from automation: webdriver, headless Chrome, bots, Lighthouse', () => {
+    expect(runFilter({ webdriver: true }).beforeSend('event', payload)).toBe(false);
+    for (const ua of [
+      DESKTOP.replace('Chrome/', 'HeadlessChrome/'),
+      'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+      'Mozilla/5.0 (compatible; bingbot/2.0)',
+      'Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 Chrome/141.0 Mobile Safari/537.36 Chrome-Lighthouse',
+      'Mozilla/5.0 (compatible; SomeCrawler/1.0; crawl)',
+      'Mozilla/5.0 (compatible; Google-PageSpeed)',
+    ]) {
+      expect(runFilter({ ua }).beforeSend('event', payload), ua).toBe(false);
+    }
+  });
+
+  it('?notrack opts this browser out (umami.disabled=1); ?track opts it back in', () => {
+    const store = new Map<string, string>();
+    runFilter({ search: '?notrack', store });
+    expect(store.get('umami.disabled')).toBe('1');
+    runFilter({ search: '', store });
+    expect(store.get('umami.disabled')).toBe('1'); // sticks on later visits
+    runFilter({ search: '?x=1&track', store });
+    expect(store.has('umami.disabled')).toBe(false);
+    runFilter({ search: '?course=abc12&notrack', store });
+    expect(store.get('umami.disabled')).toBe('1');
+  });
+
+  it('still installs the filter when storage throws (private mode)', () => {
+    const storage = {
+      setItem: () => {
+        throw new Error('denied');
+      },
+    };
+    expect(runFilter({ search: '?notrack', storage }).beforeSend('event', payload)).toBe(payload);
   });
 });
