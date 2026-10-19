@@ -29,7 +29,8 @@ export const guideDe: GuideProse = {
           Entangible ist ein Quantenschaltkreis-Baukasten, den du mit den Händen bedienst: echte
           Gatter-Plättchen auf einem gedruckten Brett, von einer Kamera gelesen und live simuliert.
           Diese Pocket-App ist die Version ohne Installation – alles läuft direkt hier in deinem
-          Browser; kein Server, kein Konto, nichts verlässt dein Gerät. Entangible baut auf{' '}
+          Browser, ohne Konto, und das Kamerabild wird direkt auf deinem Gerät ausgewertet. Die Seite zählt Besuche
+          und Spiel-Ereignisse mit cookiefreier Umami-Statistik. Entangible baut auf{' '}
           <Ext href={QAMPOSER_URL}>QAMPoser</Ext> auf, dem Open-Source-Quanten-Composer, und gehört
           zur <Ext href={FAMILY_URL}>Fun-with-Quantum</Ext>-Familie.
         </p>

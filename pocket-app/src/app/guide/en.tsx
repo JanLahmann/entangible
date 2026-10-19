@@ -27,8 +27,9 @@ export const guideEn: GuideProse = {
         <p>
           Entangible is a quantum circuit composer you operate with your hands: physical gate
           tiles on a printed board, read by a camera, simulated live. This pocket app is the
-          zero-install edition — everything runs right here in your browser; no server, no
-          account, nothing leaves your device. Entangible is built on{' '}
+          zero-install edition — everything runs right here in your browser, with no account, and
+          the camera image is processed right on your device. The site counts visits and game events with
+          cookie-free Umami analytics. Entangible is built on{' '}
           <Ext href={QAMPOSER_URL}>QAMPoser</Ext>, the open-source quantum composer, and belongs
           to the <Ext href={FAMILY_URL}>Fun with Quantum</Ext> family.
         </p>
