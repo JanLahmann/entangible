@@ -1,14 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- lastmod is a fixed date, bumped by hand when the crawlable content in
+     index.html changes (src/app/seo.test.ts keeps it a real date, not in the
+     future). Not stamped per build: every push and family update redeploys,
+     and a date that moves without content changes teaches crawlers to ignore it. -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://entangible.org/</loc>
+    <lastmod>2026-10-19</lastmod>
     <xhtml:link rel="alternate" hreflang="en" href="https://entangible.org/"/>
     <xhtml:link rel="alternate" hreflang="de" href="https://entangible.org/?lang=de"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://entangible.org/"/>
   </url>
   <url>
     <loc>https://entangible.org/?lang=de</loc>
+    <lastmod>2026-10-19</lastmod>
     <xhtml:link rel="alternate" hreflang="en" href="https://entangible.org/"/>
     <xhtml:link rel="alternate" hreflang="de" href="https://entangible.org/?lang=de"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://entangible.org/"/>

@@ -29,8 +29,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { goBack, guideSectionHash, parseGuideSection, type NavWindow } from './hashNav';
 import { TEST_BOARDS } from './testBoards';
 import { reduceViewer, CLOSED, type ViewerAction } from './viewer';
-import fwqFamily from '../data/fwq-family.json';
-import { eventName } from './analytics';
+import { FAMILY, FAMILY_FOOTER_EVENT } from './familyRoster';
 import { useLang, useT, type Lang } from '@shared/i18n';
 import type { GuideProse, SectionLink } from './guide/types';
 import { guideEn } from './guide/en';
@@ -39,17 +38,8 @@ import { guideDe } from './guide/de';
 /** The Guide's prose per language. */
 const PROSE: Readonly<Record<Lang, GuideProse>> = { en: guideEn, de: guideDe };
 
-/**
- * Fun-with-Quantum sibling projects, from the family manifest (family.json in
- * JanLahmann/Fun-with-Quantum). The vendored copy in src/data/fwq-family.json is refreshed by an
- * automated PR whenever the roster changes — do not edit it by hand. Members hidden from footers
- * (`footer: false`) and Entangible itself are left out; the family home comes via FAMILY_URL.
- */
-const FAMILY = (fwqFamily.members as { id: string; name: string; url: string; short?: string; footer: boolean }[])
-  .filter((m) => m.footer && m.id !== 'entangible' && m.id !== fwqFamily.brand.id);
-
-/** Umami v2 name for a family-link click (`Entangible: family footer click`, label from the manifest). */
-const FAMILY_FOOTER_EVENT = eventName('family footer click');
+// The family links (FAMILY, FAMILY_FOOTER_EVENT) come from ./familyRoster —
+// the same roster the static index.html block renders.
 
 /**
  * The guide's sections, in nav order. `nav` is the chip label (kept short — the

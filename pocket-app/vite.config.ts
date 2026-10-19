@@ -3,6 +3,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { staticContent } from './vite-plugins/staticContent';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // The quantum engine and shared display logic live in the neutral top-level
@@ -14,7 +15,8 @@ const quantumDir = resolve(sharedDir, 'quantum');
 
 export default defineConfig({
   base: './',
-  plugins: [react()],
+  // staticContent: the family links of index.html's crawlable block (site only).
+  plugins: [react(), staticContent()],
   resolve: {
     alias: {
       '@quantum': quantumDir,

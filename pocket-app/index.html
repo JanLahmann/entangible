@@ -5,7 +5,7 @@
     <!-- No maximum-scale / user-scalable=no: pinch-zoom must stay available
          (accessibility). Gesture surfaces opt out with `touch-action` CSS. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Entangible Pocket</title>
+    <title>Entangible — build quantum circuits with your hands</title>
     <meta
       name="description"
       content="Build quantum circuits with your hands: lay printed tiles under a camera and watch the circuit and its results update live. No account needed — it all runs in your browser."
@@ -32,6 +32,46 @@
       content="Lay physical tiles under a camera and watch them become a live quantum circuit — no account, everything runs in your browser."
     />
     <meta name="twitter:image" content="https://entangible.org/og-image.png" />
+
+    <!-- Language alternates (also in public/sitemap.xml): the German page is
+         ?lang=de; each URL lists every alternate, itself included. -->
+    <link rel="alternate" hreflang="en" href="https://entangible.org/" />
+    <link rel="alternate" hreflang="de" href="https://entangible.org/?lang=de" />
+    <link rel="alternate" hreflang="x-default" href="https://entangible.org/" />
+    <!-- Canonical, per language. This one file serves / AND /?lang=de, so a
+         static <link rel="canonical" href="/"> would point the German page at
+         the English one and contradict the hreflang above. Set here instead,
+         synchronously in <head> before anything renders: ?lang=de (the
+         shared/i18n parseLang rule) → /?lang=de; every other URL (?mode=,
+         ?course=, ?kiosk, …) → /. -->
+    <script>(function(){var l=document.createElement('link'),v=(new URLSearchParams(location.search).get('lang')||'').trim().toLowerCase();l.rel='canonical';l.href='https://entangible.org/'+(v==='de'?'?lang=de':'');document.head.appendChild(l)})();</script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://entangible.org/#website",
+            "name": "Entangible",
+            "url": "https://entangible.org/",
+            "inLanguage": ["en", "de"]
+          },
+          {
+            "@type": "WebApplication",
+            "@id": "https://entangible.org/#app",
+            "name": "Entangible",
+            "url": "https://entangible.org/",
+            "description": "Build quantum circuits with your hands: lay printed tiles under a camera and watch the circuit and its results update live.",
+            "applicationCategory": "EducationalApplication",
+            "operatingSystem": "Web browser",
+            "inLanguage": ["en", "de"],
+            "license": "https://www.apache.org/licenses/LICENSE-2.0",
+            "image": "https://entangible.org/og-image.png",
+            "isPartOf": { "@id": "https://entangible.org/#website" }
+          }
+        ]
+      }
+    </script>
 
     <!-- iOS standalone / Add to Home Screen -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -92,13 +132,108 @@
         font-size: 1rem;
         color: #8a91a0;
       }
+      /* The crawlable static block (.boot-seo, under the splash in #root):
+         visually hidden like a screen-reader-only label, so it takes no space,
+         never flashes and never shifts layout; React replaces it with the
+         splash on mount. Without JavaScript the <noscript> rules below show
+         it instead of the splash, which would otherwise never go away. */
+      .boot-seo {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+        white-space: nowrap;
+        border: 0;
+      }
     </style>
+    <noscript>
+      <style>
+        .boot-splash {
+          display: none;
+        }
+        .boot-seo {
+          position: static;
+          width: auto;
+          height: auto;
+          margin: 0 auto;
+          max-width: 40rem;
+          padding: 1.5rem;
+          overflow: visible;
+          clip: auto;
+          clip-path: none;
+          white-space: normal;
+          color: #e6e9ef;
+          font-family: 'IBM Plex Sans', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+          line-height: 1.5;
+        }
+        .boot-seo a {
+          color: #7a5cff;
+        }
+      </style>
+    </noscript>
   </head>
   <body>
     <div id="root">
       <div class="boot-splash" role="status">
         <div class="boot-splash__brand"><span class="boot-splash__en">En</span>tangible</div>
         <div class="boot-splash__line">Build quantum circuits with your hands</div>
+      </div>
+      <!-- Crawlable static content (hidden by .boot-seo, see <style>); copy
+           from the Guide (src/app/guide/en.tsx). The family links are filled in
+           at build time from the family manifest (vite-plugins/staticContent.ts). -->
+      <div class="boot-seo">
+        <h1>Entangible — build quantum circuits with your hands</h1>
+        <p>
+          Entangible is a quantum circuit composer you operate with your hands: physical gate
+          tiles on a printed board, read by a camera, simulated live. This pocket app is the
+          zero-install edition: no account needed, it all runs in your browser. The name is a
+          pun: entangled + tangible = Entangible.
+        </p>
+        <p>
+          <a href="/">Open Entangible</a> · <a href="/?lang=de">Deutsch</a> ·
+          <a href="/#guide">Guide</a>
+        </p>
+        <h2>How to play</h2>
+        <ol>
+          <li>Print the kit (or use the on-screen boards).</li>
+          <li>
+            Start the camera and point it at the board from 30–60 cm, with all four corner
+            markers in view.
+          </li>
+          <li>Place tiles — the circuit, outcomes and QASM follow live.</li>
+          <li>Build a Bell pair for a surprise.</li>
+        </ol>
+        <p>
+          No printer, no camera? Choose Build on screen to place gates directly in the editor.
+        </p>
+        <h2>Quantum Golf</h2>
+        <p>
+          Each hole hands you a state to build. Eighteen holes in four rounds, and every round
+          unlocks new clubs and a new idea. Every gate you add or remove counts a stroke: build
+          the hole in the fewest gates and you score an EAGLE.
+          <a href="/?mode=golf&amp;input=manual">Play Quantum Golf on screen</a>
+        </p>
+        <h2>Quantum Runner</h2>
+        <p>
+          A Flappy-style game where the runner exists in every basis state at once — each lane's
+          ghost is as solid as its probability. Tap the gate buttons to reshape the live state
+          as coins and obstacles scroll in; a red obstacle triggers a real projective
+          measurement. It plays entirely on screen.
+          <a href="/?mode=runner">Play Quantum Runner</a>
+        </p>
+        <footer>
+          <p>
+            Open source, Apache-2.0 licensed. Based on
+            <a href="https://qamposer.org" target="_blank" rel="noopener noreferrer">QAMPoser</a>.
+            Entangible belongs to
+            <a href="https://fun-with-quantum.org" target="_blank" rel="noopener noreferrer">Fun with Quantum</a>,
+            a family of open-source quantum outreach projects: <!--fwq-family-links-->.
+          </p>
+        </footer>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
