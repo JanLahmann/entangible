@@ -60,3 +60,15 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # Tell Bing, Yandex & co. which pages changed: the Fun with Quantum family's
+  # shared IndexNow job reads sitemap.xml and submits the pages whose <lastmod>
+  # is today or yesterday (family/indexnow/README.md in JanLahmann/Fun-with-Quantum).
+  # The key is public by design; pocket-app/public/<key>.txt serves it.
+  indexnow:
+    needs: deploy
+    if: github.ref == 'refs/heads/main'
+    uses: JanLahmann/Fun-with-Quantum/.github/workflows/indexnow.yml@master
+    with:
+      site: https://entangible.org
+      key: bac991b9adabcd7c8eb2aa855e35fd65
