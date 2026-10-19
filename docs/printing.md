@@ -237,3 +237,48 @@ If libcairo cannot be loaded, the tool falls back to `svglib` + `reportlab`
 (install with `uv pip install 'qamposer-assets[fallback]'`). If neither backend
 is available it writes the **SVG files only** and exits non-zero with a hint —
 you can still open or convert those SVGs elsewhere.
+
+## Booth QR codes per event
+
+Each event gets its own QR code, so visits from that event's printed cards show
+up separately in Umami. From `pocket-app/` (Node 20, after `npm install`):
+
+```bash
+node scripts/booth-qr.mjs --event qce-2026                           # the welcome card
+node scripts/booth-qr.mjs --event qce-2026 --target golf --lang de   # golf, in German
+node scripts/booth-qr.mjs --event qce-2026 --target runner --size a5
+```
+
+| Option     | Values                           | Default         | Meaning                                         |
+| ---------- | -------------------------------- | --------------- | ----------------------------------------------- |
+| `--event`  | `[a-z0-9-]`, at most 40 chars    | (required)      | Event slug; becomes `utm_campaign`.             |
+| `--target` | `home` `golf` `runner` `/<path>` | `home`          | Where the code lands (see below).               |
+| `--lang`   | `en` `de`                        | none            | Adds `lang=`; without it the browser decides.   |
+| `--size`   | `a6` `a5`                        | `a6`            | Page size of the printable card.                |
+| `--out`    | any path                         | `out/booth-qr`  | Output directory (repo root, git-ignored).      |
+
+Targets are the site's existing deep links (`parseUrlOverrides` in
+`pocket-app/src/app/settings.ts`): `home` → `/`, `golf` →
+`/?mode=golf&input=manual` (golf built on screen, the same entry as the welcome
+card's golf button), `runner` → `/?mode=runner`. A `/<path>` target is used as
+given, without a query or fragment of its own. Every URL then carries
+`utm_source=booth&utm_medium=qr&utm_campaign=<slug>`, e.g.
+
+```
+https://entangible.org/?mode=golf&input=manual&utm_source=booth&utm_medium=qr&utm_campaign=qce-2026&lang=de
+```
+
+The script prints the URL on stdout and writes `<slug>[-<target>][-<lang>].svg`
+(the QR code, error correction M, 4-module quiet zone) and a matching `.html`
+card (QR, a one-line call to action, the URL in small type). Open the card in a
+browser and print at 100 % scale; the page size is set in the card's CSS.
+
+The app ignores `utm_*`: no URL reader (surface, settings, welcome card, golf
+course, language) looks at them, and nothing removes them from the address bar,
+so Umami's first pageview sees them (`pocket-app/tests/boothQr.test.ts`).
+
+**Reading visits per event in Umami.** In Umami Cloud, open **Reports → UTM**,
+pick the website and the event's date range; the `utm_campaign` breakdown lists
+one row per event slug, and `utm_source` / `utm_medium` read `booth` / `qr`.
+The family sites share one Umami website, so filter on host `entangible.org`
+when comparing against other traffic.
