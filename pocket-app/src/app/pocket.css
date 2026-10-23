@@ -2495,13 +2495,18 @@ body,
   border-color: var(--accent);
 }
 
+/* Hover DARKENS the fill: white on --accent is 5.0:1, and lightening it (the
+   former 85 % accent + white) dropped the white title to 3.9:1, under WCAG AA.
+   85 % accent + black keeps white text at ~6.4:1. */
 .pk-welcome-path--primary:hover {
-  background: color-mix(in srgb, var(--accent) 85%, #fff);
+  background: color-mix(in srgb, var(--accent) 85%, #000);
 }
 
+/* Disabled only while the camera starts — the title then reads "Starting
+   camera…", which is the cue. No dimming: opacity would drop the white text
+   on the blue fill under 4.5:1 for the very moment the visitor is reading it. */
 .pk-welcome-path--primary:disabled {
-  cursor: default;
-  opacity: 0.75;
+  cursor: progress;
 }
 
 .pk-welcome-path-title {
@@ -2520,8 +2525,11 @@ body,
   color: var(--muted);
 }
 
+/* Full white: the former 82 % white measured 3.86:1 on --accent (axe
+   color-contrast); #fff is 5.0:1 at rest and ~6.4:1 on hover. The subtitle is
+   set apart from the title by its size and weight, not by a fainter colour. */
 .pk-welcome-path--primary .pk-welcome-path-sub {
-  color: rgba(255, 255, 255, 0.82);
+  color: #fff;
 }
 
 /* A short landscape phone has no height to spare: the path titles say enough. */
@@ -3073,6 +3081,13 @@ body,
 
   .pk-brand small {
     display: none;
+  }
+
+  /* At 1.15rem the bold "En" is under WCAG's large-text size (18.66 px bold),
+     so it needs 4.5:1: --entangle measures 3.98:1 on the topbar, the text-safe
+     --entangle-text ~6:1. Wider screens keep --entangle (large text, 3:1). */
+  .pk-brand .en {
+    color: var(--entangle-text);
   }
 
   /* Camera status pill → dot only. */

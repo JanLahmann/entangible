@@ -741,7 +741,7 @@ function ChipStrip({
   const t = useT();
   const sc = t.scorecard;
   return (
-    <div className={`${p}-golf-course`} aria-label={sc.allHoles}>
+    <div className={`${p}-golf-course`} role="group" aria-label={sc.allHoles}>
       {ROUNDS.map((round) => (
         <div key={round} className={`${p}-golf-row`}>
           <span className={`${p}-golf-round`}>{ROUND_CODE[round]}</span>

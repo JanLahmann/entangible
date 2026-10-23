@@ -328,3 +328,85 @@ describe('pocket.css golf holing in on tap to play (#13)', () => {
     );
   });
 });
+
+/*
+ * WCAG AA contrast of the primary welcome path (the entangible.org axe scan:
+ * the subtitle's 82 % white measured 3.86:1 on --accent). The app has ONE
+ * theme (shared/tokens.css, no light/dark switch), so the states to hold are
+ * rest, hover and disabled ("Starting camera…"). Colours are read from the
+ * stylesheets, not restated, so a token or rule change re-runs the maths.
+ */
+describe('pocket.css primary welcome path meets WCAG AA (4.5:1)', () => {
+  const tokens = readFileSync(
+    fileURLToPath(new URL('../../../shared/tokens.css', import.meta.url)),
+    'utf8',
+  );
+  const token = (name: string): string => {
+    const m = tokens.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})`));
+    if (!m) throw new Error(`token ${name} not found`);
+    return m[1];
+  };
+  type Rgb = [number, number, number];
+  const hex = (h: string): Rgb => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) as Rgb;
+  const lum = (c: Rgb) =>
+    c
+      .map((v) => v / 255)
+      .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+      .reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+  const ratio = (a: Rgb, b: Rgb) => {
+    const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  const mix = (a: Rgb, b: Rgb, t: number): Rgb => a.map((v, i) => v * t + b[i] * (1 - t)) as Rgb;
+  /** Resolve a `color` / `background` value: var(--x), #hex, or color-mix(in srgb, …). */
+  const resolve = (value: string): Rgb => {
+    const v = value.trim();
+    const cm = v.match(/^color-mix\(in srgb, (.+?) (\d+)%, (.+)\)$/);
+    if (cm) return mix(resolve(cm[1]), resolve(cm[3]), Number(cm[2]) / 100);
+    const tv = v.match(/^var\((--[\w-]+)\)$/);
+    if (tv) return hex(token(tv[1]));
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) return hex(v);
+    if (/^#[0-9a-fA-F]{3}$/.test(v)) return hex(`#${[...v.slice(1)].map((c) => c + c).join('')}`);
+    throw new Error(`unresolvable colour "${v}" (an alpha colour needs its own blend here)`);
+  };
+  const prop = (selector: string, name: string): string => {
+    const m = ruleBody(selector).match(new RegExp(`(?:^|\\n)\\s*${name}:\\s*([^;]+);`));
+    if (!m) throw new Error(`${selector} has no ${name}`);
+    return m[1];
+  };
+
+  const restBg = () => resolve(prop('.pk-welcome-path--primary', 'background'));
+  const title = () => resolve(prop('.pk-welcome-path--primary', 'color'));
+  const sub = () => resolve(prop('.pk-welcome-path--primary .pk-welcome-path-sub', 'color'));
+
+  it('the helper reproduces the scan’s failing ratio (82 % white on --accent = 3.86)', () => {
+    const accent = hex(token('--accent'));
+    expect(ratio(mix(hex('#ffffff'), accent, 0.82), accent)).toBeCloseTo(3.86, 2);
+  });
+
+  it('subtitle and title at rest', () => {
+    expect(ratio(sub(), restBg())).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(title(), restBg())).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('subtitle and title on hover', () => {
+    const hoverBg = resolve(prop('.pk-welcome-path--primary:hover', 'background'));
+    expect(ratio(sub(), hoverBg)).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(title(), hoverBg)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('the phone topbar’s "En" glyph (not large text at 1.15rem) reaches 4.5:1', () => {
+    const phone = css.slice(css.indexOf('@media (max-width: 699px), (max-height: 450px) {'));
+    const at = phone.indexOf('\n  .pk-brand .en {');
+    expect(at).toBeGreaterThan(0);
+    const body = phone.slice(phone.indexOf('{', at) + 1, phone.indexOf('}', at));
+    const glyph = resolve(body.match(/color:\s*([^;]+);/)![1]);
+    expect(ratio(glyph, resolve(prop('.pk-topbar', 'background')))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('disabled (camera starting) does not dim the text below AA', () => {
+    // An opacity on the button would blend text and fill toward the card; none
+    // is allowed, so the rest-state ratios above hold while it is disabled.
+    expect(ruleBody('.pk-welcome-path--primary:disabled')).not.toMatch(/opacity/);
+  });
+});
