@@ -52,9 +52,15 @@ import {
   type Outcome,
 } from '@shared/display/outcomes';
 
+/**
+ * The outcome's bits stacked one per row (q0 on top). A screen reader should
+ * hear the bitstring once ("001"), not three loose digits, so the stack is an
+ * image role named by `aria-label` — on a bare span the label is prohibited
+ * (axe `aria-prohibited-attr`) and ignored.
+ */
 function BitStack({ bits, classPrefix }: { bits: string; classPrefix: string }) {
   return (
-    <span className={`${classPrefix}-h-stack`} aria-label={bits}>
+    <span className={`${classPrefix}-h-stack`} role="img" aria-label={bits}>
       {bits.split('').map((b, i) => (
         <span key={i}>{b}</span>
       ))}

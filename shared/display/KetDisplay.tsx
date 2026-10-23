@@ -216,8 +216,11 @@ export function KetDisplay({
   if (terms.length === 0) return null;
 
   return (
+    // role="group": a bare div may not carry aria-label (axe
+    // aria-prohibited-attr); the group keeps the terms readable under its name.
     <div
       className={`${p}-ket`}
+      role="group"
       aria-label={label ? evolving.ketAria(label) : evolving.ketAriaCurrent}
     >
       {label && <span className={`${p}-ket-label`}>{label}</span>}

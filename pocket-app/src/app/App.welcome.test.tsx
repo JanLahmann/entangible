@@ -34,6 +34,7 @@ import { DEFAULT_SETTINGS, parseUrlOverrides, settingsStore } from './settings';
 import { boothLink } from './boothLink';
 import { detectSurface } from './surface';
 import { welcomeBypassed, welcomeEligible } from './welcome';
+import { LangProvider } from '@shared/i18n';
 
 // The first render pays for the editor/sphere/vision module graph.
 vi.setConfig({ testTimeout: 30_000 });
@@ -106,6 +107,73 @@ describe('welcome card — three paths on the idle landing', () => {
     expect(settingsStore.get().input).toBe('manual');
     expect(settingsStore.get().mode).toBe('composer');
     expect(welcomePaths()).toEqual([]);
+  });
+});
+
+/**
+ * axe `aria-prohibited-attr`: aria-label / aria-labelledby are prohibited on
+ * elements whose role is generic (div, span, …) or text-level. The camera
+ * status pill was a bare `<span aria-label>` (the entangible.org scan). This
+ * walks the rendered shell — EN and DE, the welcome card up — and requires
+ * every naming attribute to sit on an element that may carry one.
+ */
+const NAMEABLE_TAGS = new Set([
+  'A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'NAV', 'MAIN', 'ASIDE', 'SECTION',
+  'FORM', 'DIALOG', 'IMG', 'SVG', 'IFRAME', 'VIDEO', 'CANVAS', 'TABLE', 'METER',
+  'PROGRESS', 'OUTPUT', 'DETAILS', 'FIELDSET', 'UL', 'OL', 'LI', 'HEADER', 'FOOTER',
+]);
+const NAME_PROHIBITED_ROLES = new Set([
+  'generic', 'presentation', 'none', 'caption', 'code', 'deletion', 'emphasis',
+  'insertion', 'paragraph', 'strong', 'subscript', 'superscript', 'term', 'time',
+]);
+
+function prohibitedNamings(root: ParentNode): string[] {
+  return [...root.querySelectorAll('[aria-label], [aria-labelledby]')]
+    .filter((el) => {
+      const role = el.getAttribute('role');
+      if (role) return NAME_PROHIBITED_ROLES.has(role.trim().split(/\s+/)[0]);
+      return !NAMEABLE_TAGS.has(el.tagName.toUpperCase());
+    })
+    .map((el) => el.outerHTML.slice(0, 120));
+}
+
+describe('home page — no aria-prohibited-attr (EN + DE)', () => {
+  it.each(['en', 'de'] as const)('%s: every aria-label sits on a nameable role', async (lang) => {
+    window.history.replaceState(null, '', '/');
+    window.localStorage.clear();
+    settingsStore.update({ ...DEFAULT_SETTINGS });
+    render(
+      <LangProvider lang={lang}>
+        <App />
+      </LangProvider>,
+    );
+    await act(async () => {});
+    // The welcome card is up, so the scan covers it too.
+    expect(document.querySelector('.pk-welcome-paths')).not.toBeNull();
+    expect(prohibitedNamings(document.body)).toEqual([]);
+    // The camera status pill keeps its accessible name, now on an image role.
+    const pill = document.querySelector('.pk-topbar .pk-pill:not(.pk-pill--mode)');
+    expect(pill?.getAttribute('role')).toBe('img');
+    expect(pill?.getAttribute('aria-label')).toBeTruthy();
+  });
+
+  it('the on-screen build pill names itself by its visible text', async () => {
+    window.history.replaceState(null, '', '/');
+    window.localStorage.clear();
+    settingsStore.update({ ...DEFAULT_SETTINGS, input: 'manual' });
+    render(<App />);
+    await act(async () => {});
+    expect(document.querySelector('.pk-pill--manual')).not.toBeNull();
+    expect(prohibitedNamings(document.body)).toEqual([]);
+  });
+
+  it('the check itself flags a bare span or div with aria-label', () => {
+    const host = document.createElement('div');
+    host.innerHTML =
+      '<span aria-label="camera off">x</span><div aria-label="y"></div>' +
+      '<span role="img" aria-label="ok"></span><div role="group" aria-label="ok"></div>' +
+      '<p role="paragraph" aria-label="no"></p>';
+    expect(prohibitedNamings(host)).toHaveLength(3);
   });
 });
 

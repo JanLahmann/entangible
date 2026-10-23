@@ -36,6 +36,7 @@ import { boothLink, useBoothLink } from './boothLink';
 import { cameraRoleLink, useCameraRole } from './cameraRoleLink';
 import { cameraSwitchAction, connectionPill, connectRequested } from '../sources/boothUrl';
 import { cameraRoleOffered, framesUrlFromStateUrl, roleRequested } from '../sources/cameraRole';
+import { boothHostProbeWanted } from './surface';
 import { getOperatorKey, withKey } from '@shared/ws/operatorKey';
 import { framesSocketUrl } from '@shared/capture/streamController';
 import type { FrameStreamerStatus } from '@shared/capture/frameStreamer';
@@ -715,8 +716,10 @@ export function App() {
   }, [cameraHidden]);
 
   // Probe our own origin for a booth host (served-by-host trigger). Cheap;
-  // failures (e.g. entangible.org standalone) are ignored.
+  // failures are ignored. Skipped on the public site, which no booth host
+  // serves: its 404 would be logged as a console error (surface.ts).
   useEffect(() => {
+    if (!boothHostProbeWanted(window.location.hostname)) return;
     let cancelled = false;
     fetch('/api/info')
       .then((r) => (r.ok ? r.json() : null))
@@ -1082,7 +1085,15 @@ export function App() {
             <small>camera</small>
           </div>
           <span className="pk-spacer" />
-          <span className={`pk-pill ${streamPill.cls}`} aria-label={streamPill.label} title={streamPill.label}>
+          {/* role="img": a span may not carry aria-label (axe aria-prohibited-attr);
+              the pill is a status glyph whose label text hides on a phone, so the
+              accessible name comes from aria-label on an image role. */}
+          <span
+            className={`pk-pill ${streamPill.cls}`}
+            role="img"
+            aria-label={streamPill.label}
+            title={streamPill.label}
+          >
             <span className="pk-dot" aria-hidden="true" />
             <span className="pk-pill-label">{streamPill.label}</span>
           </span>
@@ -1142,6 +1153,7 @@ export function App() {
           // Viewer: booth status pill (never a camera pill — no local pipeline).
           <span
             className={`pk-pill ${boothPill.cls}`}
+            role="img"
             aria-label={boothPill.label}
             title={boothPill.label}
           >
@@ -1153,13 +1165,18 @@ export function App() {
           // the "Use camera" action button).
           <span
             className="pk-pill pk-pill--mode pk-pill--manual"
-            aria-label={t.app.manualBuild}
             title={t.app.manualBuild}
           >
             <span className="pk-pill-label">{t.app.manualBuild}</span>
           </span>
         ) : (
-          <span className={`pk-pill ${camPill.cls}`} aria-label={camPill.label} title={camPill.label}>
+          // role="img" makes the aria-label valid (a bare span may not carry one).
+          <span
+            className={`pk-pill ${camPill.cls}`}
+            role="img"
+            aria-label={camPill.label}
+            title={camPill.label}
+          >
             <span className="pk-dot" aria-hidden="true" />
             <span className="pk-pill-label">{camPill.label}</span>
           </span>

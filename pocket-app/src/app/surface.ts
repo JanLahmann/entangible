@@ -32,3 +32,22 @@ export function currentSurface(): Surface {
   if (typeof window === 'undefined') return 'app';
   return detectSurface(window.location.pathname, window.location.search);
 }
+
+/**
+ * The public site's hostnames (GitHub Pages, custom domain). The same `dist/`
+ * is also served by a booth host, so the build cannot tell the two apart —
+ * only the origin it is loaded from can.
+ */
+export const PUBLIC_SITE_HOSTS: readonly string[] = ['entangible.org', 'www.entangible.org'];
+
+/**
+ * Should the app probe its own origin's `/api/info` for a booth host? Not on
+ * the public site: no booth host ever serves entangible.org, and the probe's
+ * 404 there is logged by the browser as a console error ("Failed to load
+ * resource") that no `.catch` can prevent — it cost the home page its
+ * Lighthouse best-practices score. Everywhere else (a booth host's LAN IP or
+ * name, localhost, a preview) the probe runs as before.
+ */
+export function boothHostProbeWanted(hostname: string): boolean {
+  return !PUBLIC_SITE_HOSTS.includes(hostname.toLowerCase());
+}

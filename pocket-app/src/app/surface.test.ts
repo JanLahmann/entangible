@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectSurface } from './surface';
+import { boothHostProbeWanted, detectSurface } from './surface';
 
 describe('detectSurface', () => {
   it('defaults to the standalone app', () => {
@@ -30,5 +30,22 @@ describe('detectSurface', () => {
 
   it('prefers /debug over ?kiosk when both are present', () => {
     expect(detectSurface('/debug', '?kiosk')).toBe('debug');
+  });
+});
+
+describe('boothHostProbeWanted', () => {
+  it('skips the /api/info probe on the public site (its 404 is a console error)', () => {
+    expect(boothHostProbeWanted('entangible.org')).toBe(false);
+    expect(boothHostProbeWanted('www.entangible.org')).toBe(false);
+    expect(boothHostProbeWanted('Entangible.org')).toBe(false);
+  });
+
+  it('probes everywhere a booth host may serve the app', () => {
+    expect(boothHostProbeWanted('192.168.4.1')).toBe(true);
+    expect(boothHostProbeWanted('rasqberry.local')).toBe(true);
+    expect(boothHostProbeWanted('localhost')).toBe(true);
+    expect(boothHostProbeWanted('127.0.0.1')).toBe(true);
+    // Not a suffix match: a lookalike name is not the public site.
+    expect(boothHostProbeWanted('booth.entangible.org.example')).toBe(true);
   });
 });
