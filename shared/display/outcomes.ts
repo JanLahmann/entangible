@@ -6,7 +6,7 @@
  * each app's wire-trim setting, NOT the active subset. The recognized circuit
  * is always five physical qubits; the wire-trim transform guarantees no gate
  * touches a row >= D, so marginalizing the remaining |0⟩ rows is exact. Bit
- * order: leftmost stack bit = q0 (top wire).
+ * order: Qiskit's, app-wide — see `Outcome.bits` and `bitOf`.
  *
  * This module owns ONLY the pure math + thresholds — the single source of truth
  * for both panels and their parity tests. The two `*Histogram` components keep

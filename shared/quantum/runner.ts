@@ -289,7 +289,7 @@ export const LEVEL2_POOL: readonly Pattern[] = [
   { kind: 'obstacle', lanes: [1, 2] }, // anti-correlated — Bell Φ⁺ is safe here
   { kind: 'obstacle', lanes: [0] },
   { kind: 'obstacle', lanes: [3] },
-  { kind: 'obstacle', lanes: [1] },
+  { kind: 'obstacle', lanes: [2] }, // q1 alone (|10⟩): same hit for X1 as before the bit-order switch
 ];
 
 /** The pattern pool for a level. */

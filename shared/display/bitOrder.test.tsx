@@ -10,7 +10,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { Histogram } from './Histogram';
 import { ketTerms } from './KetDisplay';
-import { ZERO_EPS } from './outcomes';
+import { ZERO_EPS, bitOf } from './outcomes';
 import { QSphereView } from '@quantum/QSphereView';
 import { basisVisuals } from '@quantum/qsphere';
 import { HOLES, holeSolution, holeTargetState, type Hole } from '@quantum/golf';
@@ -59,9 +59,14 @@ function histogram(h: Hole): Record<string, number> {
   const cols = [...container.querySelectorAll('.pk-h-col[data-bits]')].filter(
     (c) => Number(c.getAttribute('data-prob')) > ZERO_EPS,
   );
-  // The upright stack reads top to bottom exactly like its own data-bits.
+  // Each stack digit sits on the guide row that names its qubit: the guide
+  // reads q(D−1) … q0 top to bottom, and digit r is that row's bit (`bitOf`).
+  const guide = [...container.querySelectorAll('.pk-h-guide > span')].map((s) => s.textContent);
+  expect(guide).toEqual(Array.from({ length: h.qubits }, (_, r) => `q${h.qubits - 1 - r}`));
   for (const c of cols) {
-    expect(c.querySelector('.pk-h-stack')?.textContent).toBe(c.getAttribute('data-bits'));
+    const bits = c.getAttribute('data-bits')!;
+    const digits = [...c.querySelectorAll('.pk-h-stack > span')].map((s) => s.textContent);
+    expect(digits).toEqual(guide.map((g) => bitOf(bits, Number(g!.slice(1)))));
   }
   const out = Object.fromEntries(
     cols.map((c) => [c.getAttribute('data-bits')!, round6(Number(c.getAttribute('data-prob')))]),
