@@ -111,12 +111,12 @@ describe('marginals — closed-form cases', () => {
     expect(marginals(outcomes)).toEqual([0.5, 0.5]);
   });
 
-  it('a |100⟩ peak → marginal 1 on q0 only', () => {
+  it('a |001⟩ peak → marginal 1 on q0 only (Qiskit order: q0 rightmost)', () => {
     // q0 set → physical index (1 << 0) = 1.
     const probs = new Array(8).fill(0);
     probs[1] = 1;
     const outcomes = outcomesFromProbabilities(probs, 3);
-    expect(Object.fromEntries(outcomes.map((o) => [o.bits, o.prob]))['100']).toBeCloseTo(1, 10);
+    expect(Object.fromEntries(outcomes.map((o) => [o.bits, o.prob]))['001']).toBeCloseTo(1, 10);
     expect(marginals(outcomes)).toEqual([1, 0, 0]);
   });
 

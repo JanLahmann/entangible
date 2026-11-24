@@ -77,9 +77,10 @@ falls back to the built-in `coffee` menu rather than crashing):
 
 - **`single` / `shots`** — `2 ≤ items ≤ 32`. The qubit count is
   `ceil(log2 N)` (floor 1). Each `code` is a **unique bitstring of that width**.
-  The **leftmost character is q0** (the top wire) — the exact convention the
-  RESULTS histogram labels use, so a peaked column and its menu card share a
-  bitstring.
+  Codes are in **Qiskit order**: the **rightmost character is q0** (the top
+  wire), the leftmost the highest qubit — the exact convention the RESULTS
+  histogram, the ket line and Qiskit's own counts use, so a peaked column and
+  its menu card share a bitstring. An X on q0 alone serves code `001`.
 - **`subset`** — `2 ≤ items ≤ 5`. Each item binds to a unique `qubit`, and the
   qubits must be exactly `0..N-1`. A single shot's bitstring selects the subset:
   every set bit is an ingredient in the glass. Superposition = "maybe"; an
@@ -94,7 +95,7 @@ falls back to the built-in `coffee` menu rather than crashing):
 - **Codes vs qubits** — `code` is only valid in `single`/`shots`; `qubit` only
   in `subset`. Mixing them is rejected.
 
-Quick code table (leftmost char = q0):
+Quick code table (Qiskit order, rightmost char = q0):
 
 | N items | qubits | codes                          |
 | ------- | ------ | ------------------------------ |
@@ -184,8 +185,8 @@ the fallback menu — nothing to install.
       one of the reserved built-ins.
 - [ ] `serve.mode` chosen; `shots` packs set `{min ≤ default ≤ max}`, `max ≤ 20`.
 - [ ] Item count in range (2–32 for single/shots, 2–5 for subset).
-- [ ] `code`s are unique bitstrings of the right width (leftmost char = q0), or
-      `qubit`s are exactly `0..N-1` for subset.
+- [ ] `code`s are unique bitstrings of the right width (Qiskit order, rightmost
+      char = q0), or `qubit`s are exactly `0..N-1` for subset.
 - [ ] Every item has an `emoji`; any `image` is a plain filename in the dir.
 - [ ] Images are ~512 px, jpg/png/webp/svg.
 - [ ] Optional `theme` / `[[link]]` / `[item.program]` well-formed.

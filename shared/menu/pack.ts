@@ -8,9 +8,9 @@
  * owns ONLY the data model + rules; sampling lives in `sample.ts` and the
  * bundled scenarios in `builtinPacks.ts`.
  *
- * Bit-order convention: a `code` is a bitstring whose **leftmost char is q0**
- * (the top wire) — the exact convention of `shared/display/outcomes.ts`
- * `Outcome.bits` (one char per displayed row, top(=q0) first). There is no
+ * Bit-order convention: a `code` is a bitstring in **Qiskit order** — leftmost
+ * char = highest qubit, **rightmost char = q0** (the top wire) — the exact
+ * convention of `shared/display/outcomes.ts` `Outcome.bits`. There is no
  * second convention: menu codes and histogram labels are byte-comparable, so a
  * peaked histogram column and its menu item share a bitstring.
  *
@@ -21,6 +21,7 @@
  * the first). The schema is forward-compatible: unknown extra fields are
  * ignored, so a newer pack still loads on an older client.
  */
+import { bitOf } from '@shared/display/outcomes';
 
 /** How a serve turns the measured outcome(s) into an order. */
 export type ServeMode = 'single' | 'shots' | 'subset';
@@ -49,11 +50,12 @@ export interface ItemProgram {
 
 export interface MenuItem {
   /**
-   * single/shots modes: this item's outcome bitstring. LEFTMOST char = q0 (top
-   * wire) — the exact convention of `shared/display/outcomes.ts` `Outcome.bits`.
+   * single/shots modes: this item's outcome bitstring, Qiskit order: RIGHTMOST
+   * char = q0 (top wire) — the exact convention of `shared/display/outcomes.ts`
+   * `Outcome.bits`.
    */
   code?: string;
-  /** subset mode: this item's qubit (0..4); leftmost char of a bitstring = q0. */
+  /** subset mode: this item's qubit (0..4); rightmost char of a bitstring = q0. */
   qubit?: number;
   name: string;
   subtitle?: string;
@@ -439,10 +441,9 @@ export function itemForBits(pack: MenuPack, bits: string): MenuItem | undefined 
 }
 
 /**
- * subset lookup: the items whose qubit's char in `bits` is '1'. The char index
- * is the qubit and the LEFTMOST char is q0 — the `Outcome.bits` convention. A
- * set bit means "this ingredient landed in the glass".
+ * subset lookup: the items whose qubit's char in `bits` is '1' (`bitOf`, the
+ * `Outcome.bits` order). A set bit means "this ingredient landed in the glass".
  */
 export function subsetForBits(pack: MenuPack, bits: string): MenuItem[] {
-  return pack.items.filter((it) => it.qubit !== undefined && bits[it.qubit] === '1');
+  return pack.items.filter((it) => it.qubit !== undefined && bitOf(bits, it.qubit) === '1');
 }

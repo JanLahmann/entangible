@@ -44,9 +44,9 @@ describe('MenuGrid', () => {
   });
 
   it('subset mode reads qubit marginals and renders q-chips', () => {
-    // q0 marginal 0.7 (bits[0]==='1' at 0.7) → Orange juice peaks.
+    // q0 marginal 0.7 (rightmost char '1' at 0.7, Qiskit order) → Orange juice peaks.
     const outcomes: Outcome[] = [
-      { bits: '100', prob: 0.7 },
+      { bits: '001', prob: 0.7 },
       { bits: '000', prob: 0.3 },
     ];
     const { container } = render(

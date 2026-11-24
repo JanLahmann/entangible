@@ -20,11 +20,11 @@
  * The quantum math reuses the booth engine's single source of gate definitions:
  * `singleQubitUnitary` from `./statevector` supplies the H/X 2×2 matrices (no
  * re-derivation of gate math here), and the lane index follows the shared
- * DISPLAY bit-order convention (`@shared/display/outcomes`): the lane index's
- * MOST-significant bit is q0 (the top wire), so with 2 qubits the lanes are
- * |00⟩ |01⟩ |10⟩ |11⟩ ↔ indices 0..3 and the Φ⁺ Bell state (H0 then CX01) lands
- * on lanes |00⟩ and |11⟩ — perfectly safe against an obstacle on the
- * anti-correlated pair |01⟩/|10⟩.
+ * DISPLAY bit-order convention (`@shared/display/outcomes`, Qiskit order): the
+ * lane index's LEAST-significant bit is q0 (the top wire), so with 2 qubits the
+ * lanes are |00⟩ |01⟩ |10⟩ |11⟩ ↔ indices 0..3 (|01⟩ = q0 set) and the Φ⁺ Bell
+ * state (H0 then CX01) lands on lanes |00⟩ and |11⟩ — perfectly safe against
+ * an obstacle on the anti-correlated pair |01⟩/|10⟩.
  *
  * Everything here is a pure reducer `(state, event, rng) → state`; the UI owns
  * timing (rAF) and rendering. The RNG is injectable (`mulberry32` for seeded
@@ -91,18 +91,14 @@ export function laneCount(level: Level): number {
 }
 
 /**
- * Lane labels in the shared DISPLAY bit-order convention (leftmost char = q0):
+ * Lane labels in the shared DISPLAY bit-order convention (Qiskit order:
+ * leftmost char = highest qubit, rightmost = q0):
  * level 1 → |0⟩ |1⟩; level 2 → |00⟩ |01⟩ |10⟩ |11⟩.
  */
 export function laneLabels(level: Level): string[] {
   const n = laneCount(level);
   const q = qubitsForLevel(level);
   return Array.from({ length: n }, (_, i) => `|${i.toString(2).padStart(q, '0')}⟩`);
-}
-
-/** Bit position of qubit `q` within a `k`-qubit lane index (q0 = MSB). */
-function qubitBit(q: number, k: number): number {
-  return 1 << (k - 1 - q);
 }
 
 // ---------------------------------------------------------------------------
@@ -122,8 +118,8 @@ export function probabilities(amps: readonly Complex[]): number[] {
 }
 
 /** Apply a single-qubit 2×2 unitary to qubit `q` (returns a new array). */
-function applySingle(amps: readonly Complex[], q: number, k: number, m: Matrix2): Complex[] {
-  const bit = qubitBit(q, k);
+function applySingle(amps: readonly Complex[], q: number, m: Matrix2): Complex[] {
+  const bit = 1 << q;
   const out = amps.slice();
   for (let i = 0; i < amps.length; i++) {
     if ((i & bit) === 0) {
@@ -138,9 +134,9 @@ function applySingle(amps: readonly Complex[], q: number, k: number, m: Matrix2)
 }
 
 /** Apply CX(control, target) — flip target where control is |1⟩ (new array). */
-function applyCx(amps: readonly Complex[], control: number, target: number, k: number): Complex[] {
-  const cbit = qubitBit(control, k);
-  const tbit = qubitBit(target, k);
+function applyCx(amps: readonly Complex[], control: number, target: number): Complex[] {
+  const cbit = 1 << control;
+  const tbit = 1 << target;
   const out = amps.slice();
   for (let i = 0; i < amps.length; i++) {
     if ((i & cbit) !== 0 && (i & tbit) === 0) {
@@ -162,17 +158,17 @@ export function applyGate(amps: readonly Complex[], level: Level, button: GateBu
   const k = qubitsForLevel(level);
   switch (button) {
     case 'X0':
-      return applySingle(amps, 0, k, X2);
+      return applySingle(amps, 0, X2);
     case 'H0':
-      return applySingle(amps, 0, k, H2);
+      return applySingle(amps, 0, H2);
     case 'X1':
-      return k > 1 ? applySingle(amps, 1, k, X2) : amps.slice();
+      return k > 1 ? applySingle(amps, 1, X2) : amps.slice();
     case 'H1':
-      return k > 1 ? applySingle(amps, 1, k, H2) : amps.slice();
+      return k > 1 ? applySingle(amps, 1, H2) : amps.slice();
     case 'CX01':
-      return k > 1 ? applyCx(amps, 0, 1, k) : amps.slice();
+      return k > 1 ? applyCx(amps, 0, 1) : amps.slice();
     case 'CX10':
-      return k > 1 ? applyCx(amps, 1, 0, k) : amps.slice();
+      return k > 1 ? applyCx(amps, 1, 0) : amps.slice();
     default:
       return amps.slice();
   }
@@ -293,7 +289,7 @@ export const LEVEL2_POOL: readonly Pattern[] = [
   { kind: 'obstacle', lanes: [1, 2] }, // anti-correlated — Bell Φ⁺ is safe here
   { kind: 'obstacle', lanes: [0] },
   { kind: 'obstacle', lanes: [3] },
-  { kind: 'obstacle', lanes: [1] },
+  { kind: 'obstacle', lanes: [2] }, // q1 alone (|10⟩): same hit for X1 as before the bit-order switch
 ];
 
 /** The pattern pool for a level. */

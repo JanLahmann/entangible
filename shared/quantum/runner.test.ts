@@ -12,6 +12,7 @@ import { mulberry32 } from '@shared/menu/sample';
 import type { Complex } from './statevector';
 import {
   GATE_BUTTONS,
+  LEVEL2_POOL,
   GATE_COLUMNS,
   DEFAULT_RUNNER_CONFIG,
   LEVEL2_RUNNER_CONFIG,
@@ -86,6 +87,17 @@ describe('gate application', () => {
     expect(p[1]).toBeCloseTo(0, 12);
     expect(p[2]).toBeCloseTo(0, 12);
     expect(p[3]).toBeCloseTo(0.5, 12);
+  });
+
+  it('Qiskit lane order at level 2: X0 lands on |01⟩, X1 on |10⟩', () => {
+    expect(probabilities(applyGate(initialAmplitudes(2), 2, 'X0'))).toEqual([0, 1, 0, 0]);
+    expect(probabilities(applyGate(initialAmplitudes(2), 2, 'X1'))).toEqual([0, 0, 1, 0]);
+    expect(laneLabels(2)[1]).toBe('|01⟩');
+  });
+
+  it('the single-lane obstacle still punishes an X1-only runner (lane |10⟩)', () => {
+    const single = LEVEL2_POOL.filter((p) => p.kind === 'obstacle' && p.lanes.length === 1);
+    expect(single.map((p) => p.lanes[0]).sort()).toEqual([0, 2, 3]);
   });
 
   it('a level-1 state ignores level-2 buttons (stays total)', () => {

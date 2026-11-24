@@ -6,7 +6,7 @@
  * each app's wire-trim setting, NOT the active subset. The recognized circuit
  * is always five physical qubits; the wire-trim transform guarantees no gate
  * touches a row >= D, so marginalizing the remaining |0⟩ rows is exact. Bit
- * order: leftmost stack bit = q0 (top wire).
+ * order: Qiskit's, app-wide — see `Outcome.bits` and `bitOf`.
  *
  * This module owns ONLY the pure math + thresholds — the single source of truth
  * for both panels and their parity tests. The two `*Histogram` components keep
@@ -36,14 +36,16 @@ export const NOISY_EPS = 0.003;
 export const PAIRED_TOP_N = 8;
 
 export interface Outcome {
-  bits: string; // one char per displayed row, top(=q0) first
+  /** One char per displayed row, Qiskit order: leftmost = q(D−1), rightmost = q0. */
+  bits: string;
   prob: number;
 }
 
 /**
  * Probabilities over the `displayQubits` displayed rows (0..D-1), in basis
- * order 000..111. Pure — the single source of truth for the panel and its
- * parity test. Leftmost bit of `bits` is q0 (the top wire).
+ * order 000..111 (index i ↔ `bits` = i in binary, so the rightmost bit is q0,
+ * the top wire). Pure — the single source of truth for the panel and its parity
+ * test.
  */
 export function displayOutcomes(circuit: Circuit, displayQubits: number): Outcome[] {
   const sv = statevector(circuit);
@@ -64,14 +66,17 @@ export function outcomesFromProbabilities(
   displayQubits: number,
 ): Outcome[] {
   const D = displayQubits;
+  const mask = (1 << D) - 1;
   const out = new Array<number>(1 << D).fill(0);
+  // Keeping the low D bits marginalizes rows >= D away; the outcome index keeps
+  // the statevector's little-endian bits, so its binary spelling is Qiskit order.
   for (let i = 0; i < probs.length; i++) {
-    const p = probs[i];
-    if (p === 0) continue;
-    let idx = 0;
-    // r = 0 (q0) contributes the most-significant bit → top wire on the left.
-    for (let r = 0; r < D; r++) idx = (idx << 1) | ((i >> r) & 1);
-    out[idx] += p;
+    if (probs[i] !== 0) out[i & mask] += probs[i];
   }
   return out.map((prob, idx) => ({ bits: idx.toString(2).padStart(D, '0'), prob }));
+}
+
+/** The char of `bits` (Qiskit order, see `Outcome.bits`) that holds qubit `q`. */
+export function bitOf(bits: string, q: number): string {
+  return bits[bits.length - 1 - q];
 }

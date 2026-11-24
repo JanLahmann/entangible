@@ -318,13 +318,16 @@ describe('itemForBits / subsetForBits / houseItem', () => {
     expect(itemForBits(single, '99')).toBeUndefined();
   });
 
-  it('subsetForBits returns the set-bit ingredients (leftmost char = q0)', () => {
+  it('subsetForBits returns the set-bit ingredients (Qiskit order: rightmost char = q0)', () => {
     // '101' → qubits 0 and 2 set → Orange + Fizz, NOT Mango.
     const got = subsetForBits(subset, '101').map((it) => it.name);
     expect(got).toEqual(['Orange', 'Fizz']);
     expect(subsetForBits(subset, '000')).toEqual([]);
     expect(subsetForBits(subset, '111').map((it) => it.name)).toEqual(['Orange', 'Mango', 'Fizz']);
     expect(subsetForBits(subset, '010').map((it) => it.name)).toEqual(['Mango']);
+    // Asymmetric: '001' is q0 alone, '100' is q2 alone.
+    expect(subsetForBits(subset, '001').map((it) => it.name)).toEqual(['Orange']);
+    expect(subsetForBits(subset, '100').map((it) => it.name)).toEqual(['Fizz']);
   });
 
   it('houseItem mints the honest leftover-amplitude answer', () => {

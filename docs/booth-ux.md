@@ -152,8 +152,10 @@ Compare against canonical states up to global phase, fidelity ≥ 0.99.
 
 - **Histogram form (final, Jan 2026-07-18): column bars + vertical bit-stack
   labels + zero-states hidden.** Bars stand vertically side by side; each
-  column's label is its bit-string stacked vertically beneath it (top bit =
-  q0, mirroring wire order), with a faint `q0…` guide column at the left.
+  column's label is its bit-string stacked vertically beneath it, with a
+  faint q-guide column at the left. (Bit order since 2026-11-24: Qiskit's, the
+  app-wide convention — the stack reads top to bottom like the ket line, top
+  bit = highest wire, bottom bit = q0; it was top bit = q0 before.)
   **Basis states with probability 0 are hidden** — this is what makes columns
   scale: Bell/GHZ show 2 columns, shallow circuits show few. When > 8 nonzero
   outcomes: sorted top-6 columns + aggregated-tail note; uniform
