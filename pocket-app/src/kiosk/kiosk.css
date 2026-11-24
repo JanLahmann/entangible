@@ -652,7 +652,8 @@
 }
 
 /* ---- RESULTS: column bars + vertical bit-stack labels, zero states
-        hidden (top bit = q0; q-guide column at the left) ---------------- */
+        hidden (Qiskit order: top bit = highest wire, bottom bit = q0;
+        q-guide column at the left) ------------------------------------- */
 
 .bo-h-plot {
   display: flex;

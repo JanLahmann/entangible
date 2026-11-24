@@ -29,25 +29,25 @@ describe('displayOutcomes — D = 3 fixed axis', () => {
     for (let i = 1; i < 8; i++) expect(o[i].prob).toBeCloseTo(0, 10);
   });
 
-  it('Bell on q0/q1 → 000 and 110 at 50% (top bit = q0), rest zero stubs', () => {
+  it('Bell on q0/q1 → 000 and 011 at 50% (Qiskit order: q0 rightmost), rest zero stubs', () => {
     const o = displayOutcomes(circuit([H(0), CNOT(0, 1)]), 3);
     expect(o).toHaveLength(8);
     const byBits = Object.fromEntries(o.map((x) => [x.bits, x.prob]));
     expect(byBits['000']).toBeCloseTo(0.5, 10);
-    expect(byBits['110']).toBeCloseTo(0.5, 10);
+    expect(byBits['011']).toBeCloseTo(0.5, 10);
     for (const x of o) {
-      if (x.bits !== '000' && x.bits !== '110') expect(x.prob).toBeCloseTo(0, 10);
+      if (x.bits !== '000' && x.bits !== '011') expect(x.prob).toBeCloseTo(0, 10);
     }
   });
 
-  it('X on q0 alone → column 100 at 100% (q0 is the leftmost bit)', () => {
+  it('X on q0 alone → column 001 at 100% (q0 is the rightmost bit)', () => {
     const byBits = Object.fromEntries(displayOutcomes(circuit([X(0)]), 3).map((x) => [x.bits, x.prob]));
-    expect(byBits['100']).toBeCloseTo(1, 10);
+    expect(byBits['001']).toBeCloseTo(1, 10);
   });
 
-  it('a tile on q2 is captured within the 3 displayed rows (rightmost bit)', () => {
+  it('a tile on q2 is captured within the 3 displayed rows (leftmost bit)', () => {
     const byBits = Object.fromEntries(displayOutcomes(circuit([X(2)]), 3).map((x) => [x.bits, x.prob]));
-    expect(byBits['001']).toBeCloseTo(1, 10);
+    expect(byBits['100']).toBeCloseTo(1, 10);
   });
 
   it('GHZ on q0/q1/q2 → 000 and 111 at 50%, the rest zero', () => {
@@ -67,7 +67,7 @@ describe('displayOutcomes — D = 4 / 5', () => {
     expect(o).toHaveLength(16);
     const byBits = Object.fromEntries(o.map((x) => [x.bits, x.prob]));
     expect(byBits['0000']).toBeCloseTo(0.5, 10);
-    expect(byBits['0001']).toBeCloseTo(0.5, 10);
+    expect(byBits['1000']).toBeCloseTo(0.5, 10);
   });
 
   it('D = 5 all-H is the uniform 32-way spread', () => {
@@ -76,10 +76,10 @@ describe('displayOutcomes — D = 4 / 5', () => {
     for (const x of o) expect(x.prob).toBeCloseTo(1 / 32, 10);
   });
 
-  it('D = 5 puts an X on q4 in the least-significant bit (00001)', () => {
+  it('D = 5 puts an X on q4 in the most-significant bit (10000)', () => {
     const o = displayOutcomes(circuit([X(4)]), 5);
     expect(o).toHaveLength(32);
     const byBits = Object.fromEntries(o.map((x) => [x.bits, x.prob]));
-    expect(byBits['00001']).toBeCloseTo(1, 10);
+    expect(byBits['10000']).toBeCloseTo(1, 10);
   });
 });

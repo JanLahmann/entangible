@@ -59,7 +59,7 @@ describe('gateInspectCopy', () => {
 describe('outcomeInspectCopy', () => {
   it('maps each bit to its qubit and states the probability', () => {
     expect(outcomeInspectCopy('110', 0.5)).toBe(
-      '110: q0=1, q1=1, q2=0 — seen in 50% of runs.',
+      '110: q2=1, q1=1, q0=0 — seen in 50% of runs.',
     );
   });
 

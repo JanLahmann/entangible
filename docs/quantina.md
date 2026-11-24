@@ -111,8 +111,8 @@ options = [{ key = "ConsumerProducts.CoffeeMaker.Option.FillQuantity", value = 5
 Rules (enforced by the loader, mirrored in tests):
 - `single`/`shots`: `2 ≤ items ≤ 32`; qubit count = ⌈log₂ N⌉; codes are unique
   bitstrings of that width, using the same bit-order convention as the shared
-  histogram labels (single source: `shared/display/outcomes.ts` — no second
-  convention). `subset`: `2 ≤ items ≤ 5`, each item names a unique `qubit`
+  histogram labels, Qiskit order: rightmost char = q0 (single source:
+  `shared/display/outcomes.ts` — no second convention). `subset`: `2 ≤ items ≤ 5`, each item names a unique `qubit`
   0–4; qubit count = item count.
 - Packs SHOULD fill all 2^q codes; unfilled codes are auto-padded with a
   "Surprise me ✨" house item (an honest answer to leftover amplitude — never

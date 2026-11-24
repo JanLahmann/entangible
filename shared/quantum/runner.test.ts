@@ -88,6 +88,12 @@ describe('gate application', () => {
     expect(p[3]).toBeCloseTo(0.5, 12);
   });
 
+  it('Qiskit lane order at level 2: X0 lands on |01⟩, X1 on |10⟩', () => {
+    expect(probabilities(applyGate(initialAmplitudes(2), 2, 'X0'))).toEqual([0, 1, 0, 0]);
+    expect(probabilities(applyGate(initialAmplitudes(2), 2, 'X1'))).toEqual([0, 0, 1, 0]);
+    expect(laneLabels(2)[1]).toBe('|01⟩');
+  });
+
   it('a level-1 state ignores level-2 buttons (stays total)', () => {
     const a = applyGate(initialAmplitudes(1), 1, 'X1');
     expect(probabilities(a)).toEqual([1, 0]);

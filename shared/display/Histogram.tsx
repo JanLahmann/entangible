@@ -10,8 +10,9 @@
  * The outcome space is the DISPLAYED qubit count `D` (rows 0..D-1), following
  * the wire-trim setting, NOT the active subset. The recognized circuit is always
  * five physical qubits; the wire-trim transform guarantees no gate touches a row
- * >= D, so marginalizing the remaining |0⟩ rows is exact. Bit order: leftmost
- * stack bit = q0 (top wire).
+ * >= D, so marginalizing the remaining |0⟩ rows is exact. Bit order: Qiskit's,
+ * the app-wide convention (`@shared/display/outcomes`) — the stack reads top to
+ * bottom like the ket line, highest wire first, so its bottom bit is q0.
  *
  *   - D = 3 (compact default): a FIXED 8-column axis, basis order 000..111,
  *     zero-probability columns kept as dim stubs (never hidden) so visitors
@@ -53,8 +54,9 @@ import {
 } from '@shared/display/outcomes';
 
 /**
- * The outcome's bits stacked one per row (q0 on top). A screen reader should
- * hear the bitstring once ("001"), not three loose digits, so the stack is an
+ * The outcome's bits stacked one per row in reading order (highest wire on
+ * top, q0 at the bottom — the ket line's spelling, turned upright). A screen
+ * reader should hear the bitstring once ("001"), not three loose digits, so the stack is an
  * image role named by `aria-label` — on a bare span the label is prohibited
  * (axe `aria-prohibited-attr`) and ignored.
  */
@@ -174,7 +176,8 @@ export function Histogram({
   const noisyLabel = noisyProp ?? t.withNoise;
   const D = displayQubits;
   const outcomes = useMemo(() => displayOutcomes(circuit, D), [circuit, D]);
-  const rows = useMemo(() => Array.from({ length: D }, (_, r) => r), [D]);
+  // Guide labels in stack order: q(D−1) on top … q0 at the bottom.
+  const rows = useMemo(() => Array.from({ length: D }, (_, r) => D - 1 - r), [D]);
   const noisyOutcomes = useMemo(
     () => (noisy ? outcomesFromProbabilities(noisy, D) : null),
     [noisy, D],

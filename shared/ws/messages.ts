@@ -258,7 +258,7 @@ export interface ServedMessage {
   seq: number;
   /** The menu pack that was active when served. */
   packId: string;
-  /** 1 bitstring for single/subset, k for shots mode (leftmost char = q0). */
+  /** 1 bitstring for single/subset, k for shots mode (Qiskit order: rightmost char = q0). */
   outcomes: string[];
   shotSource: ShotSource;
 }

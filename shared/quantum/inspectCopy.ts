@@ -75,12 +75,14 @@ function percentPhrase(prob: number): string {
 }
 
 /**
- * What a tapped outcome column means. `bits` is one char per DISPLAYED row,
- * leftmost = q0, so bit `i` is qubit `i` directly (the histogram marginalizes
- * onto the first D physical rows). Example:
- *   ("110", 0.5) → "110: q0=1, q1=1, q2=0 — seen in 50% of runs".
+ * What a tapped outcome column means. `bits` is one char per DISPLAYED row in
+ * Qiskit order (leftmost = highest wire, rightmost = q0; the histogram
+ * marginalizes onto the first D physical rows). The pairs follow the string, so
+ * each one sits under its own char. Example:
+ *   ("110", 0.5) → "110: q2=1, q1=1, q0=0 — seen in 50% of runs".
  */
 export function outcomeInspectCopy(bits: string, prob: number, t: Messages = en): string {
-  const pairs = bits.split('').map((b, i) => `q${i}=${b}`);
+  const top = bits.length - 1;
+  const pairs = bits.split('').map((b, i) => `q${top - i}=${b}`);
   return t.inspect.outcome(bits, pairs.join(', '), percentPhrase(prob));
 }

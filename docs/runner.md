@@ -19,8 +19,9 @@ partial credit and a projector that snaps you into one branch and takes a life.
 
 - **Lanes are basis states.** Level 1 is 1 qubit → 2 lanes (`|0⟩`, `|1⟩`);
   level 2 is 2 qubits → 4 lanes (`|00⟩`, `|01⟩`, `|10⟩`, `|11⟩`). Lane labels
-  use the shared display bit-order convention (`shared/display/outcomes.ts`):
-  the leftmost character is q0 (the top wire).
+  use the shared display bit-order convention (`shared/display/outcomes.ts`),
+  Qiskit order: the rightmost character is q0 (the top wire), so `|01⟩` is q0
+  set.
 - **The runner is everywhere at once.** It renders as a ghost in every lane with
   **opacity = probability**. There is no circuit history — this is a *state*, not
   a circuit; the gate buttons mutate the live amplitudes directly.

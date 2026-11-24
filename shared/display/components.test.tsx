@@ -114,7 +114,8 @@ describe('Histogram (shared) — paired ideal + noisy series', () => {
     for (const [i, p] of Object.entries(entries)) v[+i] = p;
     return v;
   };
-  // Bell on q0/q1, D=5: ideal peaks are 00000 (index 0) and 11000 (index 3, q0+q1).
+  // Bell on q0/q1, D=5: ideal peaks are 00000 (index 0) and 00011 (index 3, q0+q1;
+  // Qiskit order, q0 rightmost).
   // 00100 (index 4, a q2 flip) is ideal-zero — a noisy-only leakage outcome.
   const bellNoisy = noisyVec({ 0: 0.4, 3: 0.4, 4: 0.06, 1: 0.05, 2: 0.05, 5: 0.0001 });
 
@@ -137,11 +138,11 @@ describe('Histogram (shared) — paired ideal + noisy series', () => {
     );
     // Both ideal peaks are present…
     expect(bits).toContain('00000');
-    expect(bits).toContain('11000');
+    expect(bits).toContain('00011');
     // …and so is the ideal-zero, noisy-only leakage outcome (the whole point).
     expect(bits).toContain('00100');
     // A noisy outcome below the noisy floor (0.0001) is NOT surfaced.
-    expect(bits).not.toContain('10100');
+    expect(bits).not.toContain('00101');
   });
 
   it('renders the legend only in paired mode, with prop-driven labels', () => {
@@ -170,7 +171,7 @@ describe('Histogram (shared) — paired ideal + noisy series', () => {
     expect(container.querySelectorAll('.pk-h-col').length).toBe(8);
     expect(container.querySelector('.pk-h-bar--noisy')).not.toBeNull();
     expect(container.querySelector('.pk-h-legend')).not.toBeNull();
-    const leak = container.querySelector('.pk-h-col[data-bits="001"]');
+    const leak = container.querySelector('.pk-h-col[data-bits="100"]');
     expect(leak?.className).not.toContain('is-dim');
   });
 

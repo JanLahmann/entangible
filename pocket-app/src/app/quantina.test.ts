@@ -125,6 +125,11 @@ describe('orderLines', () => {
     expect(lines.map((l) => l.item.name)).toEqual(['Orange juice', 'Sparkling water']);
     expect(lines.every((l) => l.count === 1)).toBe(true);
   });
+
+  it('subset: Qiskit order — the rightmost char is q0', () => {
+    const lines = orderLines(juice, { packId: 'juice', outcomes: ['011'], shotSource: 'ideal' });
+    expect(lines.map((l) => l.item.name)).toEqual(['Orange juice', 'Mango']);
+  });
 });
 
 describe('resolvePack', () => {

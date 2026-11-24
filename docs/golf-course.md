@@ -24,8 +24,8 @@ version 1 was 101). The legendary threshold stays −18 (two under on every hole
 
 - **Kets** are written like the bra-ket line under the sphere (`KetDisplay`)
   and like Qiskit: **MSB-first**, the leftmost bit is the HIGHEST wire q(k−1).
-  `|+⟩|1⟩|+⟩` reads q2 q1 q0. (The histogram labels the other way round —
-  leftmost = q0, the top wire; see *Open points*.)
+  `|+⟩|1⟩|+⟩` reads q2 q1 q0. The histogram labels, the Q-sphere and every
+  goal line use the same order (see *Bit order on screen*).
 - **Placement is free.** A hole scores the best fidelity over every ORDERED
   placement of its k wires on the five rows, so any relabelling of an answer
   holes in. The shortest solutions below were searched over every wiring, so
@@ -338,8 +338,12 @@ ten seeds, placements included).
   one-qubit stabiliser states on 2 and 3 wires (Medium and Difficult clubs)
   found none that a CX makes cheaper — so a hole "reached by un-entangling"
   would be a puzzle about a longer route, never the shortest one. Left out.
-- **Bit order on screen.** The ket line and the Q-sphere are MSB-first
-  (leftmost = highest wire); the histogram's bitstrings are leftmost = q0.
-  Free placement keeps every hole fair, but a player comparing the two lines on
-  an asymmetric hole (E3, E4, M3, M4, M5, D3, D4, X3, X5) sees the same outcome
-  spelled in two orders. Pre-existing; worth one convention app-wide.
+- **Bit order on screen.** One convention app-wide, Qiskit's: a bitstring is
+  written highest wire first, so the leftmost character is q(k−1) and the
+  rightmost is q0, the top wire. The ket line, the Q-sphere labels, the
+  histogram columns (their upright bit stack reads top to bottom like the ket,
+  with q0 at the bottom), the goal lines and the tap-to-inspect copy all spell
+  an outcome the same way. `shared/display/bitOrder.test.tsx` checks every
+  Classic hole across all three displays; the holes where a reversed order
+  would be visible are E4, M3, M4, M5, D3, X3 and X5 (the rest are mirror
+  symmetric up to a global phase).
