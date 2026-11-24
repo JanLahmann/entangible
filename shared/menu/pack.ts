@@ -21,6 +21,7 @@
  * the first). The schema is forward-compatible: unknown extra fields are
  * ignored, so a newer pack still loads on an older client.
  */
+import { bitOf } from '@shared/display/outcomes';
 
 /** How a serve turns the measured outcome(s) into an order. */
 export type ServeMode = 'single' | 'shots' | 'subset';
@@ -440,12 +441,9 @@ export function itemForBits(pack: MenuPack, bits: string): MenuItem | undefined 
 }
 
 /**
- * subset lookup: the items whose qubit's char in `bits` is '1'. Qiskit order,
- * the `Outcome.bits` convention: the RIGHTMOST char is q0, so qubit q is char
- * `length−1−q`. A set bit means "this ingredient landed in the glass".
+ * subset lookup: the items whose qubit's char in `bits` is '1' (`bitOf`, the
+ * `Outcome.bits` order). A set bit means "this ingredient landed in the glass".
  */
 export function subsetForBits(pack: MenuPack, bits: string): MenuItem[] {
-  return pack.items.filter(
-    (it) => it.qubit !== undefined && bits[bits.length - 1 - it.qubit] === '1',
-  );
+  return pack.items.filter((it) => it.qubit !== undefined && bitOf(bits, it.qubit) === '1');
 }

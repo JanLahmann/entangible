@@ -101,11 +101,6 @@ export function laneLabels(level: Level): string[] {
   return Array.from({ length: n }, (_, i) => `|${i.toString(2).padStart(q, '0')}⟩`);
 }
 
-/** Bit position of qubit `q` within a lane index (q0 = LSB, Qiskit order). */
-function qubitBit(q: number): number {
-  return 1 << q;
-}
-
 // ---------------------------------------------------------------------------
 // State-vector operations on the tiny (2 or 4 amplitude) lane state
 // ---------------------------------------------------------------------------
@@ -124,7 +119,7 @@ export function probabilities(amps: readonly Complex[]): number[] {
 
 /** Apply a single-qubit 2×2 unitary to qubit `q` (returns a new array). */
 function applySingle(amps: readonly Complex[], q: number, m: Matrix2): Complex[] {
-  const bit = qubitBit(q);
+  const bit = 1 << q;
   const out = amps.slice();
   for (let i = 0; i < amps.length; i++) {
     if ((i & bit) === 0) {
@@ -140,8 +135,8 @@ function applySingle(amps: readonly Complex[], q: number, m: Matrix2): Complex[]
 
 /** Apply CX(control, target) — flip target where control is |1⟩ (new array). */
 function applyCx(amps: readonly Complex[], control: number, target: number): Complex[] {
-  const cbit = qubitBit(control);
-  const tbit = qubitBit(target);
+  const cbit = 1 << control;
+  const tbit = 1 << target;
   const out = amps.slice();
   for (let i = 0; i < amps.length; i++) {
     if ((i & cbit) !== 0 && (i & tbit) === 0) {

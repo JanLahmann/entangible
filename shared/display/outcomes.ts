@@ -43,9 +43,9 @@ export interface Outcome {
 
 /**
  * Probabilities over the `displayQubits` displayed rows (0..D-1), in basis
- * order 000..111 (Qiskit reading: index i ↔ `bits` = i in binary). Pure — the
- * single source of truth for the panel and its parity test. Rightmost bit of
- * `bits` is q0 (the top wire).
+ * order 000..111 (index i ↔ `bits` = i in binary, so the rightmost bit is q0,
+ * the top wire). Pure — the single source of truth for the panel and its parity
+ * test.
  */
 export function displayOutcomes(circuit: Circuit, displayQubits: number): Outcome[] {
   const sv = statevector(circuit);
@@ -74,4 +74,9 @@ export function outcomesFromProbabilities(
     if (probs[i] !== 0) out[i & mask] += probs[i];
   }
   return out.map((prob, idx) => ({ bits: idx.toString(2).padStart(D, '0'), prob }));
+}
+
+/** The char of `bits` (Qiskit order, see `Outcome.bits`) that holds qubit `q`. */
+export function bitOf(bits: string, q: number): string {
+  return bits[bits.length - 1 - q];
 }

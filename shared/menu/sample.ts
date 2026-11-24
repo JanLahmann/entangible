@@ -12,7 +12,7 @@
  * the NOISY outcome vector, so "real hardware might make you an espresso
  * instead" falls out for free.
  */
-import type { Outcome } from '@shared/display/outcomes';
+import { bitOf, type Outcome } from '@shared/display/outcomes';
 
 /** A uniform pseudo-random source over [0, 1). */
 export type Rng = () => number;
@@ -82,8 +82,8 @@ export function sampleShots(outcomes: readonly Outcome[], k: number, rng: Rng): 
 
 /**
  * Per-row marginals: index `r` is `P(qubit r = 1)`, read from each outcome's
- * `bits` at char `D−1−r` (Qiskit order: rightmost = q0). This is the number
- * `subset` mode shows next to each item (its qubit's marginal). A Bell state's two rows each read 0.5.
+ * `bits` via `bitOf`. This is the number `subset` mode shows next to each item
+ * (its qubit's marginal). A Bell state's two rows each read 0.5.
  */
 export function marginals(outcomes: readonly Outcome[]): number[] {
   if (outcomes.length === 0) return [];
@@ -91,7 +91,7 @@ export function marginals(outcomes: readonly Outcome[]): number[] {
   const out = new Array<number>(D).fill(0);
   for (const o of outcomes) {
     for (let r = 0; r < D; r++) {
-      if (o.bits[D - 1 - r] === '1') out[r] += o.prob;
+      if (bitOf(o.bits, r) === '1') out[r] += o.prob;
     }
   }
   return out;
